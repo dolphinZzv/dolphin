@@ -179,6 +179,7 @@ func Load(cfgFile string) (*Config, error) {
 			buf := make([]byte, 6)
 			rand.Read(buf)
 			cfg.Transport.SSH.Password = hex.EncodeToString(buf)
+			os.MkdirAll(filepath.Dir(pwFile), 0700)
 			os.WriteFile(pwFile, []byte(cfg.Transport.SSH.Password), 0600)
 			fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password: %s ===\n", cfg.Transport.SSH.Password)
 			fmt.Fprintf(os.Stderr, "Username: %s\n", cfg.Transport.SSH.Username)
