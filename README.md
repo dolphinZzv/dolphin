@@ -1,5 +1,7 @@
 # DolphinzZ
 
+[![CI](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml)
+
 AI coding agent with MCP tool support. Runs via stdio, SSH, or MQTT.
 
 ## Quick Start
