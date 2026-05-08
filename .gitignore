@@ -1,0 +1,17 @@
+# Binary
+dolphinzZ
+
+# Session logs
+/sessions/
+
+# Config with API keys
+.dolphinzZ/config.yaml
+
+# Claude Code
+.claude/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

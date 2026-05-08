@@ -1,0 +1,407 @@
+package transport
+
+import (
+	"bufio"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
+	"fmt"
+	"log/slog"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"dolphinzZ/internal/config"
+
+	gossh "golang.org/x/crypto/ssh"
+)
+
+// SSHTransport provides SSH server transport.
+type SSHTransport struct {
+	cfg      *config.SSHConfig
+	config   *gossh.ServerConfig
+	listener net.Listener
+	mu       sync.Mutex
+	handler  func(context.Context, UserIO)
+}
+
+func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) (*SSHTransport, error) {
+	sshCfg := cfg.Transport.SSH
+	serverCfg := &gossh.ServerConfig{
+		PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+			slog.Debug("ssh password auth", "user", conn.User())
+			if conn.User() != sshCfg.Username {
+				return nil, fmt.Errorf("unauthorized user: %s", conn.User())
+			}
+			if string(password) != sshCfg.Password {
+				return nil, fmt.Errorf("invalid password")
+			}
+			return &gossh.Permissions{}, nil
+		},
+	}
+
+	hostKey := cfg.Transport.SSH.HostKey
+	if hostKey == "" {
+		hostKey = "~/.ssh/id_ed25519"
+	}
+
+	signer, err := loadHostKey(hostKey)
+	if err != nil {
+		// Try persistent auto-generated key
+		home, _ := os.UserHomeDir()
+		autoKeyPath := filepath.Join(home, ".dolphinzZ", "ssh_host_key")
+		signer, err = loadHostKey(autoKeyPath)
+		if err != nil {
+			slog.Info("generating persistent SSH host key", "path", autoKeyPath)
+			signer, err = genAndSaveKey(autoKeyPath)
+			if err != nil {
+				slog.Warn("falling back to ephemeral SSH host key", "error", err)
+				signer, err = genEphemeralKey()
+				if err != nil {
+					return nil, fmt.Errorf("generate host key: %w", err)
+				}
+			}
+		}
+	}
+	serverCfg.AddHostKey(signer)
+
+	return &SSHTransport{
+		cfg:     &cfg.Transport.SSH,
+		config:  serverCfg,
+		handler: handler,
+	}, nil
+}
+
+func (t *SSHTransport) Name() string { return "ssh" }
+
+func (t *SSHTransport) Start(ctx context.Context) error {
+	addr := t.cfg.Addr
+	if addr == "" {
+		addr = ":2222"
+	}
+
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("ssh listen: %w", err)
+	}
+	t.mu.Lock()
+	t.listener = listener
+	t.mu.Unlock()
+
+	slog.Info("ssh server listening", "addr", addr)
+
+	go func() {
+		<-ctx.Done()
+		t.Close()
+	}()
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				slog.Error("ssh accept error", "error", err)
+				continue
+			}
+		}
+		go t.handleConn(ctx, conn)
+	}
+}
+
+func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
+	defer conn.Close()
+
+	sshConn, chans, reqs, err := gossh.NewServerConn(conn, t.config)
+	if err != nil {
+		slog.Debug("ssh handshake failed", "error", err)
+		return
+	}
+	defer sshConn.Close()
+
+	slog.Info("ssh connection established",
+		"user", sshConn.User(),
+		"remote", sshConn.RemoteAddr().String(),
+	)
+
+	go gossh.DiscardRequests(reqs)
+
+	for newCh := range chans {
+		if newCh.ChannelType() != "session" {
+			newCh.Reject(gossh.UnknownChannelType, "unsupported")
+			continue
+		}
+		ch, reqs, err := newCh.Accept()
+		if err != nil {
+			continue
+		}
+		go handleChannelRequests(reqs)
+
+		session := NewSSHSession(ch)
+		t.handler(ctx, session)
+		ch.Close()
+	}
+}
+
+// handleChannelRequests handles SSH channel requests.
+// We accept all requests since we handle I/O ourselves.
+func handleChannelRequests(reqs <-chan *gossh.Request) {
+	for req := range reqs {
+		if req.WantReply {
+			req.Reply(true, nil)
+		}
+	}
+}
+
+func (t *SSHTransport) Close() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.listener != nil {
+		return t.listener.Close()
+	}
+	return nil
+}
+
+// SSHSession wraps an SSH channel as a UserIO with readline-like editing.
+type SSHSession struct {
+	ch      gossh.Channel
+	reader  *bufio.Reader
+	history []string
+	histIdx int
+}
+
+func NewSSHSession(ch gossh.Channel) *SSHSession {
+	return &SSHSession{
+		ch:      ch,
+		reader:  bufio.NewReader(ch),
+		history: make([]string, 0, 20),
+		histIdx: -1,
+	}
+}
+
+var sshCompletions = []string{"/exit", "/quit", "/help"}
+
+// redraw writes the line buffer to the channel starting from column 0,
+// then moves the cursor to the current position.
+func (s *SSHSession) redraw(line []byte, pos int) {
+	fmt.Fprint(s.ch, "\r> ", string(line))
+	// If cursor isn't at end, move it back
+	back := len(line) - pos
+	for i := 0; i < back; i++ {
+		fmt.Fprint(s.ch, "\b")
+	}
+}
+
+func (s *SSHSession) ReadLine() (string, error) {
+	fmt.Fprint(s.ch, "> ")
+	line := make([]byte, 0, 256)
+	pos := 0
+	s.histIdx = -1
+
+	for {
+		b, err := s.reader.ReadByte()
+		if err != nil {
+			return "", err
+		}
+
+		switch b {
+		case '\r', '\n':
+			fmt.Fprint(s.ch, "\r\n")
+			lineStr := string(line)
+			if lineStr != "" && lineStr != "/exit" && lineStr != "/quit" {
+				s.history = append(s.history, lineStr)
+			}
+			return lineStr, nil
+
+		case '\b', 0x7f: // backspace
+			if pos > 0 {
+				// Shift content left
+				line = append(line[:pos-1], line[pos:]...)
+				pos--
+				s.redraw(line, pos)
+			}
+
+		case 0x03: // Ctrl+C
+			fmt.Fprint(s.ch, "^C\r\n")
+			return "", nil
+
+		case 0x04: // Ctrl+D
+			fmt.Fprint(s.ch, "\r\n")
+			return "", fmt.Errorf("EOF")
+
+		case 0x01: // Ctrl+A — home
+			for pos > 0 {
+				fmt.Fprint(s.ch, "\b")
+				pos--
+			}
+
+		case 0x05: // Ctrl+E — end
+			for pos < len(line) {
+				fmt.Fprint(s.ch, string(line[pos]))
+				pos++
+			}
+
+		case 0x09: // Tab
+			prefix := string(line)
+			match := ""
+			for _, c := range sshCompletions {
+				if len(c) >= len(prefix) && c[:len(prefix)] == prefix {
+					if match != "" {
+						match = ""
+						break
+					}
+					match = c
+				}
+			}
+			if match != "" {
+				line = []byte(match)
+				pos = len(line)
+				s.redraw(line, pos)
+			}
+
+		case 0x1b: // Escape sequences
+			b1, err := s.reader.ReadByte()
+			if err != nil {
+				continue
+			}
+			if b1 == '[' {
+				dir, err := s.reader.ReadByte()
+				if err != nil {
+					continue
+				}
+				switch dir {
+				case 'A': // Up
+					if len(s.history) > 0 && s.histIdx != 0 {
+						if s.histIdx == -1 {
+							s.histIdx = len(s.history) - 1
+						} else {
+							s.histIdx--
+						}
+						line = []byte(s.history[s.histIdx])
+						pos = len(line)
+						s.redraw(line, pos)
+					}
+				case 'B': // Down
+					if s.histIdx >= 0 {
+						s.histIdx++
+						if s.histIdx >= len(s.history) {
+							s.histIdx = len(s.history)
+							line = line[:0]
+							pos = 0
+						} else {
+							line = []byte(s.history[s.histIdx])
+							pos = len(line)
+						}
+						s.redraw(line, pos)
+					}
+				case 'C': // Right
+					if pos < len(line) {
+						fmt.Fprint(s.ch, string(line[pos]))
+						pos++
+					}
+				case 'D': // Left
+					if pos > 0 {
+						fmt.Fprint(s.ch, "\b")
+						pos--
+					}
+				case '3': // Delete (Del) - ESC [ 3 ~
+					if b2, err := s.reader.ReadByte(); err == nil && b2 == '~' {
+						if len(line) > 0 {
+							line = append(line[:pos], line[pos+1:]...)
+							s.redraw(line, pos)
+						}
+					}
+				case 'H': // Home
+					for pos > 0 {
+						fmt.Fprint(s.ch, "\b")
+						pos--
+					}
+				case 'F': // End
+					for pos < len(line) {
+						fmt.Fprint(s.ch, string(line[pos]))
+						pos++
+					}
+				case '1': // Home (ESC[1~)
+					if b2, err := s.reader.ReadByte(); err == nil && b2 == '~' {
+						for pos > 0 {
+							fmt.Fprint(s.ch, "\b")
+							pos--
+						}
+					}
+				case '4': // End (ESC[4~)
+					if b2, err := s.reader.ReadByte(); err == nil && b2 == '~' {
+						for pos < len(line) {
+							fmt.Fprint(s.ch, string(line[pos]))
+							pos++
+						}
+					}
+				}
+			}
+
+		default:
+			if b >= 32 {
+				// Insert at cursor position
+				line = append(line, 0)
+				copy(line[pos+1:], line[pos:])
+				line[pos] = b
+				pos++
+				s.redraw(line, pos)
+			}
+		}
+	}
+}
+
+func (s *SSHSession) WriteLine(text string) error {
+	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"), "\r\n")
+	return err
+}
+
+func (s *SSHSession) WriteString(text string) error {
+	// Don't add trailing \r\n, but ensure embedded newlines are CRLF
+	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"))
+	return err
+}
+
+func loadHostKey(path string) (gossh.Signer, error) {
+	if len(path) > 0 && path[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		path = home + path[1:]
+	}
+	keyData, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return gossh.ParsePrivateKey(keyData)
+}
+
+func genEphemeralKey() (gossh.Signer, error) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	return gossh.NewSignerFromKey(priv)
+}
+
+func genAndSaveKey(path string) (gossh.Signer, error) {
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+
+	os.MkdirAll(filepath.Dir(path), 0700)
+	pemBlock, err := gossh.MarshalPrivateKey(priv, "dolphinzZ-host-key")
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(path, pem.EncodeToMemory(pemBlock), 0600); err != nil {
+		return nil, err
+	}
+	return gossh.NewSignerFromKey(priv)
+}
