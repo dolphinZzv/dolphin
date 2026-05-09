@@ -275,11 +275,11 @@ func (c *Coordinator) registerCoordinatorTools() {
 			schema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":      map[string]any{"type": "string", "description": "Agent name"},
-					"role":      map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
-					"tools":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
-					"model":     map[string]any{"type": "string", "description": "Model override (optional)"},
-					"timeout":   map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
+					"name":    map[string]any{"type": "string", "description": "Agent name"},
+					"role":    map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
+					"tools":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
+					"model":   map[string]any{"type": "string", "description": "Model override (optional)"},
+					"timeout": map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
 				},
 				"required": []string{"name", "role"},
 			},

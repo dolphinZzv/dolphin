@@ -322,12 +322,12 @@ func TestPool_DispatchAndCollect(t *testing.T) {
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{
-			MaxConcurrency:    cfg.Pool.MaxConcurrency,
-			DefaultTimeout:    cfg.Pool.DefaultTimeout,
-			WorkspaceDir:      cfg.Pool.WorkspaceDir,
-			IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
-			MaxPendingResults: cfg.Pool.MaxPendingResults,
-		})
+		MaxConcurrency:    cfg.Pool.MaxConcurrency,
+		DefaultTimeout:    cfg.Pool.DefaultTimeout,
+		WorkspaceDir:      cfg.Pool.WorkspaceDir,
+		IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
+		MaxPendingResults: cfg.Pool.MaxPendingResults,
+	})
 	defer pool.Shutdown()
 
 	pool.Add("test-agent", &AgentDef{Name: "test-agent", Role: "test role"}, AgentUser, agt, toolReg)
@@ -402,12 +402,12 @@ func TestPool_ConcurrentDispatch(t *testing.T) {
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{
-			MaxConcurrency:    cfg.Pool.MaxConcurrency,
-			DefaultTimeout:    cfg.Pool.DefaultTimeout,
-			WorkspaceDir:      cfg.Pool.WorkspaceDir,
-			IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
-			MaxPendingResults: cfg.Pool.MaxPendingResults,
-		})
+		MaxConcurrency:    cfg.Pool.MaxConcurrency,
+		DefaultTimeout:    cfg.Pool.DefaultTimeout,
+		WorkspaceDir:      cfg.Pool.WorkspaceDir,
+		IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
+		MaxPendingResults: cfg.Pool.MaxPendingResults,
+	})
 	defer pool.Shutdown()
 
 	pool.Add("w1", &AgentDef{Name: "w1", Role: "w1"}, AgentUser, agt, toolReg)
@@ -545,12 +545,12 @@ func TestPool_Cancel(t *testing.T) {
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{
-			MaxConcurrency:    cfg.Pool.MaxConcurrency,
-			DefaultTimeout:    cfg.Pool.DefaultTimeout,
-			WorkspaceDir:      cfg.Pool.WorkspaceDir,
-			IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
-			MaxPendingResults: cfg.Pool.MaxPendingResults,
-		})
+		MaxConcurrency:    cfg.Pool.MaxConcurrency,
+		DefaultTimeout:    cfg.Pool.DefaultTimeout,
+		WorkspaceDir:      cfg.Pool.WorkspaceDir,
+		IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
+		MaxPendingResults: cfg.Pool.MaxPendingResults,
+	})
 	defer pool.Shutdown()
 
 	pool.Add("worker", &AgentDef{Name: "worker", Role: "worker"}, AgentUser, agt, toolReg)
@@ -611,12 +611,12 @@ func TestPool_CancelAll(t *testing.T) {
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{
-			MaxConcurrency:    cfg.Pool.MaxConcurrency,
-			DefaultTimeout:    cfg.Pool.DefaultTimeout,
-			WorkspaceDir:      cfg.Pool.WorkspaceDir,
-			IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
-			MaxPendingResults: cfg.Pool.MaxPendingResults,
-		})
+		MaxConcurrency:    cfg.Pool.MaxConcurrency,
+		DefaultTimeout:    cfg.Pool.DefaultTimeout,
+		WorkspaceDir:      cfg.Pool.WorkspaceDir,
+		IdleTimeout:       time.Duration(cfg.Pool.IdleTimeout) * time.Second,
+		MaxPendingResults: cfg.Pool.MaxPendingResults,
+	})
 	defer pool.Shutdown()
 
 	pool.Add("w1", &AgentDef{Name: "w1", Role: "w1"}, AgentUser, agt, toolReg)

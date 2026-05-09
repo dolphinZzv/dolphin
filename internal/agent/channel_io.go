@@ -26,5 +26,5 @@ func (c *ChannelIO) ReadLine() (string, error) {
 	return msg, nil
 }
 
-func (c *ChannelIO) WriteLine(string) error  { return nil }
+func (c *ChannelIO) WriteLine(string) error   { return nil }
 func (c *ChannelIO) WriteString(string) error { return nil }

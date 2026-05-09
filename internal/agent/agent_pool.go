@@ -15,10 +15,10 @@ import (
 
 // AgentInstance is a live agent managed by the pool.
 type AgentInstance struct {
-	Def    *AgentDef
-	Kind   AgentKind
-	agent  *Agent
-	pool   *AgentPool
+	Def   *AgentDef
+	Kind  AgentKind
+	agent *Agent
+	pool  *AgentPool
 
 	mu            sync.RWMutex
 	status        string // idle / busy / error
@@ -27,7 +27,7 @@ type AgentInstance struct {
 	taskCh        chan Task
 	cancel        context.CancelFunc // cancels the current task
 	currentTaskID string             // task ID currently being processed
-	doneCh        chan struct{}       // closed when the worker goroutine exits
+	doneCh        chan struct{}      // closed when the worker goroutine exits
 }
 
 func (inst *AgentInstance) Status() string {
@@ -399,8 +399,8 @@ func (p *AgentPool) Remove(name string) bool {
 // Shutdown gracefully stops the pool: cancels all tasks, waits for goroutines, cleans up.
 func (p *AgentPool) Shutdown() {
 	slog.Info("agent pool shutting down...")
-	p.cancel()       // Cancel all tasks
-	p.wg.Wait()      // Wait for all goroutines
+	p.cancel()  // Cancel all tasks
+	p.wg.Wait() // Wait for all goroutines
 	// Clean up all coordinator-created workspaces
 	p.mu.Lock()
 	for name, inst := range p.agents {

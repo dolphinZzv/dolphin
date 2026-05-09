@@ -27,12 +27,12 @@ import (
 // When the incoming topic is an exact match (no wildcard suffix), the
 // configured response_topic is used as-is (backward compatible).
 type MQTTTransport struct {
-	cfg        *config.MQTTConfig
-	client     mqtt.Client
-	msgCh      chan string
-	respTopic  atomic.Value // stores last derived response topic (string)
-	connected  atomic.Bool
-	closeMu    sync.Mutex
+	cfg       *config.MQTTConfig
+	client    mqtt.Client
+	msgCh     chan string
+	respTopic atomic.Value // stores last derived response topic (string)
+	connected atomic.Bool
+	closeMu   sync.Mutex
 }
 
 func NewMQTTTransport(cfg *config.Config) *MQTTTransport {

@@ -60,7 +60,7 @@ type Registry struct {
 	tools   map[string]Tool
 	servers []*ServerClient
 	cfg     *config.MCPConfig
-	filter  map[string]bool   // nil = no filter; non-nil = only allow listed tools
+	filter  map[string]bool // nil = no filter; non-nil = only allow listed tools
 	stats   map[string]*ToolStats
 }
 

@@ -146,8 +146,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			}
 		}
 		coord := agent.NewCoordinator(agt, pool)
-			coord.SetSkillManager(skillMgr)
-			return coord
+		coord.SetSkillManager(skillMgr)
+		return coord
 	}
 
 	// Start transports

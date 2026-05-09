@@ -97,11 +97,11 @@ type CDPConfig struct {
 }
 
 type PoolConfig struct {
-	MaxConcurrency  int    `mapstructure:"max_concurrency"`
-	DefaultTimeout  int    `mapstructure:"default_timeout"`
-	WorkspaceDir    string `mapstructure:"workspace_dir"`
-	IdleTimeout     int    `mapstructure:"idle_timeout"`
-	MaxPendingResults int  `mapstructure:"max_pending_results"`
+	MaxConcurrency    int    `mapstructure:"max_concurrency"`
+	DefaultTimeout    int    `mapstructure:"default_timeout"`
+	WorkspaceDir      string `mapstructure:"workspace_dir"`
+	IdleTimeout       int    `mapstructure:"idle_timeout"`
+	MaxPendingResults int    `mapstructure:"max_pending_results"`
 }
 
 type SkillsConfig struct {
