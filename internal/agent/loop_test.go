@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"dolphinzZ/internal/config"
@@ -14,12 +15,15 @@ import (
 
 // mockProvider implements Provider for testing.
 type mockProvider struct {
+	mu        sync.Mutex
 	responses []*ProviderResponse
 	callIndex int
 }
 
 func (m *mockProvider) Type() ProviderType { return "openai" }
 func (m *mockProvider) Complete(_ context.Context, _ ProviderRequest) (*ProviderResponse, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.callIndex >= len(m.responses) {
 		return &ProviderResponse{
 			Content: TextContent("done"),
@@ -30,7 +34,9 @@ func (m *mockProvider) Complete(_ context.Context, _ ProviderRequest) (*Provider
 	return resp, nil
 }
 func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-chan StreamChunk, error) {
+	m.mu.Lock()
 	if m.callIndex >= len(m.responses) {
+		m.mu.Unlock()
 		ch := make(chan StreamChunk, 1)
 		ch <- StreamChunk{Done: true}
 		close(ch)
@@ -38,6 +44,7 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 	}
 	resp := m.responses[m.callIndex]
 	m.callIndex++
+	m.mu.Unlock()
 
 	ch := make(chan StreamChunk, 10)
 	go func() {
