@@ -265,6 +265,72 @@ func TestBuildDynamicPromptWithPendingResults(t *testing.T) {
 	}
 }
 
+func TestBuildDynamicPromptTruncatesLongResults(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Pool.MaxPendingResultLen = 20
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), NewPoolConfigFromConfig(cfg.Pool)))
+	coord.basePrompt = "base"
+
+	longOutput := strings.Repeat("abcdefghijklmnopqrstuvwxyz", 10) // 260 chars
+	coord.pending = []TaskResult{
+		{AgentName: "worker1", TaskID: "t1", Success: true, Output: longOutput, Status: "completed", DurationMs: 100},
+	}
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, "...") {
+		t.Error("expected truncated output with '...' suffix, got:", prompt)
+	}
+	if strings.Contains(prompt, longOutput) {
+		t.Error("full long output should NOT be present when truncated")
+	}
+}
+
+func TestBuildDynamicPromptNoTruncationWhenZero(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Pool.MaxPendingResultLen = 0
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), NewPoolConfigFromConfig(cfg.Pool)))
+	coord.basePrompt = "base"
+
+	longOutput := strings.Repeat("x", 600) // longer than old hardcoded 500
+	coord.pending = []TaskResult{
+		{AgentName: "worker1", TaskID: "t1", Success: true, Output: longOutput, Status: "completed", DurationMs: 100},
+	}
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, longOutput) {
+		t.Error("full output should be present when MaxPendingResultLen=0 (no truncation)")
+	}
+}
+
+func TestBuildDynamicPromptTruncationDoesNotAffectShortResults(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Pool.MaxPendingResultLen = 100
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), NewPoolConfigFromConfig(cfg.Pool)))
+	coord.basePrompt = "base"
+
+	shortOutput := "short result"
+	coord.pending = []TaskResult{
+		{AgentName: "worker1", TaskID: "t1", Success: true, Output: shortOutput, Status: "completed", DurationMs: 100},
+	}
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, shortOutput) {
+		t.Error("short output should be present in full")
+	}
+	if strings.Contains(prompt, shortOutput+"...") {
+		t.Error("short output should NOT have '...' suffix")
+	}
+}
+
 func TestCoordinatorRunExitCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Dir = t.TempDir()

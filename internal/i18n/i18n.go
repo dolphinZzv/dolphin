@@ -36,6 +36,12 @@ const (
 	KeySystemMDSkipped   = "system_md_skipped"
 	KeySystemMDGenerated = "system_md_generated"
 	KeySystemMDContent   = "system_md_content"
+	KeyConfigPrompt      = "config_prompt"
+	KeyConfigExplain     = "config_explain"
+	KeyConfigYes         = "config_yes"
+	KeyConfigNo          = "config_no"
+	KeyConfigSkipped     = "config_skipped"
+	KeyConfigGenerated   = "config_generated"
 
 	// Coordinator interaction
 	KeyCoordReady        = "coord_ready"

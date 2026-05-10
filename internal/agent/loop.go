@@ -80,6 +80,11 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		return
 	}
 
+	// Inject transport-specific context
+	if tc := io.Context(); tc != "" {
+		systemPrompt += "\n\n## Transport\n" + tc
+	}
+
 	zap.S().Debugw("session started",
 		"session_id", sess.ID,
 		"max_loop", a.cfg.Session.MaxLoop,
@@ -609,10 +614,11 @@ func (a *Agent) compressHistory(state *LoopState) {
 		return
 	}
 
-	// Rough token estimate: count bytes / 4 + overhead per assistant message
+	// Token estimate: CJK-heavy content gets higher weight (CJK chars are
+	// ~1 token each but need 3 UTF-8 bytes, so bytes/4 severely underestimates).
 	est := 0
 	for _, m := range state.Messages {
-		est += len(m.Content) / 4
+		est += estimateTokens(string(m.Content))
 		if m.Role == "assistant" {
 			est += 20
 		}
@@ -655,7 +661,7 @@ func (a *Agent) compressHistory(state *LoopState) {
 			break
 		}
 		for j := i; j < end; j++ {
-			est -= len(state.Messages[j].Content) / 4
+			est -= estimateTokens(string(state.Messages[j].Content))
 		}
 		dropped += end - i
 		state.Messages = append(state.Messages[:i], state.Messages[end:]...)
@@ -670,4 +676,23 @@ func (a *Agent) compressHistory(state *LoopState) {
 		)
 		state.Sess.LogSystem(fmt.Sprintf("context compressed: dropped %d old messages, %d remaining", dropped, len(state.Messages)))
 	}
+}
+
+// estimateTokens returns a rough token count for mixed ASCII+CJK content.
+// Uses byte/3.5 for non-CJK and ~1 token per CJK character, which is closer
+// to reality than bytes/4 for the project's Chinese-language audience.
+func estimateTokens(content string) int {
+	runes := []rune(content)
+	cjk := 0
+	for _, r := range runes {
+		if r >= 0x2E80 && r <= 0x9FFF || r >= 0xF900 && r <= 0xFAFF || r >= 0xFE30 && r <= 0xFE4F {
+			cjk++
+		}
+	}
+	// CJK: ~1 token each (conservative). Non-CJK: bytes / 3.5.
+	nonCJKTokens := 0
+	if nonCJKBytes := len(content) - cjk*3; nonCJKBytes > 0 {
+		nonCJKTokens = nonCJKBytes * 10 / 35
+	}
+	return cjk + nonCJKTokens
 }

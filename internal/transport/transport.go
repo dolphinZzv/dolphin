@@ -21,6 +21,7 @@ type UserIO interface {
 	WriteLine(string) error
 	WriteString(string) error
 	Capabilities() Capabilities
+	Context() string // transport-specific context injected into system prompt
 }
 
 // Capabilities describes a transport's write semantics.

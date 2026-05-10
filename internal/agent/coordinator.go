@@ -104,6 +104,11 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		return
 	}
 
+	// Inject transport-specific context
+	if tc := io.Context(); tc != "" {
+		c.basePrompt += "\n\n## Transport\n" + tc
+	}
+
 	// Register coordinator tools on the agent's tool registry
 	c.registerCoordinatorTools()
 
@@ -288,8 +293,9 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		}
 		for _, r := range c.pending[start:] {
 			output := r.Output
-			if len(output) > 500 {
-				output = output[:500] + "..."
+			maxLen := c.cfg.Pool.MaxPendingResultLen
+			if maxLen > 0 && len(output) > maxLen {
+				output = output[:maxLen] + "..."
 			}
 			statusIcon := "✓"
 			if !r.Success {

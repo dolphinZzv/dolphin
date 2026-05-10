@@ -125,11 +125,12 @@ type CDPConfig struct {
 }
 
 type PoolConfig struct {
-	MaxConcurrency    int    `mapstructure:"max_concurrency"`
-	DefaultTimeout    int    `mapstructure:"default_timeout"`
-	WorkspaceDir      string `mapstructure:"workspace_dir"`
-	IdleTimeout       int    `mapstructure:"idle_timeout"`
-	MaxPendingResults int    `mapstructure:"max_pending_results"`
+	MaxConcurrency      int    `mapstructure:"max_concurrency"`
+	DefaultTimeout      int    `mapstructure:"default_timeout"`
+	WorkspaceDir        string `mapstructure:"workspace_dir"`
+	IdleTimeout         int    `mapstructure:"idle_timeout"`
+	MaxPendingResults   int    `mapstructure:"max_pending_results"`
+	MaxPendingResultLen int    `mapstructure:"max_pending_result_len"` // chars per result in prompt, 0 = no truncation
 }
 
 type SkillsConfig struct {
@@ -414,6 +415,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Pool.MaxPendingResults <= 0 {
 		return fmt.Errorf("agent_pool.max_pending_results must be > 0")
+	}
+	if c.Pool.MaxPendingResultLen <= 0 {
+		c.Pool.MaxPendingResultLen = 500
 	}
 	if c.MCP.Shell.TimeoutSeconds <= 0 {
 		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0")

@@ -19,6 +19,12 @@ var zhMessages = map[string]string{
 	KeySystemMDSkipped:   "已跳过。你可以稍后手动创建 ~/.dolphinzZ/SYSTEM.md。",
 	KeySystemMDGenerated: "已生成",
 	KeySystemMDContent:   "系统环境",
+	KeyConfigPrompt:      "是否自动生成 .dolphinzZ/config.yaml？包含所有配置项及中文注释。",
+	KeyConfigExplain:     "它会创建一个带完整注释的配置文件，方便你自定义传输层、工具、LLM 等。",
+	KeyConfigYes:         "是",
+	KeyConfigNo:          "跳过",
+	KeyConfigSkipped:     "已跳过。将使用默认值。你可以稍后手动创建 .dolphinzZ/config.yaml。",
+	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
 	KeyCoordReady:        "DolphinzZ 协调器已就绪。输入 /exit 退出，/help 查看帮助，/agents 列出代理，/commands 列出用户命令，/crontab 查看定时任务。\n",

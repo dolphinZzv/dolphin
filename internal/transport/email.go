@@ -38,6 +38,11 @@ func NewEmailTransport(cfg *config.EmailConfig) *EmailTransport {
 
 func (t *EmailTransport) Name() string { return "email" }
 
+func (t *EmailTransport) Context() string {
+	return fmt.Sprintf("Connected via email (IMAP: %s:%d, SMTP: %s:%d). User replies may be delayed by minutes. Be patient, self-contained, and thorough — each response is a separate email.",
+		t.cfg.IMAPHost, t.cfg.IMAPPort, t.cfg.SMTPHost, t.cfg.SMTPPort)
+}
+
 func (t *EmailTransport) Capabilities() Capabilities {
 	return Capabilities{Streaming: false, Flushable: true}
 }

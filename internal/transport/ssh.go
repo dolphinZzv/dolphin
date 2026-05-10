@@ -148,7 +148,7 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 		}
 		go handleChannelRequests(reqs)
 
-		session := NewSSHSession(ch)
+		session := NewSSHSession(ch, sshConn.RemoteAddr().String(), sshConn.User())
 		t.handler(ctx, session)
 		ch.Close()
 	}
@@ -179,14 +179,18 @@ type SSHSession struct {
 	reader  *bufio.Reader
 	history []string
 	histIdx int
+	remote  string // remote address
+	user    string // SSH user
 }
 
-func NewSSHSession(ch gossh.Channel) *SSHSession {
+func NewSSHSession(ch gossh.Channel, remote, user string) *SSHSession {
 	return &SSHSession{
 		ch:      ch,
 		reader:  bufio.NewReader(ch),
 		history: make([]string, 0, 20),
 		histIdx: -1,
+		remote:  remote,
+		user:    user,
 	}
 }
 
@@ -361,6 +365,10 @@ func (s *SSHSession) ReadLine() (string, error) {
 			}
 		}
 	}
+}
+
+func (s *SSHSession) Context() string {
+	return fmt.Sprintf("Connected via SSH from %s as user %s.", s.remote, s.user)
 }
 
 func (s *SSHSession) Capabilities() Capabilities {

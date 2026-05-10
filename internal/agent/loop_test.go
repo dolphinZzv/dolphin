@@ -104,6 +104,7 @@ func (m *mockIO) WriteString(s string) error {
 	m.writes.WriteString(s)
 	return nil
 }
+func (m *mockIO) Context() string { return "" }
 func (m *mockIO) Capabilities() transport.Capabilities {
 	return transport.Capabilities{Streaming: true, Flushable: false}
 }
@@ -382,6 +383,69 @@ func TestIsRetryableSubstringInWord(t *testing.T) {
 	err := fmt.Errorf("notimeoutmate")
 	if !isRetryable(err) {
 		t.Errorf("expected true for 'notimeoutmate' (contains timeout)")
+	}
+}
+
+func TestEstimateTokensPureASCII(t *testing.T) {
+	// ASCII: ~4 bytes per token, so 40 bytes ≈ 10 tokens (bytes/4 heuristic, improved to /3.5)
+	tokens := estimateTokens("hello world this is a test message")
+	if tokens <= 0 {
+		t.Errorf("expected positive token count, got %d", tokens)
+	}
+	// 40 chars ≈ 40 bytes. estimateTokens computes: 0 CJK + 40*10/35 = 11
+	if tokens < 5 || tokens > 20 {
+		t.Errorf("expected ~11 tokens for 40-byte ASCII, got %d", tokens)
+	}
+}
+
+func TestEstimateTokensPureCJK(t *testing.T) {
+	// Pure Chinese: each char is 3 UTF-8 bytes, ~1 token each
+	chinese := "你好世界这是一个测试消息" // 10 Chinese chars = 30 bytes = ~10 tokens
+	tokens := estimateTokens(chinese)
+	if tokens <= 0 {
+		t.Errorf("expected positive token count, got %d", tokens)
+	}
+	// 10 CJK chars * 1 token each = 10, plus minimal non-CJK (brackets etc)
+	if tokens < 8 || tokens > 15 {
+		t.Errorf("expected ~10 tokens for 10 CJK chars, got %d", tokens)
+	}
+}
+
+func TestEstimateTokensMixed(t *testing.T) {
+	mixed := "你好 world 测试 test" // 4 CJK chars + 11 ASCII bytes
+	asciiTokens := estimateTokens("world test")
+	cjkTokens := estimateTokens("你好测试")
+	mixedTokens := estimateTokens(mixed)
+	// Mixed should be roughly the sum of its parts
+	if mixedTokens < cjkTokens || mixedTokens < asciiTokens {
+		t.Errorf("mixed tokens (%d) should not be less than either component (cjk=%d, ascii=%d)",
+			mixedTokens, cjkTokens, asciiTokens)
+	}
+}
+
+func TestEstimateTokensEmpty(t *testing.T) {
+	if tokens := estimateTokens(""); tokens != 0 {
+		t.Errorf("expected 0 tokens for empty string, got %d", tokens)
+	}
+}
+
+func TestEstimateTokensCJKHeavier(t *testing.T) {
+	// CJK estimate should be higher per byte than ASCII estimate for same byte count.
+	// 30 bytes of CJK: 10 chars * 1 token = 10 tokens
+	// 30 bytes of ASCII: 30 chars * 10/35 ≈ 8 tokens
+	cjk30 := estimateTokens("你好世界你好世界你好")                       // 10 CJK chars, 30 bytes
+	ascii30 := estimateTokens("abcdefghijklmnopqrstuvwxyzabcd") // 30 ASCII chars, 30 bytes
+	if cjk30 <= ascii30 {
+		t.Errorf("30 CJK bytes should estimate more tokens than 30 ASCII bytes, got cjk=%d ascii=%d", cjk30, ascii30)
+	}
+}
+
+func TestEstimateTokensJSONContent(t *testing.T) {
+	// Typical JSON content from tool results
+	json := `[{"type":"text","text":"result content here with some data"}]`
+	tokens := estimateTokens(json)
+	if tokens <= 0 {
+		t.Errorf("expected positive token count for JSON, got %d", tokens)
 	}
 }
 

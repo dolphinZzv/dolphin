@@ -7,12 +7,17 @@ import (
 	"testing"
 )
 
-func TestBuilderDefault(t *testing.T) {
-	b := &Builder{
-		projectDir: t.TempDir(),
-		userDir:    t.TempDir(),
-		systemDir:  t.TempDir(),
+func testBuilder(projectDir, userDir, systemDir string) *Builder {
+	return &Builder{
+		projectDir: projectDir,
+		userDir:    userDir,
+		systemDir:  systemDir,
+		statCache:  make(map[string]cachedFile),
 	}
+}
+
+func TestBuilderDefault(t *testing.T) {
+	b := testBuilder(t.TempDir(), t.TempDir(), t.TempDir())
 	result, err := b.Build()
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -32,11 +37,7 @@ func TestBuilderLoadsFiles(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "RULES.md"), []byte("test rules"), 0644)
 	os.WriteFile(filepath.Join(dir, "USER.md"), []byte("test user"), 0644)
 
-	b := &Builder{
-		projectDir: dir,
-		userDir:    t.TempDir(),
-		systemDir:  t.TempDir(),
-	}
+	b := testBuilder(dir, t.TempDir(), t.TempDir())
 	result, err := b.Build()
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -59,11 +60,7 @@ func TestBuilderProjectOverridesUser(t *testing.T) {
 	os.WriteFile(filepath.Join(projectDir, "AGENTS.md"), []byte("project agents"), 0644)
 	os.WriteFile(filepath.Join(userDir, "AGENTS.md"), []byte("user agents"), 0644)
 
-	b := &Builder{
-		projectDir: projectDir,
-		userDir:    userDir,
-		systemDir:  t.TempDir(),
-	}
+	b := testBuilder(projectDir, userDir, t.TempDir())
 	result, err := b.Build()
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -80,11 +77,7 @@ func TestBuilderUserFallback(t *testing.T) {
 	userDir := t.TempDir()
 	os.WriteFile(filepath.Join(userDir, "RULES.md"), []byte("user rules"), 0644)
 
-	b := &Builder{
-		projectDir: t.TempDir(), // no files here
-		userDir:    userDir,
-		systemDir:  t.TempDir(),
-	}
+	b := testBuilder(t.TempDir(), userDir, t.TempDir())
 	result, err := b.Build()
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -95,11 +88,7 @@ func TestBuilderUserFallback(t *testing.T) {
 }
 
 func TestBuilderNoFiles(t *testing.T) {
-	b := &Builder{
-		projectDir: t.TempDir(),
-		userDir:    t.TempDir(),
-		systemDir:  t.TempDir(),
-	}
+	b := testBuilder(t.TempDir(), t.TempDir(), t.TempDir())
 	result, err := b.Build()
 	if err != nil {
 		t.Fatalf("Build error: %v", err)
@@ -120,5 +109,56 @@ func TestNewBuilder(t *testing.T) {
 	}
 	if b.systemDir != "/etc/dolphinzZ" {
 		t.Errorf("systemDir = %q", b.systemDir)
+	}
+	if b.statCache == nil {
+		t.Error("statCache should be initialized")
+	}
+}
+
+func TestStatCacheHit(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "AGENTS.md")
+	os.WriteFile(path, []byte("cached content"), 0644)
+
+	b := testBuilder(dir, t.TempDir(), t.TempDir())
+
+	// First read: cache miss, populates cache
+	content, ok := b.loadCached(path)
+	if !ok || content != "cached content" {
+		t.Fatalf("first read: ok=%v content=%q", ok, content)
+	}
+
+	// Second read: cache hit (same mtime)
+	content2, ok2 := b.loadCached(path)
+	if !ok2 || content2 != "cached content" {
+		t.Fatalf("second read (cached): ok=%v content=%q", ok2, content2)
+	}
+}
+
+func TestStatCacheInvalidation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "RULES.md")
+	os.WriteFile(path, []byte("v1"), 0644)
+
+	b := testBuilder(dir, t.TempDir(), t.TempDir())
+
+	// Prime cache
+	b.loadCached(path)
+
+	// Overwrite the file
+	os.WriteFile(path, []byte("v2"), 0644)
+
+	// Should see new content (mtime changed)
+	content, ok := b.loadCached(path)
+	if !ok || content != "v2" {
+		t.Fatalf("after overwrite: ok=%v content=%q", ok, content)
+	}
+}
+
+func TestLoadCachedNotExist(t *testing.T) {
+	b := testBuilder(t.TempDir(), t.TempDir(), t.TempDir())
+	content, ok := b.loadCached("/nonexistent/context/file.md")
+	if ok || content != "" {
+		t.Errorf("expected ok=false, got ok=%v content=%q", ok, content)
 	}
 }

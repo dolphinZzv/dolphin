@@ -50,6 +50,11 @@ func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 
 func (t *MQTTTransport) Name() string { return "mqtt" }
 
+func (t *MQTTTransport) Context() string {
+	return fmt.Sprintf("Connected via MQTT (broker: %s, command topic: %s). Responses are published as MQTT messages. Keep responses concise since each publish is a separate message.",
+		t.cfg.Broker, t.cfg.Topic)
+}
+
 func (t *MQTTTransport) Capabilities() Capabilities {
 	return Capabilities{Streaming: false, Flushable: true}
 }

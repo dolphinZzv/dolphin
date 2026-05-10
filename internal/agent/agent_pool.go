@@ -67,22 +67,24 @@ type AgentPool struct {
 
 // PoolConfig holds pool configuration (subset of config.PoolConfig for decoupling).
 type PoolConfig struct {
-	MaxConcurrency    int
-	DefaultTimeout    int
-	WorkspaceDir      string
-	IdleTimeout       time.Duration
-	MaxPendingResults int
+	MaxConcurrency      int
+	DefaultTimeout      int
+	WorkspaceDir        string
+	IdleTimeout         time.Duration
+	MaxPendingResults   int
+	MaxPendingResultLen int // chars per result in prompt, 0 = no truncation
 }
 
 // NewPoolConfigFromConfig converts a config.PoolConfig to the agent-level
 // PoolConfig, handling type conversions (e.g. IdleTimeout int→time.Duration).
 func NewPoolConfigFromConfig(cfg config.PoolConfig) PoolConfig {
 	return PoolConfig{
-		MaxConcurrency:    cfg.MaxConcurrency,
-		DefaultTimeout:    cfg.DefaultTimeout,
-		WorkspaceDir:      cfg.WorkspaceDir,
-		IdleTimeout:       time.Duration(cfg.IdleTimeout) * time.Second,
-		MaxPendingResults: cfg.MaxPendingResults,
+		MaxConcurrency:      cfg.MaxConcurrency,
+		DefaultTimeout:      cfg.DefaultTimeout,
+		WorkspaceDir:        cfg.WorkspaceDir,
+		IdleTimeout:         time.Duration(cfg.IdleTimeout) * time.Second,
+		MaxPendingResults:   cfg.MaxPendingResults,
+		MaxPendingResultLen: cfg.MaxPendingResultLen,
 	}
 }
 

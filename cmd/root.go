@@ -94,6 +94,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 			// Ask about SYSTEM.md generation (first run only)
 			config.PromptSystemMD()
+
+			// Ask about config file generation (first run only)
+			config.PromptConfigFile()
 		}
 		// Always create the marker so first-run only triggers once
 		config.CreateFirstRunMarker()

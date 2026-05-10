@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/chzyer/readline"
 )
@@ -46,6 +47,12 @@ var completer = readline.NewPrefixCompleter(
 )
 
 func (t *StdioTransport) Name() string { return "stdio" }
+
+func (t *StdioTransport) Context() string {
+	home, _ := os.UserHomeDir()
+	return fmt.Sprintf("Connected via terminal. OS: %s/%s, Shell: %s, Home: %s",
+		runtime.GOOS, runtime.GOARCH, os.Getenv("SHELL"), home)
+}
 
 func (t *StdioTransport) Capabilities() Capabilities {
 	return Capabilities{Streaming: true, Flushable: false}

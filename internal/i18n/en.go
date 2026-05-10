@@ -19,6 +19,12 @@ var enMessages = map[string]string{
 	KeySystemMDSkipped:   "Skipped. You can create ~/.dolphinzZ/SYSTEM.md manually later.",
 	KeySystemMDGenerated: "Generated",
 	KeySystemMDContent:   "System Environment",
+	KeyConfigPrompt:      "Auto-generate .dolphinzZ/config.yaml with all settings and comments?",
+	KeyConfigExplain:     "It creates a config file you can edit to customize transports, tools, LLM, and more.",
+	KeyConfigYes:         "yes",
+	KeyConfigNo:          "skip",
+	KeyConfigSkipped:     "Skipped. Defaults will be used. You can create .dolphinzZ/config.yaml manually later.",
+	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
 	KeyCoordReady:        "DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.\n",

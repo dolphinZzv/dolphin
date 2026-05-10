@@ -4,23 +4,35 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
+
+// cachedFile holds the cached content and modification time of a context file.
+type cachedFile struct {
+	content string
+	modTime time.Time
+}
 
 // Builder assembles the system prompt from context files.
 type Builder struct {
 	projectDir string
 	userDir    string
 	systemDir  string
+	statCache  map[string]cachedFile
 }
 
 func NewBuilder() *Builder {
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		zap.S().Warnw("cannot determine home directory, user-level context files disabled", "error", err)
+	}
 	return &Builder{
 		projectDir: ".dolphinzZ",
 		userDir:    filepath.Join(home, ".dolphinzZ"),
 		systemDir:  "/etc/dolphinzZ",
+		statCache:  make(map[string]cachedFile),
 	}
 }
 
@@ -76,12 +88,12 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 // This file is generated once on first startup, injected into every session.
 func (b *Builder) loadSystemMD() string {
 	path := filepath.Join(b.userDir, "SYSTEM.md")
-	data, err := os.ReadFile(path)
-	if err != nil {
+	content, ok := b.loadCached(path)
+	if !ok {
 		return ""
 	}
-	zap.S().Debugw("loaded SYSTEM.md", "path", path)
-	return string(data)
+	zap.S().Infow("loaded SYSTEM.md", "path", path)
+	return content
 }
 
 // loadFileFallback loads a context file with cascading fallback.
@@ -96,11 +108,44 @@ func (b *Builder) loadFileFallback(agentDir, name string) string {
 
 	for _, dir := range dirs {
 		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
-		if err == nil {
+		content, ok := b.loadCached(path)
+		if !ok {
+			continue
+		}
+		if content != "" {
 			zap.S().Debugw("loaded context file", "file", path)
-			return string(data)
+			return content
 		}
 	}
 	return ""
+}
+
+// loadCached reads a file with stat-based caching. Returns (content, true) on
+// success, or ("", false) if the file doesn't exist. Permission or IO errors
+// are logged at Warn level and also return ("", false).
+func (b *Builder) loadCached(path string) (string, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false
+		}
+		zap.S().Warnw("cannot stat context file", "path", path, "error", err)
+		return "", false
+	}
+
+	if cached, ok := b.statCache[path]; ok && cached.modTime.Equal(info.ModTime()) {
+		return cached.content, true
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		zap.S().Warnw("cannot read context file", "path", path, "error", err)
+		return "", false
+	}
+
+	b.statCache[path] = cachedFile{
+		content: string(data),
+		modTime: info.ModTime(),
+	}
+	return b.statCache[path].content, true
 }
