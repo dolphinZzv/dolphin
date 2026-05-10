@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/rs/xid"
+	"go.uber.org/zap"
 )
 
 type SessionID string
@@ -100,7 +100,7 @@ func (m *Manager) NewSessionWithParent(maxLoop int, parentID SessionID) (*Sessio
 	if parentID != "" {
 		attrs = append(attrs, "parent_id", parentID)
 	}
-	slog.Debug("session created", attrs...)
+	zap.S().Debugw("session created", attrs...)
 
 	if parentID != "" {
 		sess.LogSystem(fmt.Sprintf("child session of %s", parentID))
@@ -253,7 +253,7 @@ func ReadEvents(path string) ([]SessionEvent, error) {
 		}
 		var evt SessionEvent
 		if err := json.Unmarshal([]byte(line), &evt); err != nil {
-			slog.Warn("session: skipping malformed event", "error", err)
+			zap.S().Warnw("session: skipping malformed event", "error", err)
 			continue
 		}
 		events = append(events, evt)
@@ -276,11 +276,11 @@ func (m *Manager) StartReaper(ctx context.Context, maxAge time.Duration, interva
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		slog.Info("session reaper started", "max_age", maxAge, "interval", interval)
+		zap.S().Infow("session reaper started", "max_age", maxAge, "interval", interval)
 		for {
 			select {
 			case <-ctx.Done():
-				slog.Info("session reaper stopped")
+				zap.S().Infow("session reaper stopped")
 				return
 			case <-ticker.C:
 				m.reapOldSessions(maxAge)
@@ -321,9 +321,9 @@ func (m *Manager) reapOldSessions(maxAge time.Duration) {
 				continue
 			}
 			if err := os.Remove(path); err != nil {
-				slog.Warn("reaper: failed to remove session file", "path", path, "error", err)
+				zap.S().Warnw("reaper: failed to remove session file", "path", path, "error", err)
 			} else {
-				slog.Debug("reaper: removed old session file", "path", path, "age", now.Sub(info.ModTime()).Round(time.Second))
+				zap.S().Debugw("reaper: removed old session file", "path", path, "age", now.Sub(info.ModTime()).Round(time.Second))
 			}
 		}
 	}

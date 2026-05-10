@@ -8,7 +8,6 @@ import (
 	"crypto/subtle"
 	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 
 	"dolphinzZ/internal/config"
 
+	"go.uber.org/zap"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -33,7 +33,7 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 	sshCfg := cfg.Transport.SSH
 	serverCfg := &gossh.ServerConfig{
 		PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
-			slog.Debug("ssh password auth", "user", conn.User())
+			zap.S().Debugw("ssh password auth", "user", conn.User())
 			if conn.User() != sshCfg.Username {
 				return nil, fmt.Errorf("unauthorized user: %s", conn.User())
 			}
@@ -56,10 +56,10 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 		autoKeyPath := filepath.Join(home, ".dolphinzZ", "ssh_host_key")
 		signer, err = loadHostKey(autoKeyPath)
 		if err != nil {
-			slog.Info("generating persistent SSH host key", "path", autoKeyPath)
+			zap.S().Infow("generating persistent SSH host key", "path", autoKeyPath)
 			signer, err = genAndSaveKey(autoKeyPath)
 			if err != nil {
-				slog.Warn("falling back to ephemeral SSH host key", "error", err)
+				zap.S().Warnw("falling back to ephemeral SSH host key", "error", err)
 				signer, err = genEphemeralKey()
 				if err != nil {
 					return nil, fmt.Errorf("generate host key: %w", err)
@@ -92,7 +92,7 @@ func (t *SSHTransport) Start(ctx context.Context) error {
 	t.listener = listener
 	t.mu.Unlock()
 
-	slog.Info("ssh server listening", "addr", addr)
+	zap.S().Infow("ssh server listening", "addr", addr)
 
 	go func() {
 		<-ctx.Done()
@@ -106,7 +106,7 @@ func (t *SSHTransport) Start(ctx context.Context) error {
 			case <-ctx.Done():
 				return nil
 			default:
-				slog.Error("ssh accept error", "error", err)
+				zap.S().Errorw("ssh accept error", "error", err)
 				continue
 			}
 		}
@@ -119,12 +119,12 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 
 	sshConn, chans, reqs, err := gossh.NewServerConn(conn, t.config)
 	if err != nil {
-		slog.Debug("ssh handshake failed", "error", err)
+		zap.S().Debugw("ssh handshake failed", "error", err)
 		return
 	}
 	defer sshConn.Close()
 
-	slog.Info("ssh connection established",
+	zap.S().Infow("ssh connection established",
 		"user", sshConn.User(),
 		"remote", sshConn.RemoteAddr().String(),
 	)

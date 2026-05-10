@@ -1,11 +1,12 @@
 package agent
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 
 	"dolphinzZ/internal/config"
+
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -18,7 +19,7 @@ func LoadAgentDefs(agentsDir string) (map[string]*AgentDef, error) {
 	entries, err := os.ReadDir(agentsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			slog.Info("agents directory not found, using default agents only",
+			zap.S().Infow("agents directory not found, using default agents only",
 				"dir", agentsDir,
 			)
 			return defs, nil
@@ -34,13 +35,13 @@ func LoadAgentDefs(agentsDir string) (map[string]*AgentDef, error) {
 		yamlPath := filepath.Join(agentsDir, name, "agent.yaml")
 
 		if _, err := os.Stat(yamlPath); os.IsNotExist(err) {
-			slog.Debug("skipping agent directory, no agent.yaml", "name", name)
+			zap.S().Debugw("skipping agent directory, no agent.yaml", "name", name)
 			continue
 		}
 
 		def, err := loadAgentYAML(yamlPath)
 		if err != nil {
-			slog.Error("failed to load agent definition", "name", name, "error", err)
+			zap.S().Errorw("failed to load agent definition", "name", name, "error", err)
 			continue
 		}
 		def.Name = name
@@ -53,7 +54,7 @@ func LoadAgentDefs(agentsDir string) (map[string]*AgentDef, error) {
 		os.MkdirAll(def.Workspace, 0755)
 
 		defs[name] = def
-		slog.Info("loaded agent definition",
+		zap.S().Infow("loaded agent definition",
 			"name", name,
 			"tools", def.Tools,
 			"workspace", def.Workspace,

@@ -7,11 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 var (
@@ -189,7 +189,7 @@ func Load(cfgFile string) (*Config, error) {
 		if err := v.MergeConfig(bytes.NewReader(data)); err != nil {
 			return nil, fmt.Errorf("merge config %s: %w", f, err)
 		}
-		slog.Debug("config merged", "file", f)
+		zap.S().Debugw("config merged", "file", f)
 	}
 
 	// Env vars: DZ_LLM_MODEL -> llm.model
@@ -224,6 +224,9 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
+	}
+	if v := os.Getenv("DZ_LOG_FILE"); v != "" {
+		cfg.LogFile = v
 	}
 	if v := os.Getenv("DZ_MQTT_BROKER"); v != "" {
 		cfg.Transport.MQTT.Broker = v
@@ -393,4 +396,5 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.addr", ":9090")
 
 	v.SetDefault("log_level", "info")
+	v.SetDefault("log_file", "")
 }

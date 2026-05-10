@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"dolphinzZ/internal/config"
 
 	"github.com/robfig/cron/v3"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -78,7 +78,7 @@ func (m *Manager) Load() error {
 			if err := m.writeEmptyFile(); err != nil {
 				return fmt.Errorf("create crontab file: %w", err)
 			}
-			slog.Info("crontab file created", "file", m.filePath)
+			zap.S().Infow("crontab file created", "file", m.filePath)
 			m.tasks = nil
 			return nil
 		}
@@ -92,14 +92,14 @@ func (m *Manager) Load() error {
 
 	tasks, err := parseEntries(data)
 	if err != nil {
-		slog.Warn("parsing crontab entries", "error", err)
+		zap.S().Warnw("parsing crontab entries", "error", err)
 	}
 	if tasks == nil {
 		m.tasks = nil
 	} else {
 		m.tasks = tasks
 	}
-	slog.Info("crontab loaded", "file", m.filePath, "tasks", len(m.tasks))
+	zap.S().Infow("crontab loaded", "file", m.filePath, "tasks", len(m.tasks))
 	return nil
 }
 
@@ -165,22 +165,22 @@ func parseEntries(data []byte) ([]*CronTask, error) {
 		// Parse frontmatter YAML
 		var task CronTask
 		if err := yaml.Unmarshal([]byte(strings.Join(yamlLines, "\n")), &task); err != nil {
-			slog.Warn("skipping crontab entry with invalid frontmatter", "error", err)
+			zap.S().Warnw("skipping crontab entry with invalid frontmatter", "error", err)
 			continue
 		}
 		if task.Name == "" {
-			slog.Warn("skipping crontab entry without name")
+			zap.S().Warnw("skipping crontab entry without name")
 			continue
 		}
 		if task.Schedule == "" {
-			slog.Warn("skipping crontab entry without schedule", "name", task.Name)
+			zap.S().Warnw("skipping crontab entry without schedule", "name", task.Name)
 			continue
 		}
 
 		// Validate cron expression
 		if _, err := parser.Parse(task.Schedule); err != nil {
 			task.Enabled = false
-			slog.Warn("invalid cron expression, disabling task", "name", task.Name, "schedule", task.Schedule, "error", err)
+			zap.S().Warnw("invalid cron expression, disabling task", "name", task.Name, "schedule", task.Schedule, "error", err)
 		}
 
 		task.Task = strings.TrimSpace(strings.Join(bodyLines, "\n"))
@@ -264,7 +264,7 @@ func (m *Manager) checkDue() {
 		select {
 		case m.dueCh <- *task:
 		default:
-			slog.Warn("cron due channel full, dropping task", "name", task.Name)
+			zap.S().Warnw("cron due channel full, dropping task", "name", task.Name)
 		}
 	}
 }
@@ -449,7 +449,7 @@ func (m *Manager) rewriteFileLocked() {
 	}
 
 	if err := os.WriteFile(m.filePath, buf.Bytes(), 0644); err != nil {
-		slog.Error("write crontab file", "error", err)
+		zap.S().Errorw("write crontab file", "error", err)
 	}
 }
 

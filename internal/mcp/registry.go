@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -12,6 +11,8 @@ import (
 
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/metrics"
+
+	"go.uber.org/zap"
 )
 
 // ToolDefinition is the public description of a tool.
@@ -124,12 +125,12 @@ func (r *Registry) LoadServers() error {
 			// Always register with server:name prefix for disambiguation
 			r.tools[name+":"+def.Name] = wrapper
 			r.stats[name+":"+def.Name] = &ToolStats{}
-			slog.Debug("mcp tool registered", "tool", name+":"+def.Name, "server", name)
+			zap.S().Debugw("mcp tool registered", "tool", name+":"+def.Name, "server", name)
 			// Also register with bare name if no collision
 			if _, exists := r.tools[def.Name]; !exists {
 				r.tools[def.Name] = wrapper
 				r.stats[def.Name] = &ToolStats{}
-				slog.Debug("mcp tool registered (bare)", "tool", def.Name, "server", name)
+				zap.S().Debugw("mcp tool registered (bare)", "tool", def.Name, "server", name)
 			}
 		}
 

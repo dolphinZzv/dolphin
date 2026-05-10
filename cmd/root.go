@@ -3,8 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,6 +13,7 @@ import (
 	"dolphinzZ/internal/agent"
 	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/logger"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/metrics"
 	"dolphinzZ/internal/scheduler"
@@ -24,6 +23,7 @@ import (
 
 	"github.com/oklog/run"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	_ "net/http/pprof"
 )
@@ -62,7 +62,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Setup logging
 	setupLogging(cfg)
-	slog.Info("config loaded", "session_dir", cfg.Session.Dir)
+	zap.S().Infow("config loaded", "session_dir", cfg.Session.Dir)
 
 	// Init session manager
 	sessMgr := session.NewManager(cfg.Session.Dir)
@@ -77,13 +77,13 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Register built-in tools
 	if cfg.MCP.Shell.Enabled {
 		toolRegistry.Register(mcp.NewShellTool(cfg))
-		slog.Info("shell tool registered")
+		zap.S().Infow("shell tool registered")
 	}
 	var cdpTool *mcp.CDPTool
 	if cfg.MCP.CDP.Enabled {
 		cdpTool = mcp.NewCDPTool(cfg)
 		toolRegistry.Register(cdpTool)
-		slog.Info("cdp tool registered")
+		zap.S().Infow("cdp tool registered")
 	}
 
 	// Load external MCP servers
@@ -92,11 +92,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("load mcp servers: %w", err)
 		}
 		defer toolRegistry.CloseServers()
-		slog.Info("external mcp servers loaded", "count", len(cfg.MCP.Servers))
+		zap.S().Infow("external mcp servers loaded", "count", len(cfg.MCP.Servers))
 	}
 
 	tools := toolRegistry.List()
-	slog.Info("total mcp tools available", "count", len(tools))
+	zap.S().Infow("total mcp tools available", "count", len(tools))
 
 	// Check for agents directory to decide coordinator vs single-agent mode
 	agentsDir := filepath.Join(".dolphinzZ", "agents")
@@ -113,9 +113,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("load agent defs: %w", err)
 		}
-		slog.Info("coordinator mode enabled", "agents_dir", agentsDir, "count", len(agentDefs))
+		zap.S().Infow("coordinator mode enabled", "agents_dir", agentsDir, "count", len(agentDefs))
 	} else {
-		slog.Info("no agents directory, using single-agent mode", "dir", agentsDir)
+		zap.S().Infow("no agents directory, using single-agent mode", "dir", agentsDir)
 	}
 
 	// Initialize skill manager with multi-directory support (user + project)
@@ -129,7 +129,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	skillMgr := skill.NewManager(skillDirs...)
 	skillMgr.Load()
 	if skills := skillMgr.List(); len(skills) > 0 {
-		slog.Info("skills loaded", "dirs", skillDirs, "count", len(skills))
+		zap.S().Infow("skills loaded", "dirs", skillDirs, "count", len(skills))
 	}
 
 	// Initialize user-defined /command manager (multi-dir: user + project)
@@ -141,15 +141,15 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	cmdMgr := command.NewManager(cmdDirs...)
 	cmdMgr.Load()
 	if cmds := cmdMgr.List(); len(cmds) > 0 {
-		slog.Info("commands loaded", "dirs", cmdDirs, "count", len(cmds))
+		zap.S().Infow("commands loaded", "dirs", cmdDirs, "count", len(cmds))
 	}
 
 	// Initialize cron task manager
 	cronMgr := scheduler.NewManager(cfg.Crontab)
 	if err := cronMgr.Load(); err != nil {
-		slog.Warn("crontab load error, continuing without scheduled tasks", "error", err)
+		zap.S().Warnw("crontab load error, continuing without scheduled tasks", "error", err)
 	} else {
-		slog.Info("crontab loaded", "file", cfg.Crontab.File)
+		zap.S().Infow("crontab loaded", "file", cfg.Crontab.File)
 	}
 
 	// Factory: creates a new coordinator per transport connection
@@ -179,7 +179,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		g.Add(func() error {
 			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 			sig := <-sigCh
-			slog.Info("shutting down", "signal", sig)
+			zap.S().Infow("shutting down", "signal", sig)
 			return fmt.Errorf("received signal %v", sig)
 		}, func(err error) {
 			signal.Stop(sigCh)
@@ -200,7 +200,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		})
 		actorCount++
 	} else if err != nil {
-		slog.Warn("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
+		zap.S().Warnw("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
 	}
 
 	// SSH transport
@@ -218,7 +218,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "\n=== SSH server listening on %s ===\n", addr)
 		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
 		fmt.Fprintf(os.Stderr, "Password: %s\n\n", cfg.Transport.SSH.Password)
-		slog.Info("ssh transport listening", "addr", addr)
+		zap.S().Infow("ssh transport listening", "addr", addr)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -232,7 +232,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// MQTT transport + coordinator
 	if cfg.Transport.MQTT.Enabled {
-		slog.Info("starting mqtt transport", "broker", cfg.Transport.MQTT.Broker)
+		zap.S().Infow("starting mqtt transport", "broker", cfg.Transport.MQTT.Broker)
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)
 
@@ -300,7 +300,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			Handler: http.DefaultServeMux,
 		}
 		g.Add(func() error {
-			slog.Info("pprof HTTP server starting", "addr", cfg.Pprof.Addr)
+			zap.S().Infow("pprof HTTP server starting", "addr", cfg.Pprof.Addr)
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("pprof server: %w", err)
 			}
@@ -320,7 +320,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			<-ctx.Done()
 			return nil
 		}, func(err error) {
-			slog.Debug("cdp: shutting down browser on exit")
+			zap.S().Debugw("cdp: shutting down browser on exit")
 			cdpTool.Shutdown()
 			cancel()
 		})
@@ -336,7 +336,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			Handler: mux,
 		}
 		g.Add(func() error {
-			slog.Info("metrics HTTP server starting", "addr", cfg.Metrics.Addr)
+			zap.S().Infow("metrics HTTP server starting", "addr", cfg.Metrics.Addr)
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("metrics server: %w", err)
 			}
@@ -357,32 +357,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 }
 
 func setupLogging(cfg *config.Config) {
-	var lvl slog.Level
-	switch cfg.LogLevel {
-	case "debug":
-		lvl = slog.LevelDebug
-	case "warn":
-		lvl = slog.LevelWarn
-	case "error":
-		lvl = slog.LevelError
-	default:
-		lvl = slog.LevelInfo
-	}
-
-	w := io.Writer(os.Stderr)
-	if cfg.LogFile != "" {
-		dir := filepath.Dir(cfg.LogFile)
-		if dir != "." {
-			os.MkdirAll(dir, 0755)
-		}
-		f, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			slog.Warn("failed to open log file, falling back to stderr", "file", cfg.LogFile, "error", err)
-		} else {
-			w = io.MultiWriter(os.Stderr, f)
-		}
-	}
-
-	h := slog.NewTextHandler(w, &slog.HandlerOptions{Level: lvl})
-	slog.SetDefault(slog.New(h))
+	logger.Init(logger.Config{
+		Level:     cfg.LogLevel,
+		File:      cfg.LogFile,
+		MaxSize:   100,
+		MaxAge:    30,
+		MaxBackup: 3,
+	})
 }

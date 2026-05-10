@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"dolphinzZ/internal/config"
 
 	"github.com/chromedp/chromedp"
+	"go.uber.org/zap"
 )
 
 // CDPTool implements browser automation via Chrome DevTools Protocol.
@@ -95,7 +95,7 @@ func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResu
 	c.lastUsedAt = time.Now()
 	c.mu.Unlock()
 
-	slog.Debug("cdp executing", "action", params.Action, "headless", c.cfg.Headless)
+	zap.S().Debugw("cdp executing", "action", params.Action, "headless", c.cfg.Headless)
 
 	switch params.Action {
 	case "navigate":
@@ -129,7 +129,7 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 		if err == nil {
 			return c.browserCtx, nil
 		}
-		slog.Warn("cdp browser appears dead, reinitializing", "error", err)
+		zap.S().Warnw("cdp browser appears dead, reinitializing", "error", err)
 		c.shutdownBrowser()
 	}
 
@@ -157,7 +157,7 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	}
 
 	c.initialized = true
-	slog.Debug("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
+	zap.S().Debugw("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
 
 	// Verify browser is working
 	initCtx, cancel := context.WithTimeout(c.browserCtx, 10*time.Second)
@@ -199,7 +199,7 @@ func (c *CDPTool) startIdleWatcher(timeout time.Duration) {
 			time.Sleep(timeout / 2)
 			c.mu.Lock()
 			if c.initialized && time.Since(c.lastUsedAt) > timeout {
-				slog.Warn("cdp: idle timeout, shutting down browser", "idle", time.Since(c.lastUsedAt).Round(time.Second))
+				zap.S().Warnw("cdp: idle timeout, shutting down browser", "idle", time.Since(c.lastUsedAt).Round(time.Second))
 				c.shutdownBrowser()
 			}
 			c.mu.Unlock()

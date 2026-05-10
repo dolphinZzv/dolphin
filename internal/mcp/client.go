@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"dolphinzZ/internal/config"
+
+	"go.uber.org/zap"
 )
 
 // ServerClient manages an external MCP server subprocess.
@@ -97,7 +98,7 @@ func (c *ServerClient) initialize() error {
 		return err
 	}
 
-	slog.Debug("mcp server initialized", "server", c.name)
+	zap.S().Debugw("mcp server initialized", "server", c.name)
 	return nil
 }
 
@@ -185,12 +186,12 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 
 // Close gracefully shuts down the server process: SIGTERM, wait 3s, then SIGKILL.
 func (c *ServerClient) Close() error {
-	slog.Debug("shutting down mcp server", "server", c.name)
+	zap.S().Debugw("shutting down mcp server", "server", c.name)
 
 	// Try graceful shutdown with SIGTERM first
 	if err := c.cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		// Interrupt not supported (e.g. Windows), fall back to Kill
-		slog.Debug("interrupt not supported, killing mcp server", "server", c.name)
+		zap.S().Debugw("interrupt not supported, killing mcp server", "server", c.name)
 		return c.cmd.Process.Kill()
 	}
 
@@ -202,10 +203,10 @@ func (c *ServerClient) Close() error {
 	}()
 	select {
 	case <-done:
-		slog.Debug("mcp server exited gracefully", "server", c.name)
+		zap.S().Debugw("mcp server exited gracefully", "server", c.name)
 		return nil
 	case <-time.After(3 * time.Second):
-		slog.Warn("mcp server did not exit in time, killing", "server", c.name)
+		zap.S().Warnw("mcp server did not exit in time, killing", "server", c.name)
 		return c.cmd.Process.Kill()
 	}
 }

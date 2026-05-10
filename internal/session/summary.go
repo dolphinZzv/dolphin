@@ -3,10 +3,11 @@ package session
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Summary holds a session's summary data.
@@ -45,7 +46,7 @@ func (s *Session) GenerateSummary(dir string, toolCalls int, errors int, state s
 		return fmt.Errorf("write summary: %w", err)
 	}
 
-	slog.Info("session summary written",
+	zap.S().Infow("session summary written",
 		"session_id", s.ID,
 		"path", path,
 		"turns", s.Turn,

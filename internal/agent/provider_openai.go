@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/metrics"
 
 	"github.com/sashabaranov/go-openai"
+	"go.uber.org/zap"
 )
 
 // OpenAIProvider implements the Provider interface for OpenAI-compatible APIs.
@@ -26,7 +26,7 @@ func NewOpenAIProvider(cfg *config.LLMConfig) *OpenAIProvider {
 		conf.BaseURL = cfg.BaseURL
 	}
 
-	slog.Info("openai provider created",
+	zap.S().Infow("openai provider created",
 		"base_url", cfg.BaseURL,
 		"model", cfg.Model,
 	)

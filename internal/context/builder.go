@@ -1,10 +1,11 @@
 package context
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 // Builder assembles the system prompt from context files.
@@ -79,7 +80,7 @@ func (b *Builder) loadFileFallback(agentDir, name string) string {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
 		if err == nil {
-			slog.Debug("loaded context file", "file", path)
+			zap.S().Debugw("loaded context file", "file", path)
 			return string(data)
 		}
 	}

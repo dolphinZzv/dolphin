@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log/slog"
 	"net/smtp"
 	"strings"
 	"sync"
@@ -14,6 +13,7 @@ import (
 
 	goimap "github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
+	"go.uber.org/zap"
 )
 
 // EmailTransport provides email-based I/O via SMTP (send) and IMAP (receive).
@@ -158,19 +158,19 @@ func (t *EmailTransport) poll() {
 
 	c, err := client.DialTLS(addr, nil)
 	if err != nil {
-		slog.Debug("email imap connect failed", "error", err)
+		zap.S().Debugw("email imap connect failed", "error", err)
 		return
 	}
 	defer c.Logout()
 
 	if err := c.Login(t.cfg.Username, t.cfg.Password); err != nil {
-		slog.Debug("email imap login failed", "error", err)
+		zap.S().Debugw("email imap login failed", "error", err)
 		return
 	}
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
-		slog.Debug("email imap select inbox failed", "error", err)
+		zap.S().Debugw("email imap select inbox failed", "error", err)
 		return
 	}
 	if mbox.Messages == 0 {
@@ -181,7 +181,7 @@ func (t *EmailTransport) poll() {
 	criteria.WithoutFlags = []string{"\\Seen"}
 	seqNums, err := c.Search(criteria)
 	if err != nil {
-		slog.Debug("email imap search failed", "error", err)
+		zap.S().Debugw("email imap search failed", "error", err)
 		return
 	}
 	if len(seqNums) == 0 {
@@ -200,7 +200,7 @@ func (t *EmailTransport) poll() {
 
 	messages := make(chan *goimap.Message, 1)
 	if err := c.Fetch(seqset, []goimap.FetchItem{goimap.FetchEnvelope}, messages); err != nil {
-		slog.Debug("email imap fetch failed", "error", err)
+		zap.S().Debugw("email imap fetch failed", "error", err)
 		return
 	}
 
@@ -219,12 +219,12 @@ func (t *EmailTransport) poll() {
 		return
 	}
 
-	slog.Info("email received", "subject", truncate(subject, 80))
+	zap.S().Infow("email received", "subject", truncate(subject, 80))
 
 	select {
 	case t.msgCh <- subject:
 	default:
-		slog.Warn("email message dropped, channel full")
+		zap.S().Warnw("email message dropped, channel full")
 	}
 }
 

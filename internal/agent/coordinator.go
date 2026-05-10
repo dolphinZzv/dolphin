@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"dolphinzZ/internal/transport"
 
 	"github.com/rs/xid"
+	"go.uber.org/zap"
 )
 
 // Coordinator wraps an Agent with multi-agent coordination capabilities.
@@ -68,7 +68,7 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 
 // Run starts the coordinator event loop.
 func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
-	slog.Info("coordinator starting")
+	zap.S().Infow("coordinator starting")
 
 	// Create or resume session
 	var err error
@@ -76,7 +76,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	if sess == nil {
 		sess, err = c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
 		if err != nil {
-			slog.Error("create session failed", "error", err)
+			zap.S().Errorw("create session failed", "error", err)
 			return
 		}
 		state = &LoopState{Sess: sess}
@@ -92,7 +92,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	// Build base system prompt
 	c.basePrompt, err = c.ctxBuilder.Build()
 	if err != nil {
-		slog.Error("build context failed", "error", err)
+		zap.S().Errorw("build context failed", "error", err)
 		return
 	}
 
@@ -102,7 +102,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	// Link pool to coordinator session for sub-agent session tracing
 	c.pool.SetParentSessionID(sess.ID)
 
-	slog.Debug("coordinator session started",
+	zap.S().Debugw("coordinator session started",
 		"session_id", sess.ID,
 		"max_loop", c.cfg.Session.MaxLoop,
 		"model", c.cfg.LLM.Model,
@@ -127,14 +127,14 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// Check max loop
 		if state.Turn >= c.cfg.Session.MaxLoop && !state.SummaryGenerated {
 			state.SummaryGenerated = true
-			slog.Info("max loop reached, generating summary", "turns", state.Turn)
+			zap.S().Infow("max loop reached, generating summary", "turns", state.Turn)
 			c.generateSummary(sess, state)
 			io.WriteLine("\n[Session checkpoint: summary saved, continuing...]\n")
 		}
 
 		line, err := io.ReadLine()
 		if err != nil {
-			slog.Debug("read line error", "error", err)
+			zap.S().Debugw("read line error", "error", err)
 			return
 		}
 
@@ -207,7 +207,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 		// Run agent sub-loop
 		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg); err != nil {
-			slog.Error("turn failed", "turn", state.Turn, "error", err)
+			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
 		}
 	}
@@ -475,7 +475,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 			handler: t.handler,
 		}
 		c.toolReg.Register(ht)
-		slog.Debug("coordinator tool registered", "tool", t.name)
+		zap.S().Debugw("coordinator tool registered", "tool", t.name)
 	}
 }
 
@@ -996,7 +996,7 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 	// Read and replay session events
 	events, rerr := session.ReadEvents(path)
 	if rerr != nil {
-		slog.Warn("failed to read session for resume", "path", path, "error", rerr)
+		zap.S().Warnw("failed to read session for resume", "path", path, "error", rerr)
 		return nil, nil
 	}
 
@@ -1005,11 +1005,11 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 	// Create a child session linked to the old one
 	sess, rerr := c.sessMgr.NewSessionWithParent(c.cfg.Session.MaxLoop, id)
 	if rerr != nil {
-		slog.Error("create resumed session failed", "error", rerr)
+		zap.S().Errorw("create resumed session failed", "error", rerr)
 		return nil, nil
 	}
 
-	slog.Info("session resumed",
+	zap.S().Infow("session resumed",
 		"parent", id,
 		"session_id", sess.ID,
 		"messages", len(messages),
@@ -1076,10 +1076,10 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 			result, err := c.RunTask(ctx, task.Task, c.basePrompt, c.toolReg, parentSessionID)
 			if err != nil {
 				c.cronMgr.AddResult(task.Name, false, "", err.Error())
-				slog.Error("scheduled task failed", "name", task.Name, "error", err)
+				zap.S().Errorw("scheduled task failed", "name", task.Name, "error", err)
 			} else {
 				c.cronMgr.AddResult(task.Name, result.Success, result.Output, result.Error)
-				slog.Info("scheduled task completed", "name", task.Name, "task_id", result.TaskID)
+				zap.S().Infow("scheduled task completed", "name", task.Name, "task_id", result.TaskID)
 			}
 		}
 	}

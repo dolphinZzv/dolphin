@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -11,6 +10,8 @@ import (
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/session"
+
+	"go.uber.org/zap"
 )
 
 // AgentInstance is a live agent managed by the pool.
@@ -143,7 +144,7 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	p.wg.Add(1)
 	go p.workerLoop(inst, taskCh)
 
-	slog.Info("agent added to pool",
+	zap.S().Infow("agent added to pool",
 		"name", name,
 		"kind", kind,
 		"tools", def.Tools,
@@ -158,7 +159,7 @@ func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
 	defer close(inst.doneCh)
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("agent panic recovered",
+			zap.S().Errorw("agent panic recovered",
 				"name", inst.Def.Name,
 				"recover", fmt.Sprintf("%v", r),
 			)
@@ -236,11 +237,11 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	// Build system prompt for this agent
 	systemPrompt, err := inst.agent.ctxBuilder.BuildForAgent(inst.Def.Name)
 	if err != nil {
-		slog.Error("build agent context failed", "agent", inst.Def.Name, "error", err)
+		zap.S().Errorw("build agent context failed", "agent", inst.Def.Name, "error", err)
 		systemPrompt = "You are a helpful assistant."
 	}
 
-	slog.Debug("agent processing task",
+	zap.S().Debugw("agent processing task",
 		"agent", inst.Def.Name,
 		"task_id", task.ID,
 		"timeout", timeout,
@@ -248,7 +249,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 
 	result, err := inst.agent.RunTask(taskCtx, task.Input, systemPrompt, inst.agent.toolReg, p.parentSessionID)
 	if err != nil {
-		slog.Debug("agent task finished with error",
+		zap.S().Debugw("agent task finished with error",
 			"agent", inst.Def.Name,
 			"task_id", task.ID,
 			"error", err,
@@ -274,7 +275,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	select {
 	case p.resultCh <- result:
 	default:
-		slog.Warn("result channel full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
+		zap.S().Warnw("result channel full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
 	}
 }
 
@@ -368,9 +369,9 @@ func (p *AgentPool) cleanWorkspace(inst *AgentInstance) {
 		return
 	}
 	if err := os.RemoveAll(inst.Def.Workspace); err != nil {
-		slog.Warn("failed to clean temp workspace", "name", inst.Def.Name, "workspace", inst.Def.Workspace, "error", err)
+		zap.S().Warnw("failed to clean temp workspace", "name", inst.Def.Name, "workspace", inst.Def.Workspace, "error", err)
 	} else {
-		slog.Debug("cleaned temp workspace", "name", inst.Def.Name, "workspace", inst.Def.Workspace)
+		zap.S().Debugw("cleaned temp workspace", "name", inst.Def.Name, "workspace", inst.Def.Workspace)
 	}
 }
 
@@ -398,7 +399,7 @@ func (p *AgentPool) Remove(name string) bool {
 		select {
 		case <-inst.doneCh:
 		case <-time.After(5 * time.Second):
-			slog.Warn("timeout waiting for agent worker to exit",
+			zap.S().Warnw("timeout waiting for agent worker to exit",
 				"name", name,
 				"timeout", 5,
 			)
@@ -412,7 +413,7 @@ func (p *AgentPool) Remove(name string) bool {
 
 // Shutdown gracefully stops the pool: cancels all tasks, waits for goroutines, cleans up.
 func (p *AgentPool) Shutdown() {
-	slog.Info("agent pool shutting down...")
+	zap.S().Infow("agent pool shutting down...")
 	p.cancel()  // Cancel all tasks
 	p.wg.Wait() // Wait for all goroutines
 	// Clean up all coordinator-created workspaces
@@ -425,7 +426,7 @@ func (p *AgentPool) Shutdown() {
 	}
 	p.mu.Unlock()
 	close(p.resultCh)
-	slog.Info("agent pool shutdown complete")
+	zap.S().Infow("agent pool shutdown complete")
 }
 
 // reapIdleAgents periodically removes idle coordinator-created agents.
@@ -463,7 +464,7 @@ func (p *AgentPool) reapIdleAgents() {
 					continue
 				}
 				if !lastRun.IsZero() && time.Since(lastRun) > p.cfg.IdleTimeout {
-					slog.Info("reaping idle coordinator-created agent", "name", name)
+					zap.S().Infow("reaping idle coordinator-created agent", "name", name)
 					delete(p.agents, name)
 					close(inst.taskCh)
 					reap = append(reap, inst)
@@ -476,7 +477,7 @@ func (p *AgentPool) reapIdleAgents() {
 				select {
 				case <-inst.doneCh:
 				case <-time.After(5 * time.Second):
-					slog.Warn("timeout waiting for reaped agent worker", "name", inst.Def.Name)
+					zap.S().Warnw("timeout waiting for reaped agent worker", "name", inst.Def.Name)
 				}
 				p.cleanWorkspace(inst)
 			}

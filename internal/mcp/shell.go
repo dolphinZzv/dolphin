@@ -5,12 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
 
 	"dolphinzZ/internal/config"
+
+	"go.uber.org/zap"
 )
 
 // workdirKey is used to pass a working directory through context for workspace isolation.
@@ -29,7 +30,7 @@ type ShellTool struct {
 
 func NewShellTool(cfg *config.Config) *ShellTool {
 	if len(cfg.MCP.Shell.AllowedCommands) == 0 {
-		slog.Warn("shell tool: no command restrictions — all commands are allowed. " +
+		zap.S().Warnw("shell tool: no command restrictions — all commands are allowed. " +
 			"Set mcp.shell.allowed_commands in config to restrict.")
 	}
 	schema, _ := json.Marshal(map[string]any{
@@ -93,7 +94,7 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	slog.Debug("executing shell command", "command", params.Command)
+	zap.S().Debugw("executing shell command", "command", params.Command)
 
 	var cmd *exec.Cmd
 	if len(allowed) > 0 {

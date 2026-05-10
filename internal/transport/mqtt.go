@@ -3,7 +3,6 @@ package transport
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +11,7 @@ import (
 	"dolphinzZ/internal/config"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"go.uber.org/zap"
 )
 
 // MQTTTransport provides MQTT pub/sub transport implementing UserIO.
@@ -62,7 +62,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	opts.SetCleanSession(true)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
 		t.connected.Store(false)
-		slog.Error("mqtt connection lost", "error", err)
+		zap.S().Errorw("mqtt connection lost", "error", err)
 	})
 
 	t.client = mqtt.NewClient(opts)
@@ -71,7 +71,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		return fmt.Errorf("mqtt connect: %w", token.Error())
 	}
 	t.connected.Store(true)
-	slog.Info("mqtt connected",
+	zap.S().Infow("mqtt connected",
 		"broker", t.cfg.Broker,
 		"command_topic", t.cfg.Topic,
 		"response_topic", t.cfg.ResponseTopic,
@@ -84,7 +84,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		t.respTopic.Store(respTopic)
 
 		payload := string(msg.Payload())
-		slog.Debug("mqtt command received",
+		zap.S().Debugw("mqtt command received",
 			"topic", msg.Topic(),
 			"response_topic", respTopic,
 			"payload", truncate(payload, 200),
@@ -92,7 +92,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		select {
 		case t.msgCh <- payload:
 		default:
-			slog.Warn("mqtt message dropped, channel full")
+			zap.S().Warnw("mqtt message dropped, channel full")
 		}
 	})
 	if token.Wait() && token.Error() != nil {
@@ -136,7 +136,7 @@ func (t *MQTTTransport) publish(payload string) error {
 	if topic == "" {
 		topic = t.cfg.ResponseTopic
 	}
-	slog.Debug("mqtt publish", "topic", topic, "payload", truncate(payload, 200))
+	zap.S().Debugw("mqtt publish", "topic", topic, "payload", truncate(payload, 200))
 	token := t.client.Publish(topic, 0, false, payload)
 	token.Wait()
 	return token.Error()

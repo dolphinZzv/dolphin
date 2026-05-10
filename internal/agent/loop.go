@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -12,6 +11,8 @@ import (
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/session"
 	"dolphinzZ/internal/transport"
+
+	"go.uber.org/zap"
 )
 
 // Agent is the core agent that runs the agent loop.
@@ -36,7 +37,7 @@ type LoopState struct {
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
 	var provider Provider
-	slog.Info("selecting provider", "type", cfg.LLM.Type, "model", cfg.LLM.Model, "base_url", cfg.LLM.BaseURL)
+	zap.S().Infow("selecting provider", "type", cfg.LLM.Type, "model", cfg.LLM.Model, "base_url", cfg.LLM.BaseURL)
 	switch cfg.LLM.Type {
 	case "anthropic":
 		provider = NewAnthropicProvider(&cfg.LLM)
@@ -55,12 +56,12 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 
 // Run starts the agent loop with interactive I/O (stdio, SSH, etc.).
 func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
-	slog.Info("agent starting")
+	zap.S().Infow("agent starting")
 
 	// Create session
 	sess, err := a.sessMgr.NewSession(a.cfg.Session.MaxLoop)
 	if err != nil {
-		slog.Error("create session failed", "error", err)
+		zap.S().Errorw("create session failed", "error", err)
 		return
 	}
 
@@ -75,11 +76,11 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	// Build system prompt
 	systemPrompt, err := a.ctxBuilder.Build()
 	if err != nil {
-		slog.Error("build context failed", "error", err)
+		zap.S().Errorw("build context failed", "error", err)
 		return
 	}
 
-	slog.Debug("session started",
+	zap.S().Debugw("session started",
 		"session_id", sess.ID,
 		"max_loop", a.cfg.Session.MaxLoop,
 		"model", a.cfg.LLM.Model,
@@ -112,7 +113,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		// Check max loop — generate summary once and continue
 		if state.Turn >= a.cfg.Session.MaxLoop && !state.SummaryGenerated {
 			state.SummaryGenerated = true
-			slog.Info("max loop reached, generating summary", "turns", state.Turn)
+			zap.S().Infow("max loop reached, generating summary", "turns", state.Turn)
 			a.generateSummary(sess, state)
 			io.WriteLine("\n[Session checkpoint: summary saved, continuing...]\n")
 		}
@@ -120,7 +121,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		// Handle commands
 		line, err := io.ReadLine()
 		if err != nil {
-			slog.Debug("read line error", "error", err)
+			zap.S().Debugw("read line error", "error", err)
 			return
 		}
 
@@ -158,7 +159,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 
 		// Run agent sub-loop (handles tool call feedback cycles)
 		if err := a.runTurn(ctx, state, systemPrompt, io, a.toolReg); err != nil {
-			slog.Error("turn failed", "turn", state.Turn, "error", err)
+			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
 		}
 	}
@@ -205,7 +206,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			}
 		}
 
-		slog.Debug("llm stream start",
+		zap.S().Debugw("llm stream start",
 			"turn", state.Turn,
 			"sub_turn", i,
 			"messages", len(state.Messages),
@@ -369,7 +370,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		}
 		// Log usage and timing
 		if finalUsage != nil {
-			slog.Debug("llm response",
+			zap.S().Debugw("llm response",
 				"turn", state.Turn,
 				"sub_turn", i,
 				"duration", llmDuration,
@@ -387,7 +388,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		// Execute tool calls
 		state.ToolCallCount += len(providerToolCalls)
 		for _, tc := range providerToolCalls {
-			slog.Debug("executing tool",
+			zap.S().Debugw("executing tool",
 				"name", tc.Name,
 				"turn", state.Turn,
 				"arguments", string(tc.Arguments),
@@ -415,7 +416,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 					fmt.Sprintf("\n... [result truncated, %d bytes total]", len(resultContent))
 			}
 
-			slog.Debug("tool result",
+			zap.S().Debugw("tool result",
 				"name", tc.Name,
 				"turn", state.Turn,
 				"duration", toolDuration,
@@ -446,9 +447,9 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			state.Sess.LogToolResult(tc.Name, resultBlock, isErr)
 
 			if isErr {
-				slog.Debug("tool error", "name", tc.Name, "error", resultContent)
+				zap.S().Debugw("tool error", "name", tc.Name, "error", resultContent)
 			} else {
-				slog.Debug("tool completed", "name", tc.Name)
+				zap.S().Debugw("tool completed", "name", tc.Name)
 			}
 		}
 	}
@@ -485,7 +486,7 @@ func (a *Agent) callLLMWithRetry(ctx context.Context, req ProviderRequest) (<-ch
 			return nil, err
 		}
 		wait := time.Duration(1<<uint(attempt)) * time.Second
-		slog.Warn("llm call failed, retrying",
+		zap.S().Warnw("llm call failed, retrying",
 			"attempt", attempt+1,
 			"max", maxRetries,
 			"wait", wait,
@@ -527,7 +528,7 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 	}
 
 	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, stateStr)
-	slog.Info("session summary",
+	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,
 		"tool_calls", state.ToolCallCount,
@@ -671,7 +672,7 @@ func (a *Agent) compressHistory(state *LoopState) {
 	}
 
 	if dropped > 0 {
-		slog.Info("context compressed",
+		zap.S().Infow("context compressed",
 			"dropped_messages", dropped,
 			"remaining", len(state.Messages),
 			"estimated_tokens_before", est,

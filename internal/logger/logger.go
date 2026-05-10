@@ -1,0 +1,87 @@
+package logger
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+// Config holds logger configuration.
+type Config struct {
+	Level     string // debug, info, warn, error
+	File      string // log file path (empty = stderr only)
+	MaxSize   int    // megabytes before rotation (default 100)
+	MaxAge    int    // days to retain old files (default 30)
+	MaxBackup int    // max old files to retain (default 3)
+}
+
+// Init sets up the global zap logger with optional lumberjack rotation.
+func Init(cfg Config) {
+	level := parseLevel(cfg.Level)
+
+	encoderCfg := zap.NewProductionEncoderConfig()
+	encoderCfg.TimeKey = "time"
+	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderCfg.EncodeLevel = zapcore.CapitalLevelEncoder
+
+	core := zapcore.NewCore(
+		zapcore.NewConsoleEncoder(encoderCfg),
+		getSyncer(cfg),
+		level,
+	)
+
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	zap.ReplaceGlobals(logger)
+}
+
+func getSyncer(cfg Config) zapcore.WriteSyncer {
+	if cfg.File == "" {
+		return zapcore.AddSync(os.Stderr)
+	}
+
+	dir := filepath.Dir(cfg.File)
+	if dir != "." {
+		os.MkdirAll(dir, 0755)
+	}
+
+	maxSize := cfg.MaxSize
+	if maxSize <= 0 {
+		maxSize = 100
+	}
+	maxAge := cfg.MaxAge
+	if maxAge <= 0 {
+		maxAge = 30
+	}
+	maxBackup := cfg.MaxBackup
+	if maxBackup <= 0 {
+		maxBackup = 3
+	}
+
+	lumber := &lumberjack.Logger{
+		Filename:   cfg.File,
+		MaxSize:    maxSize,
+		MaxAge:     maxAge,
+		MaxBackups: maxBackup,
+		LocalTime:  true,
+		Compress:   true,
+	}
+
+	return zapcore.AddSync(lumber)
+}
+
+func parseLevel(s string) zapcore.Level {
+	switch strings.ToLower(s) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn", "warning":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}

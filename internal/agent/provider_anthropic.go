@@ -7,12 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/metrics"
+
+	"go.uber.org/zap"
 )
 
 // AnthropicProvider implements Provider for Anthropic Messages API.
@@ -31,7 +32,7 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	slog.Info("anthropic provider created",
+	zap.S().Infow("anthropic provider created",
 		"base_url", baseURL,
 		"model", cfg.Model,
 		"has_key", cfg.APIKey != "",
