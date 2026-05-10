@@ -242,6 +242,12 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_SESSION_MAX_AGE"); v != "" {
 		cfg.Session.MaxAge = v
 	}
+	if v := os.Getenv("DZ_TRANSPORT_STDIO_ENABLED"); v != "" {
+		cfg.Transport.Stdio.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_TRANSPORT_MQTT_ENABLED"); v != "" {
+		cfg.Transport.MQTT.Enabled = v == "true" || v == "1"
+	}
 
 	// Auto-generate SSH password if empty
 	if cfg.Transport.SSH.Enabled && cfg.Transport.SSH.Password == "" {

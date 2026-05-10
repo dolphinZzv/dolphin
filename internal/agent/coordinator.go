@@ -114,8 +114,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		go c.processDueTasks(ctx, dueCh, sess.ID)
 	}
 
-	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.")
-	io.WriteLine("")
+	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.\n")
 
 	for {
 		select {

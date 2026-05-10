@@ -241,16 +241,12 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		// Determine write strategy based on transport capabilities
 		caps := io.Capabilities()
 
-		// For block transports, buffer output and flush at 1KB threshold
+		// For block transports, buffer output and only flush at threshold or stream end.
+		// No periodic flush — each mqtt publish is a separate message, so we want
+		// one message per complete turn response, not fragments.
 		var blockBuf strings.Builder
-		var flushTicker *time.Ticker
 		const blockFlushThreshold = 1024
-		if !caps.Streaming {
-			flushTicker = time.NewTicker(500 * time.Millisecond)
-			defer flushTicker.Stop()
-		}
 
-		// flushBlock writes and resets the block buffer.
 		flushBlock := func() {
 			if blockBuf.Len() > 0 {
 				io.WriteString(blockBuf.String())
@@ -258,7 +254,9 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			}
 		}
 
-		io.WriteLine("") // spacing before response
+		if caps.Streaming {
+			io.WriteLine("") // spacing before response (streaming: typewriter effect)
+		}
 
 		for chunk := range streamCh {
 			select {
@@ -317,23 +315,13 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 				finalUsage = chunk.Usage
 			}
 
-			// Periodic flush for block transports (timeout-based)
-			if !caps.Streaming {
-				select {
-				case <-flushTicker.C:
-					flushBlock()
-				default:
-				}
-			}
 		}
 
-		// Final flush: send any remaining buffered content
+		// Final flush: send any remaining buffered content as a single message.
 		if !caps.Streaming && blockBuf.Len() > 0 {
 			blockBuf.WriteString("\n")
 			flushBlock()
-			// Trailing newline was appended to the last flush — no separate message needed
-		} else {
-			flushBlock()
+		} else if caps.Streaming {
 			io.WriteLine("") // trailing newline after streaming
 		}
 
@@ -404,7 +392,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 				"turn", state.Turn,
 				"arguments", string(tc.Arguments),
 			)
-			if a.cfg.LogLevel == "debug" {
+			if a.cfg.LogLevel == "debug" && caps.Streaming {
 				io.WriteLine(fmt.Sprintf("\n[Calling tool: %s]", tc.Name))
 			}
 
