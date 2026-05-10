@@ -238,11 +238,32 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		var toolIdx = -1
 		var finalUsage *Usage
 
+		// Determine write strategy based on transport capabilities
+		caps := io.Capabilities()
+
+		// For block transports, buffer output and flush at 1KB threshold
+		var blockBuf strings.Builder
+		var flushTicker *time.Ticker
+		const blockFlushThreshold = 1024
+		if !caps.Streaming {
+			flushTicker = time.NewTicker(500 * time.Millisecond)
+			defer flushTicker.Stop()
+		}
+
+		// flushBlock writes and resets the block buffer.
+		flushBlock := func() {
+			if blockBuf.Len() > 0 {
+				io.WriteString(blockBuf.String())
+				blockBuf.Reset()
+			}
+		}
+
 		io.WriteLine("") // spacing before response
 
 		for chunk := range streamCh {
 			select {
 			case <-ctx.Done():
+				flushBlock()
 				return ctx.Err()
 			default:
 			}
@@ -256,7 +277,14 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 				text := extractText(chunk.Content)
 				if text != "" {
 					textBuf.WriteString(text)
-					io.WriteString(text)
+					if caps.Streaming {
+						io.WriteString(text)
+					} else {
+						blockBuf.WriteString(text)
+						if blockBuf.Len() >= blockFlushThreshold {
+							flushBlock()
+						}
+					}
 				}
 			}
 
@@ -288,9 +316,26 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			if chunk.Usage != nil {
 				finalUsage = chunk.Usage
 			}
+
+			// Periodic flush for block transports (timeout-based)
+			if !caps.Streaming {
+				select {
+				case <-flushTicker.C:
+					flushBlock()
+				default:
+				}
+			}
 		}
 
-		io.WriteLine("") // trailing newline after streaming
+		// Final flush: send any remaining buffered content
+		if !caps.Streaming && blockBuf.Len() > 0 {
+			blockBuf.WriteString("\n")
+			flushBlock()
+			// Trailing newline was appended to the last flush — no separate message needed
+		} else {
+			flushBlock()
+			io.WriteLine("") // trailing newline after streaming
+		}
 
 		llmDuration := time.Since(llmStart)
 

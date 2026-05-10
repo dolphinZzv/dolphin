@@ -49,6 +49,10 @@ func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 
 func (t *MQTTTransport) Name() string { return "mqtt" }
 
+func (t *MQTTTransport) Capabilities() Capabilities {
+	return Capabilities{Streaming: false, Flushable: true}
+}
+
 func (t *MQTTTransport) Start(ctx context.Context) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(t.cfg.Broker)

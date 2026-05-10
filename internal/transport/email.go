@@ -38,6 +38,10 @@ func NewEmailTransport(cfg *config.EmailConfig) *EmailTransport {
 
 func (t *EmailTransport) Name() string { return "email" }
 
+func (t *EmailTransport) Capabilities() Capabilities {
+	return Capabilities{Streaming: false, Flushable: true}
+}
+
 // Start begins IMAP polling and blocks until context is cancelled.
 func (t *EmailTransport) Start(ctx context.Context) error {
 	interval, _ := time.ParseDuration(t.cfg.PollInterval)

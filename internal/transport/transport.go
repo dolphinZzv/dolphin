@@ -16,9 +16,17 @@ type Transport interface {
 }
 
 // UserIO provides readline-based interactive I/O for the agent loop.
-// Both StdioTransport and SSHSession implement this interface.
 type UserIO interface {
 	ReadLine() (string, error)
 	WriteLine(string) error
 	WriteString(string) error
+	Capabilities() Capabilities
+}
+
+// Capabilities describes a transport's write semantics.
+// Streaming transports send each write immediately (e.g. WebSocket, stdio).
+// Block transports batch writes and flush periodically (e.g. MQTT, Email).
+type Capabilities struct {
+	Streaming bool
+	Flushable bool
 }

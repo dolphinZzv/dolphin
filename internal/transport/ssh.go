@@ -363,6 +363,10 @@ func (s *SSHSession) ReadLine() (string, error) {
 	}
 }
 
+func (s *SSHSession) Capabilities() Capabilities {
+	return Capabilities{Streaming: true, Flushable: false}
+}
+
 func (s *SSHSession) WriteLine(text string) error {
 	msgsSent.Inc()
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"), "\r\n")

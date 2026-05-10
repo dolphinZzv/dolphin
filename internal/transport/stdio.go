@@ -47,6 +47,10 @@ var completer = readline.NewPrefixCompleter(
 
 func (t *StdioTransport) Name() string { return "stdio" }
 
+func (t *StdioTransport) Capabilities() Capabilities {
+	return Capabilities{Streaming: true, Flushable: false}
+}
+
 func (t *StdioTransport) Start(ctx context.Context) error {
 	return nil
 }

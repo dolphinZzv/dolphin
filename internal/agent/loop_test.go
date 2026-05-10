@@ -11,6 +11,7 @@ import (
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/session"
+	"dolphinzZ/internal/transport"
 )
 
 // mockProvider implements Provider for testing.
@@ -102,6 +103,9 @@ func (m *mockIO) WriteLine(s string) error {
 func (m *mockIO) WriteString(s string) error {
 	m.writes.WriteString(s)
 	return nil
+}
+func (m *mockIO) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: true, Flushable: false}
 }
 
 // mockTool implements mcp.Tool for testing.

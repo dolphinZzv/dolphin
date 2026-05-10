@@ -2,6 +2,8 @@ package agent
 
 import (
 	"io"
+
+	"dolphinzZ/internal/transport"
 )
 
 // ChannelIO implements transport.UserIO using channels and buffers.
@@ -28,3 +30,7 @@ func (c *ChannelIO) ReadLine() (string, error) {
 
 func (c *ChannelIO) WriteLine(string) error   { return nil }
 func (c *ChannelIO) WriteString(string) error { return nil }
+
+func (c *ChannelIO) Capabilities() transport.Capabilities {
+	return transport.Capabilities{} // streaming=false by default, writes are no-ops anyway
+}
