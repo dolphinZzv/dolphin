@@ -169,13 +169,13 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 				if cmd, ok := c.commands.Get(cmdName); ok {
 					c.commands.RecordUsage(cmdName)
 					var sb strings.Builder
-					sb.WriteString("用户触发了命令 /")
+					sb.WriteString("User triggered command /")
 					sb.WriteString(cmdName)
 					sb.WriteString("\n\n")
 					sb.WriteString(cmd.Content)
 					args := strings.TrimSpace(line[len("/"+cmdName):])
 					if args != "" {
-						sb.WriteString("\n\n用户参数: ")
+						sb.WriteString("\n\nUser arguments: ")
 						sb.WriteString(args)
 					}
 					line = sb.String()
@@ -956,9 +956,12 @@ func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 }
 
 // parseCommandName extracts the command name from a /command line.
-// "/分析竞争对手 华为" -> "分析竞争对手"
+// "/analyze-competitor" -> "analyze-competitor"
 // "/dev-run" -> "dev-run"
 func parseCommandName(line string) string {
+	if !strings.HasPrefix(line, "/") {
+		return ""
+	}
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return ""

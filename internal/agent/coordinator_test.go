@@ -3,11 +3,18 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"dolphinzZ/internal/command"
+	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
+	"dolphinzZ/internal/scheduler"
 	"dolphinzZ/internal/session"
+	"dolphinzZ/internal/skill"
 )
 
 func TestReplayMessagesUserAssistant(t *testing.T) {
@@ -142,6 +149,871 @@ func TestCoordinatorToolDefinition(t *testing.T) {
 	tool := &handlerTool{def: def}
 	if d := tool.Definition(); d.Name != "test" {
 		t.Errorf("got %q", d.Name)
+	}
+}
+
+func TestParseCommandName(t *testing.T) {
+	tests := []struct {
+		line string
+		want string
+	}{
+		{"/analyze-competitor huawei", "analyze-competitor"},
+		{"/dev-run", "dev-run"},
+		{"/review", "review"},
+		{"just text", ""},
+		{"", ""},
+		{"/", ""},
+		{"/   ", ""},
+		{"normal text no slash", ""},
+	}
+	for _, tt := range tests {
+		got := parseCommandName(tt.line)
+		if got != tt.want {
+			t.Errorf("parseCommandName(%q) = %q, want %q", tt.line, got, tt.want)
+		}
+	}
+}
+
+func TestBuildDynamicPromptBase(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
+	coord.basePrompt = "You are a helpful assistant."
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, "You are a helpful assistant.") {
+		t.Error("expected base prompt in dynamic prompt")
+	}
+	if !strings.Contains(prompt, "Coordinator Instructions") {
+		t.Error("expected coordinator instructions")
+	}
+}
+
+func TestBuildDynamicPromptWithAgents(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	agt := newTestAgent(cfg, &mockProvider{})
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	pool.Add("worker1", &AgentDef{Name: "worker1", Role: "worker"}, AgentUser, agt, agt.toolReg)
+	pool.Add("worker2", &AgentDef{Name: "worker2", Role: "helper"}, AgentUser, agt, agt.toolReg)
+	coord := NewCoordinator(agt, pool)
+	coord.basePrompt = "base"
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, "worker1") {
+		t.Error("expected worker1 in dynamic prompt")
+	}
+	if !strings.Contains(prompt, "worker2") {
+		t.Error("expected worker2 in dynamic prompt")
+	}
+	if !strings.Contains(prompt, "Available Agents") {
+		t.Error("expected Available Agents section")
+	}
+}
+
+func TestBuildDynamicPromptWithSkills(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
+
+	skillDir := t.TempDir()
+	os.WriteFile(filepath.Join(skillDir, "review.md"), []byte("---\nname: code-review\ndescription: Review code quality\n---\n# Content"), 0644)
+	skillMgr := skill.NewManager(skillDir)
+	skillMgr.Load()
+	coord.SetSkillManager(skillMgr)
+	coord.basePrompt = "base"
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, "code-review") {
+		t.Error("expected code-review skill in prompt, got:", prompt)
+	}
+	if !strings.Contains(prompt, "Available Skills") {
+		t.Error("expected Available Skills section")
+	}
+}
+
+func TestBuildDynamicPromptWithPendingResults(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	agt := newTestAgent(cfg, &mockProvider{})
+	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
+	coord.basePrompt = "base"
+
+	coord.pending = []TaskResult{
+		{AgentName: "worker1", TaskID: "t1", Success: true, Output: "done", Status: "completed", DurationMs: 100},
+		{AgentName: "worker2", TaskID: "t2", Success: false, Error: "failed", Status: "error", DurationMs: 50},
+	}
+
+	prompt := coord.buildDynamicPrompt()
+	if !strings.Contains(prompt, "worker1") {
+		t.Error("expected worker1 in pending results")
+	}
+	if !strings.Contains(prompt, "Pending Agent Results") {
+		t.Error("expected Pending Agent Results section")
+	}
+}
+
+func TestCoordinatorRunExitCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+	io := &mockIO{lines: []string{"/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "DolphinzZ Coordinator ready") {
+		t.Error("expected welcome message, got:", output)
+	}
+}
+
+func TestCoordinatorRunHelpCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	toolReg.Register(&mockTool{name: "shell"})
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+	io := &mockIO{lines: []string{"/help", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Commands:") {
+		t.Error("expected Commands section in help")
+	}
+	if !strings.Contains(output, "/exit") {
+		t.Error("expected /exit in help")
+	}
+	if !strings.Contains(output, "/skills") {
+		t.Error("expected /skills in help")
+	}
+	if !strings.Contains(output, "/commands") {
+		t.Error("expected /commands in help")
+	}
+	if !strings.Contains(output, "/agents") {
+		t.Error("expected /agents in help")
+	}
+	if !strings.Contains(output, "shell") {
+		t.Error("expected shell tool in help")
+	}
+}
+
+func TestCoordinatorRunSkillsCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	skillDir := t.TempDir()
+	os.WriteFile(filepath.Join(skillDir, "review.md"), []byte("---\nname: code-review\ndescription: Review code\n---\n# Content"), 0644)
+	skillMgr := skill.NewManager(skillDir)
+	skillMgr.Load()
+	coord.SetSkillManager(skillMgr)
+
+	io := &mockIO{lines: []string{"/skills", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "code-review") {
+		t.Error("expected code-review in skills listing, got:", output)
+	}
+}
+
+func TestCoordinatorRunCommandsListing(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	cmdDir := t.TempDir()
+	os.WriteFile(filepath.Join(cmdDir, "review.md"), []byte("---\nname: review\ndescription: Review code\n---\n# Review instructions"), 0644)
+	os.WriteFile(filepath.Join(cmdDir, "deploy.md"), []byte("---\nname: deploy\ndescription: Deploy app\n---\n# Deploy instructions"), 0644)
+	cmdMgr := command.NewManager(cmdDir)
+	cmdMgr.Load()
+	coord.SetCommandManager(cmdMgr)
+
+	io := &mockIO{lines: []string{"/commands", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "/review") {
+		t.Error("expected /review in commands listing, got:", output)
+	}
+	if !strings.Contains(output, "/deploy") {
+		t.Error("expected /deploy in commands listing, got:", output)
+	}
+	if !strings.Contains(output, "Review code") {
+		t.Error("expected review description", output)
+	}
+	if !strings.Contains(output, "Deploy app") {
+		t.Error("expected deploy description", output)
+	}
+}
+
+func TestCoordinatorRunCustomCommandDispatchedToLLM(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("Code review results here"), Usage: &Usage{InputTokens: 10, OutputTokens: 20}},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	cmdDir := t.TempDir()
+	os.WriteFile(filepath.Join(cmdDir, "review.md"), []byte("---\nname: review\ndescription: Review code\n---\n## Review Steps\n1. Check logic\n2. Check performance"), 0644)
+	cmdMgr := command.NewManager(cmdDir)
+	cmdMgr.Load()
+	coord.SetCommandManager(cmdMgr)
+
+	io := &mockIO{lines: []string{"/review main.go", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Code review results") {
+		t.Error("expected LLM response for custom command, got:", output)
+	}
+	cmd, _ := cmdMgr.Get("review")
+	if cmd.CallCount != 1 {
+		t.Errorf("expected command call count 1, got %d", cmd.CallCount)
+	}
+}
+
+func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("I don't know this command"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	io := &mockIO{lines: []string{"/unknown", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "don't know") {
+		t.Error("expected LLM to handle unknown /command, got:", output)
+	}
+}
+
+func TestCoordinatorRunCancelAllTasks(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+	io := &mockIO{lines: []string{"/cancel", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "All running tasks cancelled") {
+		t.Error("expected cancel message, got:", output)
+	}
+}
+
+func TestCoordinatorSetCommandManager(t *testing.T) {
+	cmdMgr := command.NewManager()
+	c := &Coordinator{}
+	c.SetCommandManager(cmdMgr)
+	if c.commands != cmdMgr {
+		t.Error("SetCommandManager failed")
+	}
+}
+
+func TestCoordinatorSetSkillManager(t *testing.T) {
+	skillMgr := skill.NewManager()
+	c := &Coordinator{}
+	c.SetSkillManager(skillMgr)
+	if c.skills != skillMgr {
+		t.Error("SetSkillManager failed")
+	}
+}
+
+func TestCoordinatorPrintSkillsNil(t *testing.T) {
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.printSkills(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Skills system not available") {
+		t.Error("expected not available message, got:", output)
+	}
+}
+
+func TestCoordinatorPrintCommandsNil(t *testing.T) {
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.printCommands(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Commands system not available") {
+		t.Error("expected not available message, got:", output)
+	}
+}
+
+func TestCoordinatorPrintCommandsEmpty(t *testing.T) {
+	cmdDir := t.TempDir()
+	cmdMgr := command.NewManager(cmdDir)
+	cmdMgr.Load()
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.SetCommandManager(cmdMgr)
+	c.printCommands(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "No user-defined commands") {
+		t.Error("expected empty message, got:", output)
+	}
+}
+
+func TestCoordinatorCancelSpecificTask(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+	io := &mockIO{lines: []string{"/cancel nonexistent-id", "/exit"}}
+
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "No running task found") {
+		t.Error("expected not found message, got:", output)
+	}
+}
+
+func TestCoordinatorSetCronManager(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	if c.cronMgr != cronMgr {
+		t.Error("SetCronManager failed")
+	}
+}
+
+func TestCoordinatorPrintCronTasksNoManager(t *testing.T) {
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.printCronTasks(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Cron scheduler not available") {
+		t.Error("expected not available message, got:", output)
+	}
+}
+
+func TestCoordinatorPrintCronTasksEmpty(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	c.printCronTasks(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "No scheduled tasks") {
+		t.Error("expected no tasks message, got:", output)
+	}
+}
+
+func TestCoordinatorPrintCronTasksPopulated(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	// Add a cron task directly
+	cronMgr.AddTask(&scheduler.CronTask{
+		Name:     "test-task",
+		Schedule: "0 9 * * *",
+		Task:     "do something",
+		Enabled:  true,
+	})
+
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	c.printCronTasks(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "test-task") {
+		t.Error("expected test-task in cron listing, got:", output)
+	}
+	if !strings.Contains(output, "0 9") {
+		t.Error("expected schedule in cron listing, got:", output)
+	}
+	if !strings.Contains(output, "enabled") {
+		t.Error("expected enabled status, got:", output)
+	}
+}
+
+func TestProcessDueTasksContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	dueCh := make(chan scheduler.CronTask)
+	c := &Coordinator{}
+	// Should return immediately without panic
+	c.processDueTasks(ctx, dueCh, "")
+}
+
+func TestCoordinatorPrintAgentsEmpty(t *testing.T) {
+	io := &mockIO{}
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	c := &Coordinator{pool: pool}
+	c.printAgents(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "No agents configured") {
+		t.Error("expected no agents message, got:", output)
+	}
+}
+
+func TestCoordinatorPrintAgentsPopulated(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	agt := newTestAgent(cfg, &mockProvider{})
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	pool.Add("worker1", &AgentDef{Name: "worker1", Role: "test agent"}, AgentUser, agt, agt.toolReg)
+
+	io := &mockIO{}
+	c := &Coordinator{pool: pool}
+	c.printAgents(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "worker1") {
+		t.Error("expected worker1 in agents listing, got:", output)
+	}
+	if !strings.Contains(output, "AGENT") {
+		t.Error("expected header in agents listing, got:", output)
+	}
+}
+
+func TestCoordinatorHandleSearchMCPToolsNoResults(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	toolReg := mcp.NewRegistry(cfg)
+	toolReg.Register(&mockTool{name: "shell"})
+
+	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: NewContextBuilder()}
+	c := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
+	result, err := c.handleSearchMCPTools(context.Background(), json.RawMessage(`{"query":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "No MCP tools found") {
+		t.Error("expected no tools found, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleSearchMCPToolsWithResults(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	toolReg := mcp.NewRegistry(cfg)
+	toolReg.Register(&mockTool{name: "shell"})
+	toolReg.Register(&mockTool{name: "read_file"})
+
+	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: NewContextBuilder()}
+	c := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
+	result, err := c.handleSearchMCPTools(context.Background(), json.RawMessage(`{"query":"shell"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "shell") {
+		t.Error("expected shell in results, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleListCronTasksNoManager(t *testing.T) {
+	c := &Coordinator{}
+	result, err := c.handleListCronTasks(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when cronMgr is nil")
+	}
+}
+
+func TestCoordinatorHandleToggleCronTaskNoManager(t *testing.T) {
+	c := &Coordinator{}
+	result, err := c.handleToggleCronTask(context.Background(), json.RawMessage(`{"name":"test","enabled":true}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when cronMgr is nil")
+	}
+}
+
+func TestCoordinatorHandleToggleCronTaskInvalidInput(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	c := &Coordinator{cronMgr: cronMgr}
+	result, err := c.handleToggleCronTask(context.Background(), json.RawMessage(`invalid json`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for invalid input")
+	}
+}
+
+func TestCoordinatorHandleCancelTaskInvalidInput(t *testing.T) {
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	c := &Coordinator{pool: pool}
+	result, err := c.handleCancelTask(context.Background(), json.RawMessage(`not json`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for invalid input")
+	}
+}
+
+func TestCoordinatorHandleCancelTaskNotFound(t *testing.T) {
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	c := &Coordinator{pool: pool}
+	result, err := c.handleCancelTask(context.Background(), json.RawMessage(`{"task_id":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for nonexistent task")
+	}
+	if !strings.Contains(result.Content, "No running task") {
+		t.Error("expected no running task message, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleSearchSkillsNoManager(t *testing.T) {
+	c := &Coordinator{}
+	result, err := c.handleSearchSkills(context.Background(), json.RawMessage(`{"query":"test"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when skills is nil")
+	}
+}
+
+func TestCoordinatorHandleSearchSkillsNoResults(t *testing.T) {
+	skillMgr := skill.NewManager(t.TempDir())
+	skillMgr.Load()
+
+	c := &Coordinator{skills: skillMgr}
+	result, err := c.handleSearchSkills(context.Background(), json.RawMessage(`{"query":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "No skills found") {
+		t.Error("expected no skills found, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleLoadSkillNoManager(t *testing.T) {
+	c := &Coordinator{}
+	result, err := c.handleLoadSkill(context.Background(), json.RawMessage(`{"name":"test"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when skills is nil")
+	}
+}
+
+func TestCoordinatorHandleLoadSkillNotFound(t *testing.T) {
+	skillMgr := skill.NewManager(t.TempDir())
+	skillMgr.Load()
+
+	c := &Coordinator{skills: skillMgr}
+	result, err := c.handleLoadSkill(context.Background(), json.RawMessage(`{"name":"nonexistent"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error for nonexistent skill")
+	}
+}
+
+func TestCoordinatorPrintCronTasksDisabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	cronMgr.AddTask(&scheduler.CronTask{
+		Name:     "disabled-task",
+		Schedule: "0 9 * * *",
+		Task:     "do something",
+		Enabled:  false,
+	})
+
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	c.printCronTasks(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "disabled-task") {
+		t.Error("expected disabled-task in cron listing, got:", output)
+	}
+	if !strings.Contains(output, "disabled") {
+		t.Error("expected disabled status, got:", output)
+	}
+}
+
+func TestCoordinatorHandleListCronTasksEmpty(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	result, err := c.handleListCronTasks(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "No scheduled tasks") {
+		t.Error("expected empty message, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleListCronTasksPopulated(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+	cronMgr.AddTask(&scheduler.CronTask{
+		Name:     "daily-task",
+		Schedule: "0 9 * * *",
+		Task:     "do work",
+		Enabled:  true,
+	})
+
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	result, err := c.handleListCronTasks(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "daily-task") {
+		t.Error("expected daily-task in list, got:", result.Content)
+	}
+	if !strings.Contains(result.Content, "enabled") {
+		t.Error("expected enabled status, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleToggleCronTaskToggleOff(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+	cronMgr.AddTask(&scheduler.CronTask{
+		Name:     "test-toggle",
+		Schedule: "0 9 * * *",
+		Task:     "do work",
+		Enabled:  true,
+	})
+
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	result, err := c.handleToggleCronTask(context.Background(), json.RawMessage(`{"name":"test-toggle","enabled":false}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "disabled") {
+		t.Error("expected disabled message, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleAddCronTask(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cronDir := t.TempDir()
+	cfg.Crontab.File = filepath.Join(cronDir, "CRONTAB.md")
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	cronMgr.Load()
+
+	c := &Coordinator{}
+	c.SetCronManager(cronMgr)
+	result, err := c.handleAddCronTask(context.Background(), json.RawMessage(`{"name":"daily","schedule":"0 9 * * *","description":"daily job","task":"do the thing"}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(result.Content, "Scheduled task") {
+		t.Error("expected success message, got:", result.Content)
+	}
+}
+
+func TestCoordinatorHandleAddCronTaskNoManager(t *testing.T) {
+	c := &Coordinator{}
+	result, err := c.handleAddCronTask(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when cronMgr is nil")
 	}
 }
 
