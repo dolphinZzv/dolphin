@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -60,7 +61,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	// Setup logging
-	setupLogging(cfg.LogLevel)
+	setupLogging(cfg)
 	slog.Info("config loaded", "session_dir", cfg.Session.Dir)
 
 	// Init session manager
@@ -355,9 +356,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	return g.Run()
 }
 
-func setupLogging(level string) {
+func setupLogging(cfg *config.Config) {
 	var lvl slog.Level
-	switch level {
+	switch cfg.LogLevel {
 	case "debug":
 		lvl = slog.LevelDebug
 	case "warn":
@@ -367,6 +368,21 @@ func setupLogging(level string) {
 	default:
 		lvl = slog.LevelInfo
 	}
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})
+
+	w := io.Writer(os.Stderr)
+	if cfg.LogFile != "" {
+		dir := filepath.Dir(cfg.LogFile)
+		if dir != "." {
+			os.MkdirAll(dir, 0755)
+		}
+		f, err := os.OpenFile(cfg.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			slog.Warn("failed to open log file, falling back to stderr", "file", cfg.LogFile, "error", err)
+		} else {
+			w = io.MultiWriter(os.Stderr, f)
+		}
+	}
+
+	h := slog.NewTextHandler(w, &slog.HandlerOptions{Level: lvl})
 	slog.SetDefault(slog.New(h))
 }

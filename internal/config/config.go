@@ -32,6 +32,7 @@ type Config struct {
 	Pprof     PprofConfig     `mapstructure:"pprof"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	LogLevel  string          `mapstructure:"log_level"`
+	LogFile   string          `mapstructure:"log_file"`
 }
 
 type LLMConfig struct {
