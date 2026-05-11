@@ -32,27 +32,30 @@ type Config struct {
 	Crontab   CrontabConfig   `mapstructure:"crontab"`
 	Pprof     PprofConfig     `mapstructure:"pprof"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
+	Diary     DiaryConfig     `mapstructure:"diary"`
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
 }
 
 type LLMConfig struct {
-	Type             string  `mapstructure:"type"` // "openai" or "anthropic"
-	BaseURL          string  `mapstructure:"base_url"`
-	APIKey           string  `mapstructure:"api_key"`
-	Model            string  `mapstructure:"model"`
-	MaxTokens        int     `mapstructure:"max_tokens"`
-	MaxContextTokens int     `mapstructure:"max_context_tokens"` // context window limit before compression
-	Temperature      float64 `mapstructure:"temperature"`
-	MaxSubTurns      int     `mapstructure:"max_sub_turns"`
+	Type              string  `mapstructure:"type"` // "openai" or "anthropic"
+	BaseURL           string  `mapstructure:"base_url"`
+	APIKey            string  `mapstructure:"api_key"`
+	Model             string  `mapstructure:"model"`
+	MaxTokens         int     `mapstructure:"max_tokens"`
+	MaxContextTokens  int     `mapstructure:"max_context_tokens"` // context window limit before compression
+	Temperature       float64 `mapstructure:"temperature"`
+	MaxSubTurns       int     `mapstructure:"max_sub_turns"`
+	CompressMode      string  `mapstructure:"compress_mode"`       // "drop" | "segment" | "tiered" | "incremental" | "topic"
+	SegmentMergeLimit int     `mapstructure:"segment_merge_limit"` // A: segments at any level before recursive merge
 }
 
 type SessionConfig struct {
 	Dir     string `mapstructure:"dir"`
 	MaxLoop int    `mapstructure:"max_loop"`
 	Summary bool   `mapstructure:"summary"`
-	MaxAge  string `mapstructure:"max_age"` // session file max age (e.g. "24h") for reaper
-	Resume  bool   `mapstructure:"resume"`  // resume latest session on startup
+	MaxAge  string `mapstructure:"max_age"`
+	Resume  bool   `mapstructure:"resume"`
 }
 
 type TransportConfig struct {
@@ -147,6 +150,15 @@ type PprofConfig struct {
 type CrontabConfig struct {
 	File          string `mapstructure:"file"`
 	CheckInterval string `mapstructure:"check_interval"` // e.g. "30s"
+}
+
+type DiaryConfig struct {
+	Dir            string `mapstructure:"dir"`
+	MaxDaySessions int    `mapstructure:"max_day_sessions"`
+	MaxWeekDays    int    `mapstructure:"max_week_days"`
+	MaxMonthWeeks  int    `mapstructure:"max_month_weeks"`
+	MaxYearMonths  int    `mapstructure:"max_year_months"`
+	MaxTotalMB     int    `mapstructure:"max_total_mb"`
 }
 
 type MetricsConfig struct {
@@ -433,6 +445,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.temperature", 0.7)
 	v.SetDefault("llm.max_sub_turns", 10)
 	v.SetDefault("llm.max_context_tokens", 1048576)
+	v.SetDefault("llm.compress_mode", "drop")
+	v.SetDefault("llm.segment_merge_limit", 100)
 
 	v.SetDefault("session.dir", "/tmp/dolphinzZ")
 	v.SetDefault("session.max_loop", 50)
@@ -482,6 +496,13 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("pprof.enabled", false)
 	v.SetDefault("pprof.addr", ":6060")
+
+	v.SetDefault("diary.dir", ".dolphinzZ/diary")
+	v.SetDefault("diary.max_day_sessions", 200)
+	v.SetDefault("diary.max_week_days", 7)
+	v.SetDefault("diary.max_month_weeks", 5)
+	v.SetDefault("diary.max_year_months", 12)
+	v.SetDefault("diary.max_total_mb", 500)
 
 	v.SetDefault("metrics.enabled", false)
 	v.SetDefault("metrics.addr", ":9090")

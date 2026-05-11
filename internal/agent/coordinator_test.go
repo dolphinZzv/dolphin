@@ -1124,3 +1124,150 @@ func TestFormatDurationEdgeCases(t *testing.T) {
 		}
 	}
 }
+
+// --- E2E: Summary lifecycle ---
+
+// TestE2ERunTaskGeneratesSummary verifies that a sub-agent task via RunTask
+// generates its own summary file linked to the parent session.
+func TestE2ERunTaskGeneratesSummary(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    TextContent("sub-agent result"),
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				StopReason: "end_turn",
+			},
+		},
+	}
+	agt := newTestAgent(cfg, prov)
+
+	result, err := agt.RunTask(
+		context.Background(),
+		"analyze this",
+		"sub-agent system prompt",
+		agt.toolReg,
+		"parent-session-123",
+	)
+	if err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+	if result.Status != "completed" {
+		t.Errorf("Status = %q, want completed", result.Status)
+	}
+
+	// Verify child summary file exists
+	summaryPath := filepath.Join(cfg.Session.Dir, result.TaskID+"-summary.json")
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("ReadFile child summary: %v", err)
+	}
+	var sum map[string]any
+	json.Unmarshal(data, &sum)
+	if sum["state"] != "completed" {
+		t.Errorf("child state = %v, want completed", sum["state"])
+	}
+}
+
+// TestE2EParentChildSummaryChain verifies that both parent and child sessions
+// produce their own summary files, and the child JSONL contains the parent link.
+func TestE2EParentChildSummaryChain(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+
+	agt := newTestAgent(cfg, &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("child done"), Usage: &Usage{InputTokens: 5, OutputTokens: 3}, StopReason: "end_turn"},
+		},
+	})
+
+	// Create parent session
+	parentSess, _ := agt.sessMgr.NewSession(50)
+
+	// Run a child task linked to parent
+	result, err := agt.RunTask(
+		context.Background(),
+		"child task",
+		"child prompt",
+		agt.toolReg,
+		parentSess.ID,
+	)
+	if err != nil {
+		t.Fatalf("RunTask: %v", err)
+	}
+
+	// Generate parent summary
+	parentState := &LoopState{
+		Sess:          parentSess,
+		Turn:          2,
+		ToolCallCount: 1,
+		StopReason:    "user_exit",
+	}
+	agt.generateSummary(parentSess, parentState)
+
+	// Verify both summary files exist
+	parentSummaryPath := filepath.Join(cfg.Session.Dir, string(parentSess.ID)+"-summary.json")
+	childSummaryPath := filepath.Join(cfg.Session.Dir, result.TaskID+"-summary.json")
+
+	if _, err := os.Stat(parentSummaryPath); os.IsNotExist(err) {
+		t.Error("parent summary file missing")
+	}
+	if _, err := os.Stat(childSummaryPath); os.IsNotExist(err) {
+		t.Error("child summary file missing")
+	}
+
+	// Verify parent summary content
+	pData, _ := os.ReadFile(parentSummaryPath)
+	var pSum map[string]any
+	json.Unmarshal(pData, &pSum)
+	if pSum["state"] != "user_exit" {
+		t.Errorf("parent state = %v", pSum["state"])
+	}
+
+	// Verify child summary content
+	cData, _ := os.ReadFile(childSummaryPath)
+	var cSum map[string]any
+	json.Unmarshal(cData, &cSum)
+	if cSum["state"] != "completed" {
+		t.Errorf("child state = %v", cSum["state"])
+	}
+
+	// Verify child JSONL contains parent link
+	childJSONL := filepath.Join(cfg.Session.Dir, result.TaskID+".jsonl")
+	jData, _ := os.ReadFile(childJSONL)
+	if !strings.Contains(string(jData), string(parentSess.ID)) {
+		t.Error("child JSONL should reference parent session ID")
+	}
+}
+
+// TestE2ETransportErrorSkipsSummary confirms the generateSummary short-circuit:
+// transport_error + 0 turns + 0 tool calls → no file written.
+func TestE2ETransportErrorSkipsSummary(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+
+	agt := newTestAgent(cfg, &mockProvider{})
+	sess, _ := agt.sessMgr.NewSession(50)
+
+	// Simulate: transport disconnected before any activity
+	state := &LoopState{
+		Sess:          sess,
+		Turn:          0,
+		ToolCallCount: 0,
+		StopReason:    "transport_error",
+	}
+	agt.generateSummary(sess, state)
+
+	// Should NOT have written a summary
+	summaryPath := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	if _, err := os.Stat(summaryPath); !os.IsNotExist(err) {
+		t.Error("expected no summary for transport_error with 0 activity")
+	}
+}

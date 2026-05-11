@@ -118,12 +118,17 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	// Build filtered tool registry
 	filteredTools := tools.FilteredView(def.Tools)
 	// Create a sub-agent with the filtered tools
+	comp := agent.compressor
+	if comp == nil {
+		comp = &DropCompressor{}
+	}
 	subAgent := &Agent{
 		cfg:        agent.cfg,
 		sessMgr:    agent.sessMgr,
 		toolReg:    filteredTools,
 		provider:   agent.provider,
 		ctxBuilder: agent.ctxBuilder,
+		compressor: comp,
 	}
 
 	taskCh := make(chan Task, 8)

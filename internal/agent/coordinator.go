@@ -40,12 +40,17 @@ type Coordinator struct {
 func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 	// Clone the tool registry for per-coordinator tool registration
 	coordReg := agent.toolReg.Clone()
+	comp := agent.compressor
+	if comp == nil {
+		comp = &DropCompressor{}
+	}
 	coordAgent := &Agent{
 		cfg:        agent.cfg,
 		sessMgr:    agent.sessMgr,
 		toolReg:    coordReg,
 		provider:   agent.provider,
 		ctxBuilder: agent.ctxBuilder,
+		compressor: comp,
 	}
 	return &Coordinator{
 		Agent: coordAgent,
@@ -153,6 +158,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		line, err := io.ReadLine()
 		if err != nil {
 			zap.S().Debugw("read line error", "error", err)
+			state.StopReason = "transport_error"
 			return
 		}
 

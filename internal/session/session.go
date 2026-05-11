@@ -19,11 +19,12 @@ type SessionID string
 type EventType string
 
 const (
-	EventMessage    EventType = "message"
-	EventToolCall   EventType = "tool_call"
-	EventToolResult EventType = "tool_result"
-	EventSystem     EventType = "system"
-	EventSummary    EventType = "summary"
+	EventMessage     EventType = "message"
+	EventToolCall    EventType = "tool_call"
+	EventToolResult  EventType = "tool_result"
+	EventSystem      EventType = "system"
+	EventSummary     EventType = "summary"
+	EventCompression EventType = "compression"
 )
 
 type SessionEvent struct {
@@ -141,6 +142,22 @@ func (s *Session) LogToolResult(name string, result json.RawMessage, isErr bool)
 		ToolName:   name,
 		ToolResult: result,
 		IsError:    isErr,
+	})
+}
+
+// CompressMeta holds metadata for a compression event.
+type CompressMeta struct {
+	Level        int    `json:"level"`
+	CoveredCount int    `json:"covered_count"`
+	Summary      string `json:"summary"`
+	TokensSaved  int    `json:"tokens_saved,omitempty"`
+}
+
+func (s *Session) LogCompression(meta CompressMeta) error {
+	encoded, _ := json.Marshal(meta)
+	return s.LogEvent(SessionEvent{
+		Type:    EventCompression,
+		Content: json.RawMessage(encoded),
 	})
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -456,6 +457,195 @@ func writeEvent(sess *Session, etype EventType, role, content string, turn int) 
 		sess.LogToolResult(role, json.RawMessage(content), false)
 	case EventSystem:
 		sess.LogSystem(content)
+	}
+}
+
+// --- Summary tests ---
+
+func TestGenerateSummary(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+
+	sess, err := mgr.NewSession(50)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	sess.Turn = 5
+	time.Sleep(time.Millisecond) // ensure EndedAt > StartedAt
+
+	err = sess.GenerateSummary(dir, 12, 2, 0, "completed")
+	if err != nil {
+		t.Fatalf("GenerateSummary: %v", err)
+	}
+
+	path := filepath.Join(dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	var sum Summary
+	if err := json.Unmarshal(data, &sum); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if sum.SessionID != sess.ID {
+		t.Errorf("SessionID = %q, want %q", sum.SessionID, sess.ID)
+	}
+	if sum.Turns != 5 {
+		t.Errorf("Turns = %d, want 5", sum.Turns)
+	}
+	if sum.MaxLoop != 50 {
+		t.Errorf("MaxLoop = %d, want 50", sum.MaxLoop)
+	}
+	if sum.ToolCallCount != 12 {
+		t.Errorf("ToolCallCount = %d, want 12", sum.ToolCallCount)
+	}
+	if sum.ErrorCount != 2 {
+		t.Errorf("ErrorCount = %d, want 2", sum.ErrorCount)
+	}
+	if sum.State != "completed" {
+		t.Errorf("State = %q, want completed", sum.State)
+	}
+	if sum.EndedAt.Before(sum.StartedAt) || sum.EndedAt.Equal(sum.StartedAt) {
+		t.Error("EndedAt should be after StartedAt")
+	}
+}
+
+func TestGenerateSummaryZeroTurns(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+
+	sess, err := mgr.NewSession(50)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	// Turn stays 0 — simulates user connecting then immediately quitting
+
+	err = sess.GenerateSummary(dir, 0, 0, 0, "user_exit")
+	if err != nil {
+		t.Fatalf("GenerateSummary: %v", err)
+	}
+
+	path := filepath.Join(dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	var sum Summary
+	if err := json.Unmarshal(data, &sum); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	if sum.Turns != 0 {
+		t.Errorf("Turns = %d, want 0", sum.Turns)
+	}
+	if sum.ToolCallCount != 0 {
+		t.Errorf("ToolCallCount = %d, want 0", sum.ToolCallCount)
+	}
+	if sum.ErrorCount != 0 {
+		t.Errorf("ErrorCount = %d, want 0", sum.ErrorCount)
+	}
+	if sum.State != "user_exit" {
+		t.Errorf("State = %q, want user_exit", sum.State)
+	}
+}
+
+func TestGenerateSummaryStates(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+
+	states := []string{"completed", "interrupted", "user_exit", "max_loop", "transport_error"}
+	for _, state := range states {
+		sess, err := mgr.NewSession(10)
+		if err != nil {
+			t.Fatalf("NewSession: %v", err)
+		}
+		err = sess.GenerateSummary(dir, 0, 0, 0, state)
+		if err != nil {
+			t.Fatalf("GenerateSummary(%q): %v", state, err)
+		}
+
+		path := filepath.Join(dir, string(sess.ID)+"-summary.json")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%q): %v", state, err)
+		}
+
+		var sum Summary
+		if err := json.Unmarshal(data, &sum); err != nil {
+			t.Fatalf("Unmarshal(%q): %v", state, err)
+		}
+		if sum.State != state {
+			t.Errorf("State = %q, want %q", sum.State, state)
+		}
+	}
+}
+
+func TestGenerateSummaryFileContent(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+
+	sess, err := mgr.NewSession(30)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	sess.Turn = 3
+
+	err = sess.GenerateSummary(dir, 7, 1, 0, "completed")
+	if err != nil {
+		t.Fatalf("GenerateSummary: %v", err)
+	}
+
+	path := filepath.Join(dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	// Verify JSON is valid and pretty-printed (contains newlines)
+	if !strings.Contains(string(data), "\n") {
+		t.Error("expected pretty-printed JSON with newlines")
+	}
+	if !strings.Contains(string(data), "\"session_id\"") {
+		t.Error("expected session_id field")
+	}
+	if !strings.Contains(string(data), "\"started_at\"") {
+		t.Error("expected started_at field")
+	}
+	if !strings.Contains(string(data), "\"ended_at\"") {
+		t.Error("expected ended_at field")
+	}
+	if !strings.Contains(string(data), "\"state\"") {
+		t.Error("expected state field")
+	}
+
+	// Verify file permissions
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf("file mode = %o, want 0644", info.Mode().Perm())
+	}
+}
+
+func TestGenerateSummaryBadDir(t *testing.T) {
+	// Test that GenerateSummary returns an error when the directory does not exist
+	sess := &Session{
+		ID:        "test-id",
+		StartedAt: time.Now(),
+		MaxLoop:   10,
+	}
+
+	err := sess.GenerateSummary("/nonexistent/path/that/does/not/exist", 0, 0, 0, "completed")
+	if err == nil {
+		t.Error("expected error for bad directory, got nil")
 	}
 }
 

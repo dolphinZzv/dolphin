@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -135,70 +137,6 @@ func newTestAgent(cfg *config.Config, provider Provider) *Agent {
 		toolReg:    toolReg,
 		provider:   provider,
 		ctxBuilder: NewContextBuilder(),
-	}
-}
-
-func TestCompressHistoryBelowThreshold(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
-	agt := newTestAgent(cfg, &mockProvider{})
-
-	sess, _ := agt.sessMgr.NewSession(10)
-	state := &LoopState{Sess: sess, Messages: []Message{
-		{Role: "user", Content: TextContent("hi")},
-		{Role: "assistant", Content: TextContent("hello")},
-	}}
-
-	agt.compressHistory(state)
-	if len(state.Messages) != 2 {
-		t.Errorf("expected 2 messages, got %d", len(state.Messages))
-	}
-}
-
-func TestCompressHistoryDropsOldMessages(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.LLM.MaxContextTokens = 100
-	cfg.Session.Dir = t.TempDir()
-	agt := newTestAgent(cfg, &mockProvider{})
-
-	sess, _ := agt.sessMgr.NewSession(10)
-	msgs := []Message{
-		{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"a"}]`)},
-		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"b"}]`)},
-		{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"c"}]`)},
-		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"d"}]`)},
-		{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"e"}]`)},
-		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"f"}]`)},
-		{Role: "user", Content: json.RawMessage(`[{"type":"text","text":"g"}]`)},
-	}
-	state := &LoopState{Sess: sess, Messages: msgs}
-
-	agt.compressHistory(state)
-	if len(state.Messages) >= len(msgs) {
-		t.Error("expected messages to be compressed")
-	}
-}
-
-func TestCompressHistoryPreservesLastSix(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.LLM.MaxContextTokens = 100
-	cfg.Session.Dir = t.TempDir()
-	agt := newTestAgent(cfg, &mockProvider{})
-
-	sess, _ := agt.sessMgr.NewSession(10)
-	msgs := make([]Message, 6)
-	for i := 0; i < 6; i++ {
-		msgs[i] = Message{
-			Role:    []string{"user", "assistant"}[i%2],
-			Content: json.RawMessage(`[{"type":"text","text":"x"}]`),
-		}
-	}
-	state := &LoopState{Sess: sess, Messages: msgs}
-
-	agt.compressHistory(state)
-	if len(state.Messages) != 6 {
-		t.Errorf("expected 6 messages (<=6), got %d", len(state.Messages))
 	}
 }
 
@@ -561,6 +499,272 @@ func TestRunTaskBasic(t *testing.T) {
 	}
 	if !result.Success {
 		t.Error("expected Success = true")
+	}
+}
+
+// --- Summary generation tests ---
+
+func TestGenerateSummaryDisabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = false
+	cfg.Session.Dir = t.TempDir()
+	agt := newTestAgent(cfg, &mockProvider{})
+
+	sess, _ := agt.sessMgr.NewSession(10)
+	state := &LoopState{
+		Sess:       sess,
+		Turn:       5,
+		StopReason: "user_exit",
+	}
+
+	// generateSummary should return early without writing a file
+	agt.generateSummary(sess, state)
+
+	// Verify no summary file was created
+	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("expected no summary file when Summary config is disabled")
+	}
+}
+
+func TestGenerateSummaryEnabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	agt := newTestAgent(cfg, &mockProvider{})
+
+	sess, _ := agt.sessMgr.NewSession(10)
+	sess.Turn = 3
+	state := &LoopState{
+		Sess:          sess,
+		Turn:          3,
+		ToolCallCount: 5,
+		ErrorCount:    1,
+		StopReason:    "user_exit",
+	}
+
+	agt.generateSummary(sess, state)
+
+	// Verify summary file exists and has correct content
+	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	var sum map[string]any
+	if err := json.Unmarshal(data, &sum); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if sum["turns"] != float64(3) {
+		t.Errorf("turns = %v, want 3", sum["turns"])
+	}
+	if sum["tool_call_count"] != float64(5) {
+		t.Errorf("tool_call_count = %v, want 5", sum["tool_call_count"])
+	}
+	if sum["error_count"] != float64(1) {
+		t.Errorf("error_count = %v, want 1", sum["error_count"])
+	}
+	if sum["state"] != "user_exit" {
+		t.Errorf("state = %v, want user_exit", sum["state"])
+	}
+}
+
+func TestGenerateSummaryStopReasons(t *testing.T) {
+	tests := []struct {
+		stopReason string
+		wantState  string
+		wantSkip   bool // transport_error + 0 activity → skip
+	}{
+		{"interrupted", "interrupted", false},
+		{"user_exit", "user_exit", false},
+		{"max_loop", "max_loop", false},
+		{"transport_error", "transport_error", true}, // 0 turns → skip
+		{"", "completed", false},
+		{"unknown", "completed", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.stopReason, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Session.Summary = true
+			cfg.Session.Dir = t.TempDir()
+			agt := newTestAgent(cfg, &mockProvider{})
+
+			sess, _ := agt.sessMgr.NewSession(10)
+			state := &LoopState{
+				Sess:       sess,
+				StopReason: tt.stopReason,
+			}
+
+			agt.generateSummary(sess, state)
+
+			path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+			if tt.wantSkip {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Error("expected no summary file for transport_error with 0 turns")
+				}
+				return
+			}
+			data, _ := os.ReadFile(path)
+			var sum map[string]any
+			json.Unmarshal(data, &sum)
+			if sum["state"] != tt.wantState {
+				t.Errorf("state = %v, want %v", sum["state"], tt.wantState)
+			}
+		})
+	}
+}
+
+func TestGenerateSummaryTransportErrorWithActivity(t *testing.T) {
+	// transport_error with actual turns should still generate a summary
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	agt := newTestAgent(cfg, &mockProvider{})
+
+	sess, _ := agt.sessMgr.NewSession(10)
+	sess.Turn = 3
+	state := &LoopState{
+		Sess:          sess,
+		Turn:          3,
+		ToolCallCount: 5,
+		ErrorCount:    1,
+		StopReason:    "transport_error",
+	}
+
+	agt.generateSummary(sess, state)
+
+	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("expected summary file for transport_error with activity: %v", err)
+	}
+	var sum map[string]any
+	json.Unmarshal(data, &sum)
+	if sum["state"] != "transport_error" {
+		t.Errorf("state = %v, want transport_error", sum["state"])
+	}
+	if sum["turns"] != float64(3) {
+		t.Errorf("turns = %v, want 3", sum["turns"])
+	}
+}
+
+// TestSessionFullLifecycleWithSummary is an E2E test covering
+// session creation → turns → summary generation → file verification.
+func TestSessionFullLifecycleWithSummary(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+
+	// Simulate a multi-turn conversation with tool calls
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			// Turn 1: tool call
+			{
+				Content:    json.RawMessage(`[{"type":"text","text":"let me check"},{"type":"tool_use","id":"tu_1","name":"test_tool","input":{}}]`),
+				ToolCalls:  []ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				StopReason: "tool_use",
+			},
+			{
+				Content:    TextContent("the result is 42"),
+				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				StopReason: "end_turn",
+			},
+			// Turn 2: text only
+			{
+				Content:    TextContent("goodbye"),
+				Usage:      &Usage{InputTokens: 30, OutputTokens: 5},
+				StopReason: "end_turn",
+			},
+		},
+	}
+	agt := newTestAgent(cfg, prov)
+
+	sess, _ := agt.sessMgr.NewSession(50)
+	state := &LoopState{
+		Sess: sess,
+		Messages: []Message{
+			{Role: "user", Content: TextContent("what is the answer")},
+		},
+		Turn: 1,
+	}
+	io := &mockIO{}
+
+	// Run turn 1
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	if err != nil {
+		t.Fatalf("runTurn 1: %v", err)
+	}
+
+	// Run turn 2
+	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent("thanks")})
+	state.Turn = 2
+	sess.Turn = 2
+	err = agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	if err != nil {
+		t.Fatalf("runTurn 2: %v", err)
+	}
+
+	// Now generate summary
+	state.StopReason = "user_exit"
+	agt.generateSummary(sess, state)
+
+	// Verify summary file
+	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile summary: %v", err)
+	}
+
+	var sum map[string]any
+	if err := json.Unmarshal(data, &sum); err != nil {
+		t.Fatalf("Unmarshal summary: %v", err)
+	}
+
+	if sum["session_id"] != string(sess.ID) {
+		t.Errorf("session_id = %v, want %v", sum["session_id"], sess.ID)
+	}
+	if sum["turns"] != float64(2) {
+		t.Errorf("turns = %v, want 2", sum["turns"])
+	}
+	if sum["state"] != "user_exit" {
+		t.Errorf("state = %v, want user_exit", sum["state"])
+	}
+	// tool_call_count should be at least 1 (from turn 1)
+	if tc, ok := sum["tool_call_count"].(float64); !ok || tc < 1 {
+		t.Errorf("tool_call_count = %v, want >= 1", sum["tool_call_count"])
+	}
+}
+
+// --- E2E: Agent.Run with transport disconnect ---
+
+// TestE2EAgentRunReadLineErrorSkipsSummary verifies the full Run lifecycle:
+// when ReadLine fails immediately, the transport_error state + 0 turns
+// causes generateSummary to skip writing a summary file.
+func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Summary = true
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Session.MaxLoop = 10
+
+	agt := newTestAgent(cfg, &mockProvider{})
+
+	// Empty lines: ReadLine immediately returns error
+	io := &mockIO{lines: []string{}}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	// Verify no summary file (transport_error + 0 turns → skip)
+	entries, _ := os.ReadDir(cfg.Session.Dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), "-summary.json") {
+			t.Errorf("expected no summary for transport_error + 0 turns, found: %s", e.Name())
+		}
 	}
 }
 

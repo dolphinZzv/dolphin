@@ -22,6 +22,7 @@ type Agent struct {
 	toolReg    *mcp.Registry
 	provider   Provider
 	ctxBuilder *ContextBuilder
+	compressor Compressor
 }
 
 // LoopState holds state for a single agent run.
@@ -32,6 +33,7 @@ type LoopState struct {
 	StopReason       string
 	ToolCallCount    int
 	ErrorCount       int
+	CompressionCount int
 	SummaryGenerated bool
 }
 
@@ -45,13 +47,26 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 		provider = NewOpenAIProvider(&cfg.LLM)
 	}
 
-	return &Agent{
+	a := &Agent{
 		cfg:        cfg,
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   provider,
 		ctxBuilder: NewContextBuilder(),
 	}
+	switch cfg.LLM.CompressMode {
+	case "segment":
+		a.compressor = NewSegmentCompressor(cfg.LLM.SegmentMergeLimit)
+	case "tiered":
+		a.compressor = NewTieredCompressor(provider)
+	case "incremental":
+		a.compressor = NewIncrementalCompressor(provider)
+	case "topic":
+		a.compressor = NewTopicCompressor(provider)
+	default:
+		a.compressor = &DropCompressor{}
+	}
+	return a
 }
 
 // Run starts the agent loop with interactive I/O (stdio, SSH, etc.).
@@ -127,6 +142,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		line, err := io.ReadLine()
 		if err != nil {
 			zap.S().Debugw("read line error", "error", err)
+			state.StopReason = "transport_error"
 			return
 		}
 
@@ -178,7 +194,30 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 	}
 
 	// Compress history if approaching context limit
-	a.compressHistory(state)
+	comp := a.compressor
+	if comp == nil {
+		comp = &DropCompressor{}
+	}
+	compressed, report := comp.Compress(state.Messages, a.cfg.LLM.MaxContextTokens)
+	if report != nil && report.DroppedCount > 0 {
+		state.Messages = compressed
+		// Log each summary segment to the session directory
+		for _, seg := range extractSummarySegments(compressed) {
+			state.Sess.LogCompression(session.CompressMeta{
+				Level:        seg.Level,
+				CoveredCount: seg.CoveredCount,
+				Summary:      seg.Content,
+				TokensSaved:  report.TokensSaved,
+			})
+			state.CompressionCount++
+		}
+		zap.S().Debugw("context compressed",
+			"dropped", report.DroppedCount,
+			"remaining", len(compressed),
+			"tokens_saved", report.TokensSaved,
+			"turn", state.Turn,
+		)
+	}
 
 	for i := 0; i < maxSubTurns; i++ {
 		select {
@@ -523,6 +562,12 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 		return
 	}
 
+	// Skip summary for transport errors with no activity — an unused transport
+	// that disconnected immediately has nothing worth recording.
+	if state.StopReason == "transport_error" && sess.Turn == 0 && state.ToolCallCount == 0 {
+		return
+	}
+
 	stateStr := "completed"
 	switch state.StopReason {
 	case "interrupted":
@@ -531,9 +576,11 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 		stateStr = "user_exit"
 	case "max_loop":
 		stateStr = "max_loop"
+	case "transport_error":
+		stateStr = "transport_error"
 	}
 
-	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, stateStr)
+	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,
@@ -604,78 +651,6 @@ func extractFinalResponse(messages []Message) string {
 		}
 	}
 	return ""
-}
-
-// compressHistory checks if messages exceed the context window limit and drops
-// older exchanges, keeping at least the most recent turns.
-func (a *Agent) compressHistory(state *LoopState) {
-	limit := a.cfg.LLM.MaxContextTokens
-	if limit <= 0 {
-		return
-	}
-
-	// Token estimate: CJK-heavy content gets higher weight (CJK chars are
-	// ~1 token each but need 3 UTF-8 bytes, so bytes/4 severely underestimates).
-	est := 0
-	for _, m := range state.Messages {
-		est += estimateTokens(string(m.Content))
-		if m.Role == "assistant" {
-			est += 20
-		}
-	}
-
-	threshold := int(float64(limit) * 0.7)
-	if est <= threshold {
-		return
-	}
-
-	if len(state.Messages) <= 6 {
-		return
-	}
-
-	// Find the oldest message we must keep: the last user message and everything after it.
-	keepStart := len(state.Messages)
-	for j := len(state.Messages) - 1; j >= 0; j-- {
-		if state.Messages[j].Role == "user" {
-			keepStart = j
-			break
-		}
-	}
-	if keepStart == len(state.Messages) && len(state.Messages) > 2 {
-		keepStart = len(state.Messages) - 2
-	}
-
-	// Walk from the front, dropping complete user+response turn groups.
-	// After each drop, i stays at the same position because the next message slides in.
-	dropped := 0
-	for i := 0; i < keepStart; {
-		if state.Messages[i].Role != "user" {
-			i++
-			continue
-		}
-		end := i + 1
-		for end < keepStart && state.Messages[end].Role != "user" {
-			end++
-		}
-		if end > keepStart {
-			break
-		}
-		for j := i; j < end; j++ {
-			est -= estimateTokens(string(state.Messages[j].Content))
-		}
-		dropped += end - i
-		state.Messages = append(state.Messages[:i], state.Messages[end:]...)
-		keepStart -= (end - i)
-	}
-
-	if dropped > 0 {
-		zap.S().Infow("context compressed",
-			"dropped_messages", dropped,
-			"remaining", len(state.Messages),
-			"turn", state.Turn,
-		)
-		state.Sess.LogSystem(fmt.Sprintf("context compressed: dropped %d old messages, %d remaining", dropped, len(state.Messages)))
-	}
 }
 
 // estimateTokens returns a rough token count for mixed ASCII+CJK content.

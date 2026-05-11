@@ -14,6 +14,7 @@ import (
 	"dolphinzZ/internal/agent"
 	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/diary"
 	"dolphinzZ/internal/i18n"
 	"dolphinzZ/internal/logger"
 	"dolphinzZ/internal/mcp"
@@ -260,6 +261,44 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		actorCount++
 	} else if err != nil {
 		zap.S().Warnw("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
+	}
+
+	// Diary actor — startup async catch-up + daily 20:00 sync
+	if cfg.Diary.Dir != "" {
+		d := diary.New(diary.Config{
+			Dir:            cfg.Diary.Dir,
+			MaxDaySessions: cfg.Diary.MaxDaySessions,
+			MaxWeekDays:    cfg.Diary.MaxWeekDays,
+			MaxMonthWeeks:  cfg.Diary.MaxMonthWeeks,
+			MaxYearMonths:  cfg.Diary.MaxYearMonths,
+			MaxTotalMB:     cfg.Diary.MaxTotalMB,
+		}, cfg.Session.Dir)
+
+		// Startup: async catch-up for any unprocessed days
+		go func() { d.Sync() }()
+
+		// Daily 20:00 timer
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			zap.S().Infow("diary: daily sync timer started", "time", "20:00")
+			for {
+				now := time.Now()
+				next := time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, now.Location())
+				if now.After(next) {
+					next = next.AddDate(0, 0, 1)
+				}
+				wait := next.Sub(now)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(wait):
+					d.Sync()
+				}
+			}
+		}, func(err error) {
+			cancel()
+		})
+		actorCount++
 	}
 
 	// SSH transport
