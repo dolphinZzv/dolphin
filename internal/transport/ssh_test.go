@@ -36,7 +36,7 @@ func (m *mockChannel) Stderr() io.ReadWriter { return nil }
 func TestSSHSessionReadLine(t *testing.T) {
 	buf := bytes.NewBufferString("hello\n")
 	ch := &mockChannel{Buffer: buf}
-	sess := NewSSHSession(ch, "test@127.0.0.1", "testuser")
+	sess := NewSSHSession(ch, nil, "test@127.0.0.1", "testuser")
 
 	line, err := sess.ReadLine()
 	if err != nil {
@@ -50,7 +50,7 @@ func TestSSHSessionReadLine(t *testing.T) {
 func TestSSHSessionWriteLine(t *testing.T) {
 	var buf bytes.Buffer
 	ch := &mockChannel{Buffer: &buf}
-	sess := NewSSHSession(ch, "test@127.0.0.1", "testuser")
+	sess := NewSSHSession(ch, nil, "test@127.0.0.1", "testuser")
 
 	if err := sess.WriteLine("test output"); err != nil {
 		t.Fatalf("WriteLine error: %v", err)
@@ -63,7 +63,7 @@ func TestSSHSessionWriteLine(t *testing.T) {
 func TestSSHSessionWriteString(t *testing.T) {
 	var buf bytes.Buffer
 	ch := &mockChannel{Buffer: &buf}
-	sess := NewSSHSession(ch, "test@127.0.0.1", "testuser")
+	sess := NewSSHSession(ch, nil, "test@127.0.0.1", "testuser")
 
 	if err := sess.WriteString("hello"); err != nil {
 		t.Fatalf("WriteString error: %v", err)
@@ -84,7 +84,7 @@ func TestSSHSessionImplementsUserIO(t *testing.T) {
 func TestSSHSessionContext(t *testing.T) {
 	buf := bytes.NewBufferString("")
 	ch := &mockChannel{Buffer: buf}
-	sess := NewSSHSession(ch, "192.168.1.5:54321", "admin")
+	sess := NewSSHSession(ch, nil, "192.168.1.5:54321", "admin")
 	ctx := sess.Context()
 	if !strings.Contains(ctx, "192.168.1.5") {
 		t.Errorf("expected remote addr in context, got: %s", ctx)

@@ -170,6 +170,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/help":
 			c.printHelp(io)
 			continue
+		case line == "/mcp":
+			c.printMCP(io)
+			continue
 		case line == "/agents":
 			c.printAgents(io)
 			continue
@@ -838,6 +841,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpAgents))
 	io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
+	io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
 	io.WriteLine("")
@@ -875,6 +879,23 @@ func (c *Coordinator) printAgents(io transport.UserIO) {
 	for _, a := range agents {
 		io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
 			a.Name, a.Status, a.Kind, a.TasksDone))
+	}
+	io.WriteLine("")
+}
+
+func (c *Coordinator) printMCP(io transport.UserIO) {
+	toolDefs := c.toolReg.List()
+	if len(toolDefs) == 0 {
+		io.WriteLine("No MCP tools loaded.")
+		return
+	}
+	io.WriteLine(fmt.Sprintf("MCP tools (%d):", len(toolDefs)))
+	for _, t := range toolDefs {
+		src := ""
+		if t.Source != "" {
+			src = fmt.Sprintf(" [%s]", t.Source)
+		}
+		io.WriteLine(fmt.Sprintf("  %s%s - %s", t.Name, src, t.Description))
 	}
 	io.WriteLine("")
 }

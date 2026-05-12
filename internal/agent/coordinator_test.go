@@ -358,7 +358,7 @@ func TestCoordinatorRunExitCommand(t *testing.T) {
 	coord.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "DolphinzZ Coordinator ready") {
+	if !strings.Contains(output, "DolphinzZ Coordinator Ready") {
 		t.Error("expected welcome message, got:", output)
 	}
 }

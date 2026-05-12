@@ -236,6 +236,15 @@ func (m *Manager) LatestSession() (SessionID, string, int, error) {
 
 // countTurns counts the number of turns in a session file by counting unique turn values.
 func countTurns(path string) (int, error) {
+	// Limit file size to 10MB to prevent OOM on large session files
+	const maxSize = 10 * 1024 * 1024
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	if info.Size() > maxSize {
+		return 0, fmt.Errorf("session file too large (%d bytes), exceeds limit (%d)", info.Size(), maxSize)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -259,6 +268,15 @@ func countTurns(path string) (int, error) {
 
 // ReadEvents reads all session events from a session file.
 func ReadEvents(path string) ([]SessionEvent, error) {
+	// Limit file size to 10MB to prevent OOM
+	const maxSize = 10 * 1024 * 1024
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxSize {
+		return nil, fmt.Errorf("session file too large (%d bytes), exceeds limit (%d)", info.Size(), maxSize)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -106,10 +107,20 @@ type MCPConfig struct {
 }
 
 type MCPServerConfig struct {
-	Type    string   `mapstructure:"type"`    // "stdio" or "http"
-	Command string   `mapstructure:"command"` // for stdio type
-	Args    []string `mapstructure:"args"`    // for stdio type
-	URL     string   `mapstructure:"url"`     // for http type
+	Type    string            `mapstructure:"type"`    // "stdio", "sse", "http-stream"
+	Command string            `mapstructure:"command"` // for stdio type
+	Args    []string          `mapstructure:"args"`    // for stdio type
+	URL     string            `mapstructure:"url"`     // for sse / http-stream type
+	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers (auth etc.)
+	Timeout int               `mapstructure:"timeout"` // request timeout in seconds, 0 = default 30
+}
+
+// TimeoutDuration returns the effective timeout as a time.Duration.
+func TimeoutDuration(sec int) time.Duration {
+	if sec <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(sec) * time.Second
 }
 
 type ShellConfig struct {

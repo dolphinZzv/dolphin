@@ -136,7 +136,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	tools := toolRegistry.List()
 	zap.S().Infow("total mcp tools available", "count", len(tools))
-
+	if cfg.LogLevel == "debug" {
+		for _, t := range tools {
+			zap.S().Debugw("mcp tool", "name", t.Name, "source", t.Source, "desc", t.Description)
+		}
+	}
 	// Check for agents directory to decide coordinator vs single-agent mode
 	agentsDir := filepath.Join(".dolphinzZ", "agents")
 	_, coordErr := os.Stat(agentsDir)

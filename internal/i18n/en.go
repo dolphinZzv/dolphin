@@ -27,7 +27,7 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:        "DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.\n",
+	KeyCoordReady:        "DolphinzZ Coordinator Ready\n  /exit, /quit    Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n",
 	KeyHelpHeader:        "Commands:",
 	KeyHelpExit:          "  /exit, /quit  - Exit",
 	KeyHelpHelp:          "  /help         - This help",
@@ -36,6 +36,7 @@ var enMessages = map[string]string{
 	KeyHelpCommands:      "  /commands     - List user-defined commands",
 	KeyHelpCancel:        "  /cancel       - Cancel all running tasks",
 	KeyHelpCancelID:      "  /cancel <id>  - Cancel a specific task by ID",
+	KeyHelpMCP:           "  /mcp          - List all MCP tools",
 	KeyHelpTopMCP:        "Top MCP tools (by usage, use search_mcp_tools to find more):",
 	KeyHelpSkillsAvail:   "\nSkills: %d available (use /skills to list, search_skills to find)",
 	KeyNoAgents:          "No agents configured.",

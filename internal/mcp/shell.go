@@ -130,8 +130,17 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		}, nil
 	}
 
+	const maxOutput = 64 * 1024 // 64KB limit to prevent OOM
+	outStr := stdout.String()
+	errStr := stderr.String()
+	if len(outStr) > maxOutput {
+		outStr = outStr[:maxOutput] + "\n... [truncated]"
+	}
+	if len(errStr) > maxOutput {
+		errStr = errStr[:maxOutput] + "\n... [truncated]"
+	}
 	return &ToolResult{
-		Content: fmt.Sprintf("stdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String()),
+		Content: fmt.Sprintf("stdout:\n%s\nstderr:\n%s", outStr, errStr),
 	}, nil
 }
 

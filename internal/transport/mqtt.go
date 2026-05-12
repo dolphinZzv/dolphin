@@ -65,10 +65,12 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	opts.SetClientID(t.cfg.ClientID)
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(10 * time.Second)
-	opts.SetCleanSession(true)
+	opts.SetCleanSession(false) // preserve subscriptions across reconnect
+	opts.SetAutoReconnect(true)
+	opts.SetMaxReconnectInterval(30 * time.Second)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
 		t.connected.Store(false)
-		zap.S().Errorw("mqtt connection lost", "error", err)
+		zap.S().Errorw("mqtt connection lost, will auto-reconnect", "error", err)
 	})
 
 	t.client = mqtt.NewClient(opts)
@@ -99,8 +101,8 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		)
 		select {
 		case t.msgCh <- payload:
-		default:
-			zap.S().Errorw("mqtt message dropped, channel full")
+		case <-time.After(10 * time.Second):
+			zap.S().Errorw("mqtt message dropped after 10s timeout, channel full")
 		}
 	})
 	if token.Wait() && token.Error() != nil {

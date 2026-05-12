@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/metrics"
@@ -43,7 +44,7 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 		apiKey:  cfg.APIKey,
 		model:   cfg.Model,
 		maxTok:  cfg.MaxTokens,
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 

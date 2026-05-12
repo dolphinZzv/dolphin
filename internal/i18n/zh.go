@@ -27,7 +27,7 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:        "DolphinzZ 协调器已就绪。输入 /exit 退出，/help 查看帮助，/agents 列出代理，/commands 列出用户命令，/crontab 查看定时任务。\n",
+	KeyCoordReady:        "DolphinzZ 协调器已就绪\n  /exit, /quit    退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n",
 	KeyHelpHeader:        "命令：",
 	KeyHelpExit:          "  /exit, /quit  - 退出",
 	KeyHelpHelp:          "  /help         - 显示帮助",
@@ -36,6 +36,7 @@ var zhMessages = map[string]string{
 	KeyHelpCommands:      "  /commands     - 列出用户自定义命令",
 	KeyHelpCancel:        "  /cancel       - 取消所有运行中的任务",
 	KeyHelpCancelID:      "  /cancel <id>  - 取消指定 ID 的任务",
+	KeyHelpMCP:           "  /mcp          - 列出所有 MCP 工具",
 	KeyHelpTopMCP:        "常用 MCP 工具（按使用次数，使用 search_mcp_tools 查找更多）：",
 	KeyHelpSkillsAvail:   "\n技能：%d 个可用（使用 /skills 列出，search_skills 查找）",
 	KeyNoAgents:          "未配置代理。",

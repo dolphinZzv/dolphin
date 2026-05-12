@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/zap"
 	gossh "golang.org/x/crypto/ssh"
+	"time"
 )
 
 // SSHTransport provides SSH server transport.
@@ -148,7 +149,7 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 		}
 		go handleChannelRequests(reqs)
 
-		session := NewSSHSession(ch, sshConn.RemoteAddr().String(), sshConn.User())
+		session := NewSSHSession(ch, conn, sshConn.RemoteAddr().String(), sshConn.User())
 		t.handler(ctx, session)
 		ch.Close()
 	}
@@ -176,6 +177,7 @@ func (t *SSHTransport) Close() error {
 // SSHSession wraps an SSH channel as a UserIO with readline-like editing.
 type SSHSession struct {
 	ch      gossh.Channel
+	conn    net.Conn // underlying TCP connection for read deadlines
 	reader  *bufio.Reader
 	history []string
 	histIdx int
@@ -183,9 +185,10 @@ type SSHSession struct {
 	user    string // SSH user
 }
 
-func NewSSHSession(ch gossh.Channel, remote, user string) *SSHSession {
+func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string) *SSHSession {
 	return &SSHSession{
 		ch:      ch,
+		conn:    conn,
 		reader:  bufio.NewReader(ch),
 		history: make([]string, 0, 20),
 		histIdx: -1,
@@ -208,6 +211,10 @@ func (s *SSHSession) redraw(line []byte, pos int) {
 }
 
 func (s *SSHSession) ReadLine() (string, error) {
+	// Set a 5-minute read deadline to prevent indefinite blocking
+	if s.conn != nil {
+		s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	}
 	fmt.Fprint(s.ch, "> ")
 	line := make([]byte, 0, 256)
 	pos := 0
@@ -322,7 +329,7 @@ func (s *SSHSession) ReadLine() (string, error) {
 					}
 				case '3': // Delete (Del) - ESC [ 3 ~
 					if b2, err := s.reader.ReadByte(); err == nil && b2 == '~' {
-						if len(line) > 0 {
+						if pos < len(line) {
 							line = append(line[:pos], line[pos+1:]...)
 							s.redraw(line, pos)
 						}

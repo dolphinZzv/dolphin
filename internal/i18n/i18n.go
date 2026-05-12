@@ -53,6 +53,7 @@ const (
 	KeyHelpCommands      = "help_commands"
 	KeyHelpCancel        = "help_cancel"
 	KeyHelpCancelID      = "help_cancel_id"
+	KeyHelpMCP           = "help_mcp"
 	KeyHelpTopMCP        = "help_top_mcp"
 	KeyHelpSkillsAvail   = "help_skills_avail"
 	KeyNoAgents          = "no_agents"

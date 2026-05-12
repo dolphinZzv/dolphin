@@ -1,68 +1,58 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os/exec"
-	"sync"
 	"sync/atomic"
-	"syscall"
-	"time"
 
 	"dolphinzZ/internal/config"
 
 	"go.uber.org/zap"
 )
 
-// ServerClient manages an external MCP server subprocess.
+// ServerClient manages transport to an external MCP server.
 type ServerClient struct {
-	cfg    config.MCPServerConfig
-	name   string
-	cmd    *exec.Cmd
-	stdin  *bufio.Writer
-	stdout *bufio.Scanner
-	mu     sync.Mutex
-	nextID atomic.Int64
+	name      string
+	transport mcpTransport
+	nextID    atomic.Int64
 }
 
-// NewServerClient starts an external MCP server and initializes it.
+// NewServerClient creates a transport to an external MCP server and initializes it.
 func NewServerClient(name string, cfg config.MCPServerConfig) (*ServerClient, error) {
-	if cfg.Type != "stdio" {
-		return nil, fmt.Errorf("unsupported mcp server type: %s", cfg.Type)
-	}
-	if cfg.Command == "" {
-		return nil, fmt.Errorf("mcp server %q: command is required", name)
-	}
+	var transport mcpTransport
+	var err error
 
-	cmd := exec.Command(cfg.Command, cfg.Args...)
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, fmt.Errorf("stdin pipe: %w", err)
+	switch cfg.Type {
+	case "stdio":
+		transport, err = newStdioTransport(name, cfg)
+	case "sse":
+		transport, err = newSSETransport(name, cfg)
+	case "http-stream":
+		transport, err = newHTTPStreamTransport(name, cfg)
+	default:
+		return nil, fmt.Errorf("unsupported mcp server type: %q (supported: stdio, sse, http-stream)", cfg.Type)
 	}
-	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("stdout pipe: %w", err)
-	}
-	// Stderr is inherited (goes to the parent's stderr)
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start mcp server %q: %w", name, err)
+		return nil, err
 	}
 
 	sc := &ServerClient{
-		cfg:    cfg,
-		name:   name,
-		cmd:    cmd,
-		stdin:  bufio.NewWriter(stdin),
-		stdout: newLargeScanner(stdout),
+		name:      name,
+		transport: transport,
 	}
 
-	// Initialize
-	if err := sc.initialize(); err != nil {
-		cmd.Process.Kill()
+	timeout := config.TimeoutDuration(cfg.Timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if err := transport.connect(ctx); err != nil {
+		transport.close()
+		return nil, fmt.Errorf("connect mcp server %q: %w", name, err)
+	}
+
+	if err := sc.initialize(ctx); err != nil {
+		transport.close()
 		return nil, fmt.Errorf("initialize mcp server %q: %w", name, err)
 	}
 
@@ -70,8 +60,7 @@ func NewServerClient(name string, cfg config.MCPServerConfig) (*ServerClient, er
 }
 
 // initialize performs MCP handshake.
-func (c *ServerClient) initialize() error {
-	// Send initialize request
+func (c *ServerClient) initialize(ctx context.Context) error {
 	initReq := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      c.nextID.Add(1),
@@ -85,16 +74,15 @@ func (c *ServerClient) initialize() error {
 			},
 		},
 	}
-	if _, err := c.sendRequest(initReq); err != nil {
+	if _, err := c.transport.sendRequest(ctx, initReq); err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
 
-	// Send initialized notification
 	notif := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
 	}
-	if err := c.writeJSON(notif); err != nil {
+	if err := c.transport.sendNotification(ctx, notif); err != nil {
 		return err
 	}
 
@@ -110,7 +98,7 @@ func (c *ServerClient) ListTools() ([]ToolDefinition, error) {
 		"method":  "tools/list",
 		"params":  map[string]any{},
 	}
-	raw, err := c.sendRequest(req)
+	raw, err := c.transport.sendRequest(context.Background(), req)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
@@ -128,7 +116,6 @@ func (c *ServerClient) ListTools() ([]ToolDefinition, error) {
 
 	defs := make([]ToolDefinition, 0, len(result.Tools))
 	for _, t := range result.Tools {
-		// Default empty schema if missing
 		schema := t.InputSchema
 		if len(schema) == 0 {
 			schema = json.RawMessage(`{"type":"object"}`)
@@ -158,7 +145,7 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 			"arguments": args,
 		},
 	}
-	raw, err := c.sendRequest(req)
+	raw, err := c.transport.sendRequest(ctx, req)
 	if err != nil {
 		return &ToolResult{Content: err.Error(), IsError: true}, nil
 	}
@@ -174,7 +161,6 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 		return &ToolResult{Content: fmt.Sprintf("parse result: %v", err), IsError: true}, nil
 	}
 
-	// Concatenate text content blocks
 	var text string
 	for _, block := range result.Content {
 		if block.Type == "text" || block.Type == "" {
@@ -184,97 +170,8 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	return &ToolResult{Content: text, IsError: result.IsError}, nil
 }
 
-// Close gracefully shuts down the server process: SIGTERM, wait 3s, then SIGKILL.
+// Close shuts down the transport to the MCP server.
 func (c *ServerClient) Close() error {
 	zap.S().Debugw("shutting down mcp server", "server", c.name)
-
-	// Try graceful shutdown with SIGTERM first
-	if err := c.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		// Interrupt not supported (e.g. Windows), fall back to Kill
-		zap.S().Debugw("interrupt not supported, killing mcp server", "server", c.name)
-		return c.cmd.Process.Kill()
-	}
-
-	// Wait up to 3 seconds for graceful exit
-	done := make(chan struct{})
-	go func() {
-		c.cmd.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-		zap.S().Debugw("mcp server exited gracefully", "server", c.name)
-		return nil
-	case <-time.After(3 * time.Second):
-		zap.S().Warnw("mcp server did not exit in time, killing", "server", c.name)
-		return c.cmd.Process.Kill()
-	}
-}
-
-// sendRequest sends a JSON-RPC request and waits for the response.
-func (c *ServerClient) sendRequest(req map[string]any) (json.RawMessage, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if err := c.writeJSON(req); err != nil {
-		return nil, err
-	}
-
-	for c.stdout.Scan() {
-		line := c.stdout.Text()
-		if line == "" {
-			continue
-		}
-
-		var msg struct {
-			ID     int64           `json:"id"`
-			Result json.RawMessage `json:"result"`
-			Error  *struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal([]byte(line), &msg); err != nil {
-			continue
-		}
-
-		// Skip responses that don't match our request ID
-		reqID, _ := req["id"].(int64)
-		if msg.ID != reqID {
-			continue
-		}
-
-		if msg.Error != nil {
-			return nil, fmt.Errorf("jsonrpc error: %s (code %d)", msg.Error.Message, msg.Error.Code)
-		}
-
-		return msg.Result, nil
-	}
-
-	if err := c.stdout.Err(); err != nil {
-		return nil, fmt.Errorf("read error: %w", err)
-	}
-	return nil, fmt.Errorf("server closed connection")
-}
-
-// newLargeScanner creates a bufio.Scanner with a 1MB buffer for large MCP responses.
-func newLargeScanner(r io.Reader) *bufio.Scanner {
-	sc := bufio.NewScanner(bufio.NewReader(r))
-	buf := make([]byte, 1024*1024)
-	sc.Buffer(buf, 1024*1024)
-	return sc
-}
-
-func (c *ServerClient) writeJSON(v any) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	if _, err := c.stdin.Write(data); err != nil {
-		return err
-	}
-	if _, err := c.stdin.Write([]byte("\n")); err != nil {
-		return err
-	}
-	return c.stdin.Flush()
+	return c.transport.close()
 }

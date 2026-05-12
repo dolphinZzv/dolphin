@@ -150,8 +150,24 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			state.StopReason = "user_exit"
 			return
 		}
+		if line == "/mcp" {
+			toolDefs := a.toolReg.List()
+			if len(toolDefs) == 0 {
+				io.WriteLine("No MCP tools loaded.")
+			} else {
+				io.WriteLine(fmt.Sprintf("MCP tools (%d):", len(toolDefs)))
+				for _, t := range toolDefs {
+					src := ""
+					if t.Source != "" {
+						src = fmt.Sprintf(" [%s]", t.Source)
+					}
+					io.WriteLine(fmt.Sprintf("  %s%s - %s", t.Name, src, t.Description))
+				}
+			}
+			continue
+		}
 		if line == "/help" {
-			io.WriteLine("Commands: /exit - quit, /help - this help")
+			io.WriteLine("Commands: /exit - quit, /help - this help, /mcp - list MCP tools")
 			toolDefs := a.toolReg.List()
 			if len(toolDefs) > 0 {
 				io.WriteString("Loaded MCP tools: ")

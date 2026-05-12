@@ -45,6 +45,8 @@ mcp:
     priority: 1000
     idle_timeout: 300     # seconds before auto-closing idle browser
   servers: {}             # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
+  #                       #   or remote: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
+  #                       #   or remote: {type: http-stream, url: "https://..."}
   repos: []               # manifest repos, e.g. ["dolphinzZv/mcp"]
 
 # ── Agent Pool ────────────────────────────────────────────
@@ -152,6 +154,8 @@ mcp:
     priority: 1000
     idle_timeout: 300     # 空闲多少秒后自动关闭浏览器
   servers: {}             # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
+  #                       #   或远程: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
+  #                       #   或远程: {type: http-stream, url: "https://..."}
   repos: []               # 清单仓库，如 ["dolphinzZv/mcp"]
 
 # ── Agent 池 ──────────────────────────────────────────────

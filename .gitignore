@@ -6,6 +6,7 @@ dolphinzZ
 
 # Config with API keys
 .dolphinzZ/config.yaml
+.dolphinzZ/testdata/
 
 # Claude Code
 .claude/
@@ -38,3 +39,6 @@ ROADMAP.md
 /proposal/
 /todo/
 TODO.md
+
+logs
+diary

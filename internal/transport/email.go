@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
 	"sync"
@@ -76,6 +77,8 @@ func (t *EmailTransport) ReadLine() (string, error) {
 		return msg, nil
 	case <-t.closeCh:
 		return "", fmt.Errorf("email transport closed")
+	case <-time.After(5 * time.Minute):
+		return "", fmt.Errorf("email transport: read timeout (5m)")
 	}
 }
 
@@ -161,7 +164,13 @@ func (t *EmailTransport) poll() {
 	}
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	c, err := client.DialTLS(addr, nil)
+	d := &net.Dialer{Timeout: 30 * time.Second}
+	tlsConn, err := tls.DialWithDialer(d, "tcp", addr, nil)
+	if err != nil {
+		zap.S().Warnw("email imap connect failed", "error", err)
+		return
+	}
+	c, err := client.New(tlsConn)
 	if err != nil {
 		zap.S().Warnw("email imap connect failed", "error", err)
 		return
