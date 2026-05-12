@@ -68,7 +68,7 @@ func NewManager(dir string) *Manager {
 }
 
 func (m *Manager) EnsureDir() error {
-	return os.MkdirAll(m.dir, 0755)
+	return os.MkdirAll(m.dir, 0700)
 }
 
 func (m *Manager) NewSession(maxLoop int) (*Session, error) {
@@ -79,7 +79,7 @@ func (m *Manager) NewSessionWithParent(maxLoop int, parentID SessionID) (*Sessio
 	id := SessionID(xid.New().String())
 	path := filepath.Join(m.dir, string(id)+".jsonl")
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("create session file: %w", err)
 	}

@@ -39,6 +39,8 @@ mcp:
     enabled: true
     timeout_seconds: 30
     priority: 10
+    max_command_length: 4096
+    # allowed_commands: [ls, cat, grep, find, wc, head, tail]  # empty = allow all
   cdp:
     enabled: true         # browser automation (Chrome DevTools Protocol)
     headless: true
@@ -110,6 +112,13 @@ diary:
 log_level: info
 log_file: .dolphin/logs/agent.log
 
+plugins:
+  enabled: true
+  dir: "~/.dolphin/plugins/"
+  webhook_url: ""
+  webhook_events: ["*"]
+  heartbeat_turns: 0
+
 pprof:
   enabled: false
   addr: ":6060"
@@ -148,6 +157,8 @@ mcp:
     enabled: true
     timeout_seconds: 30
     priority: 10
+    max_command_length: 4096
+    # allowed_commands: [ls, cat, grep, find, wc, head, tail]  # empty = allow all
   cdp:
     enabled: true         # 浏览器自动化（Chrome DevTools Protocol）
     headless: true
@@ -218,6 +229,13 @@ diary:
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log
+
+plugins:
+  enabled: true
+  dir: "~/.dolphin/plugins/"
+  webhook_url: ""
+  webhook_events: ["*"]
+  heartbeat_turns: 0
 
 pprof:
   enabled: false

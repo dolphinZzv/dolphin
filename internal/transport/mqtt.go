@@ -14,6 +14,12 @@ import (
 	"go.uber.org/zap"
 )
 
+// mqttMsg pairs an incoming payload with its derived response topic.
+type mqttMsg struct {
+	payload   string
+	respTopic string
+}
+
 // MQTTTransport provides MQTT pub/sub transport implementing UserIO.
 //
 // Subscribes to the configured topic (supports MQTT wildcards + / #).
@@ -29,10 +35,10 @@ import (
 type MQTTTransport struct {
 	cfg       *config.MQTTConfig
 	client    mqtt.Client
-	msgCh     chan string
+	msgCh     chan mqttMsg
 	closeCh   chan struct{}
 	closeOnce sync.Once
-	respTopic string
+	respTopic string // guarded by respMu, set on ReadLine, read on publish
 	respMu    sync.Mutex
 	connected atomic.Bool
 	closeMu   sync.Mutex
@@ -41,7 +47,7 @@ type MQTTTransport struct {
 func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 	t := &MQTTTransport{
 		cfg:       &cfg.Transport.MQTT,
-		msgCh:     make(chan string, 4096),
+		msgCh:     make(chan mqttMsg, 4096),
 		closeCh:   make(chan struct{}),
 		respTopic: cfg.Transport.MQTT.ResponseTopic,
 	}
@@ -85,14 +91,9 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		"response_topic", t.cfg.ResponseTopic,
 	)
 
-	// Subscribe to command topic — push payloads to msgCh
+	// Subscribe to command topic — push payloads with response topic to msgCh
 	token = t.client.Subscribe(t.cfg.Topic, 0, func(c mqtt.Client, msg mqtt.Message) {
-		// Derive response topic from the actual incoming topic
 		respTopic := deriveResponseTopic(t.cfg.Topic, t.cfg.ResponseTopic, msg.Topic())
-		t.respMu.Lock()
-		t.respTopic = respTopic
-		t.respMu.Unlock()
-
 		payload := string(msg.Payload())
 		zap.S().Debugw("mqtt command received",
 			"topic", msg.Topic(),
@@ -100,7 +101,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 			"payload", truncate(payload, 200),
 		)
 		select {
-		case t.msgCh <- payload:
+		case t.msgCh <- mqttMsg{payload: payload, respTopic: respTopic}:
 		case <-time.After(10 * time.Second):
 			zap.S().Errorw("mqtt message dropped after 10s timeout, channel full")
 		}
@@ -121,7 +122,11 @@ func (t *MQTTTransport) ReadLine() (string, error) {
 			return "", fmt.Errorf("mqtt transport closed")
 		}
 		msgsReceived.Inc()
-		return msg, nil
+		// Store the response topic atomically so publish() uses the correct topic
+		t.respMu.Lock()
+		t.respTopic = msg.respTopic
+		t.respMu.Unlock()
+		return msg.payload, nil
 	case <-t.closeCh:
 		return "", fmt.Errorf("mqtt transport closed")
 	}

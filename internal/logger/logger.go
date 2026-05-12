@@ -45,7 +45,7 @@ func getSyncer(cfg Config) zapcore.WriteSyncer {
 
 	dir := filepath.Dir(cfg.File)
 	if dir != "." {
-		os.MkdirAll(dir, 0755)
+		os.MkdirAll(dir, 0700)
 	}
 
 	maxSize := cfg.MaxSize

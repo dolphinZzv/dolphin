@@ -36,6 +36,7 @@ type Config struct {
 	Diary     DiaryConfig     `mapstructure:"diary"`
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
+	Plugins   PluginsConfig   `mapstructure:"plugins"`
 }
 
 type LLMConfig struct {
@@ -124,10 +125,11 @@ func TimeoutDuration(sec int) time.Duration {
 }
 
 type ShellConfig struct {
-	Enabled         bool     `mapstructure:"enabled"`
-	AllowedCommands []string `mapstructure:"allowed_commands"` // empty = allow all
-	TimeoutSeconds  int      `mapstructure:"timeout_seconds"`
-	Priority        int      `mapstructure:"priority"` // tool listing priority (lower = preferred)
+	Enabled          bool     `mapstructure:"enabled"`
+	AllowedCommands  []string `mapstructure:"allowed_commands"`   // empty = allow all
+	MaxCommandLength int      `mapstructure:"max_command_length"` // 0 = use default
+	TimeoutSeconds   int      `mapstructure:"timeout_seconds"`
+	Priority         int      `mapstructure:"priority"`
 }
 
 type CDPConfig struct {
@@ -175,6 +177,14 @@ type DiaryConfig struct {
 type MetricsConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9090"
+}
+
+type PluginsConfig struct {
+	Enabled        bool     `mapstructure:"enabled"`
+	Dir            string   `mapstructure:"dir"`             // script plugins directory
+	WebhookURL     string   `mapstructure:"webhook_url"`     // HTTP POST events here
+	WebhookEvents  []string `mapstructure:"webhook_events"`  // event types to send, ["*"] for all
+	HeartbeatTurns int      `mapstructure:"heartbeat_turns"` // emit heartbeat every N turns, 0=off
 }
 
 func Load(cfgFile string) (*Config, error) {
@@ -280,21 +290,35 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Transport.MQTT.Enabled = v == "true" || v == "1"
 	}
 
-	// Auto-generate SSH password if empty
+	// Auto-generate SSH password if empty. Fails closed — if generation fails,
+	// the SSH transport will refuse to start (checked in NewSSHTransport).
 	if cfg.Transport.SSH.Enabled && cfg.Transport.SSH.Password == "" {
-		hd, _ := os.UserHomeDir()
+		hd, err := os.UserHomeDir()
+		if err != nil {
+			hd = "/tmp"
+		}
 		pwFile := filepath.Join(hd, UserConfigDir, "ssh_password")
 		if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 {
 			cfg.Transport.SSH.Password = string(data)
 		} else {
 			buf := make([]byte, 16)
-			rand.Read(buf)
-			cfg.Transport.SSH.Password = hex.EncodeToString(buf)
-			os.MkdirAll(filepath.Dir(pwFile), 0700)
-			os.WriteFile(pwFile, []byte(cfg.Transport.SSH.Password), 0600)
-			fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password saved to: %s ===\n", pwFile)
-			fmt.Fprintf(os.Stderr, "Username: %s\n", cfg.Transport.SSH.Username)
-			fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext. For better security, configure SSH key authentication.\n")
+			if _, err := rand.Read(buf); err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: failed to generate SSH password: %v\n", err)
+				cfg.Transport.SSH.Password = ""
+			} else {
+				cfg.Transport.SSH.Password = hex.EncodeToString(buf)
+				if err := os.MkdirAll(filepath.Dir(pwFile), 0700); err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: failed to create SSH password directory: %v\n", err)
+					cfg.Transport.SSH.Password = ""
+				} else if err := os.WriteFile(pwFile, []byte(cfg.Transport.SSH.Password), 0600); err != nil {
+					fmt.Fprintf(os.Stderr, "ERROR: failed to write SSH password: %v\n", err)
+					cfg.Transport.SSH.Password = ""
+				} else {
+					fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password saved to: %s ===\n", pwFile)
+					fmt.Fprintf(os.Stderr, "Username: %s\n", cfg.Transport.SSH.Username)
+					fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext. For better security, configure SSH key authentication.\n")
+				}
+			}
 		}
 	}
 
@@ -387,7 +411,7 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	}
 
 	// Append to existing file (preserve other settings)
-	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("open config: %w", err)
 	}
@@ -487,6 +511,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.shell.enabled", true)
 	v.SetDefault("mcp.shell.timeout_seconds", 30)
 	v.SetDefault("mcp.shell.priority", 10)
+	v.SetDefault("mcp.shell.max_command_length", 4096)
 	v.SetDefault("mcp.cdp.enabled", true)
 	v.SetDefault("mcp.cdp.headless", true)
 	v.SetDefault("mcp.cdp.priority", 1000)
@@ -506,7 +531,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("crontab.check_interval", "30s")
 
 	v.SetDefault("pprof.enabled", false)
-	v.SetDefault("pprof.addr", ":6060")
+	v.SetDefault("pprof.addr", "127.0.0.1:6060")
 
 	v.SetDefault("diary.dir", ".dolphin/diary")
 	v.SetDefault("diary.max_day_sessions", 200)
@@ -516,8 +541,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("diary.max_total_mb", 500)
 
 	v.SetDefault("metrics.enabled", false)
-	v.SetDefault("metrics.addr", ":9090")
+	v.SetDefault("metrics.addr", "127.0.0.1:9090")
 
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_file", ".dolphin/logs/agent.log")
+
+	v.SetDefault("plugins.enabled", true)
+	v.SetDefault("plugins.dir", "~/.dolphin/plugins/")
+	v.SetDefault("plugins.webhook_url", "")
+	v.SetDefault("plugins.heartbeat_turns", 0)
+	v.SetDefault("plugins.webhook_events", []string{"*"})
 }

@@ -151,6 +151,7 @@ func TestNewSSHTransportWithEphemeralKey(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Transport.SSH.Enabled = true
 	cfg.Transport.SSH.HostKey = "/nonexistent/path/key"
+	cfg.Transport.SSH.Password = "test-password"
 
 	handler := func(_ context.Context, _ UserIO) {}
 	_, err := NewSSHTransport(cfg, handler)

@@ -44,7 +44,7 @@ func (s *Session) GenerateSummary(dir string, toolCalls int, errors int, compres
 	}
 
 	path := filepath.Join(dir, string(s.ID)+"-summary.json")
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write summary: %w", err)
 	}
 

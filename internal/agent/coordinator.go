@@ -10,6 +10,7 @@ import (
 
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
@@ -51,6 +52,8 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		provider:   agent.provider,
 		ctxBuilder: agent.ctxBuilder,
 		compressor: comp,
+		hooks:      agent.hooks,
+		events:     agent.events,
 	}
 	return &Coordinator{
 		Agent: coordAgent,
@@ -216,7 +219,23 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		sess.Turn = state.Turn
 
 		// Collect pending agent results
-		c.pending = append(c.pending, c.pool.Collect()...)
+		collected := c.pool.Collect()
+		c.pending = append(c.pending, collected...)
+		// Emit agent:completed events
+		if c.events != nil {
+			for _, r := range collected {
+				c.events.Emit(ctx, event.Event{
+					Type:      event.TypeAgentCompleted,
+					SessionID: string(sess.ID),
+					Data: map[string]any{
+						"agent_name":  r.AgentName,
+						"task_id":     r.TaskID,
+						"success":     r.Success,
+						"duration_ms": r.DurationMs,
+					},
+				})
+			}
+		}
 
 		// Bound pending slice to prevent unbounded growth (P0#1)
 		maxResults := c.cfg.Pool.MaxPendingResults
@@ -532,6 +551,17 @@ func (c *Coordinator) handleDispatchTask(_ context.Context, input json.RawMessag
 		return &mcp.ToolResult{Content: "dispatch failed: " + err.Error(), IsError: true}, nil
 	}
 
+	if c.events != nil {
+		c.events.Emit(context.Background(), event.Event{
+			Type:      event.TypeAgentDispatched,
+			SessionID: string(c.pool.ParentSessionID()),
+			Data: map[string]any{
+				"agent":   params.Agent,
+				"task_id": task.ID,
+			},
+		})
+	}
+
 	result := fmt.Sprintf("Task dispatched to %s (task_id: %s). The agent is processing it asynchronously.",
 		params.Agent, task.ID)
 	return &mcp.ToolResult{Content: result}, nil
@@ -722,6 +752,14 @@ func (c *Coordinator) handleLoadSkill(_ context.Context, input json.RawMessage) 
 	}
 
 	c.skills.RecordUsage(params.Name)
+
+	if c.events != nil {
+		c.events.Emit(context.Background(), event.Event{
+			Type:      event.TypeSkillLoaded,
+			SessionID: string(c.pool.ParentSessionID()),
+			Data:      map[string]any{"skill": params.Name},
+		})
+	}
 
 	result := fmt.Sprintf("# Skill: %s\n\n%s\n\n---\nLoaded skill %q. Use these instructions to guide your work.", s.Name, s.Content, s.Name)
 	return &mcp.ToolResult{Content: result}, nil

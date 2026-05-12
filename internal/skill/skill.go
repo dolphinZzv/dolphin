@@ -207,7 +207,7 @@ func (m *Manager) Register(name, description, content string) error {
 	}
 	sb.WriteString(content)
 
-	return os.WriteFile(filepath.Join(dir, name+".md"), []byte(sb.String()), 0644)
+	return os.WriteFile(filepath.Join(dir, name+".md"), []byte(sb.String()), 0600)
 }
 
 // Unregister removes a skill from memory and deletes its file from the
@@ -298,7 +298,9 @@ func parseSkillFile(data []byte, filename string) *Skill {
 				Name        string `yaml:"name"`
 				Description string `yaml:"description"`
 			}
-			if err := yaml.Unmarshal([]byte(frontmatter), &fm); err == nil {
+			dec := yaml.NewDecoder(strings.NewReader(frontmatter))
+			dec.KnownFields(true)
+			if err := dec.Decode(&fm); err == nil {
 				if fm.Name != "" {
 					skill.Name = fm.Name
 				}

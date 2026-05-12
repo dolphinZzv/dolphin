@@ -106,7 +106,7 @@ func (m *Manager) Load() error {
 // writeEmptyFile creates a new CRONTAB.md with a header comment.
 func (m *Manager) writeEmptyFile() error {
 	dir := filepath.Dir(m.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 	header := `# CRONTAB.md — Scheduled tasks
@@ -114,7 +114,7 @@ func (m *Manager) writeEmptyFile() error {
 # Fields: name, schedule (5-field cron), description, enabled (true/false).
 
 `
-	return os.WriteFile(m.filePath, []byte(header), 0644)
+	return os.WriteFile(m.filePath, []byte(header), 0600)
 }
 
 // parseEntries parses all entries from CRONTAB.md content line by line.
@@ -164,7 +164,9 @@ func parseEntries(data []byte) ([]*CronTask, error) {
 
 		// Parse frontmatter YAML
 		var task CronTask
-		if err := yaml.Unmarshal([]byte(strings.Join(yamlLines, "\n")), &task); err != nil {
+		dec := yaml.NewDecoder(strings.NewReader(strings.Join(yamlLines, "\n")))
+		dec.KnownFields(true)
+		if err := dec.Decode(&task); err != nil {
 			zap.S().Warnw("skipping crontab entry with invalid frontmatter", "error", err)
 			continue
 		}
@@ -308,7 +310,7 @@ func (m *Manager) AddTask(task *CronTask) error {
 	buf.WriteString("\n")
 
 	// Append to file
-	f, err := os.OpenFile(m.filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	f, err := os.OpenFile(m.filePath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	if err != nil {
 		return fmt.Errorf("open crontab file: %w", err)
 	}
@@ -448,7 +450,7 @@ func (m *Manager) rewriteFileLocked() {
 		buf.WriteString("\n")
 	}
 
-	if err := os.WriteFile(m.filePath, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(m.filePath, buf.Bytes(), 0600); err != nil {
 		zap.S().Errorw("write crontab file", "error", err)
 	}
 }

@@ -147,7 +147,9 @@ func parseCommandFile(data []byte, filename string) *Command {
 				Name        string `yaml:"name"`
 				Description string `yaml:"description"`
 			}
-			if err := yaml.Unmarshal([]byte(frontmatter), &fm); err == nil {
+			dec := yaml.NewDecoder(strings.NewReader(frontmatter))
+			dec.KnownFields(true)
+			if err := dec.Decode(&fm); err == nil {
 				if fm.Name != "" {
 					cmd.Name = fm.Name
 				}

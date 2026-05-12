@@ -113,6 +113,9 @@ func (p *AgentPool) SetParentSessionID(id session.SessionID) {
 	p.parentSessionID = id
 }
 
+// ParentSessionID returns the current parent session ID.
+func (p *AgentPool) ParentSessionID() session.SessionID { return p.parentSessionID }
+
 // Add registers a new agent in the pool and starts its worker goroutine.
 func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent, tools *mcp.Registry) *AgentInstance {
 	// Build filtered tool registry

@@ -20,7 +20,7 @@ func NewStdioTransport() *StdioTransport {
 	home, _ := os.UserHomeDir()
 	historyDir := filepath.Join(home, ".dolphin")
 	historyFile := filepath.Join(historyDir, "history")
-	os.MkdirAll(historyDir, 0755)
+	os.MkdirAll(historyDir, 0700)
 
 	rl, err := readline.NewEx(&readline.Config{
 		Prompt:              "> ",

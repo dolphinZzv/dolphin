@@ -325,7 +325,7 @@ func (d *Diary) loadDaySessions(date time.Time) []SessionRef {
 // writeDay writes a day's sessions.jsonl and day.json.
 func (d *Diary) writeDay(date time.Time, sessions []SessionRef) error {
 	dir := d.dayDir(date)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
 
@@ -475,7 +475,7 @@ func (d *Diary) cascadeWeek(weekKey string) {
 	// Use the month of the first day entry
 	mo := dayEntries[0].Date[5:7]
 	weekDir := filepath.Join(d.dir, fmt.Sprintf("%04d", year), mo)
-	os.MkdirAll(weekDir, 0755)
+	os.MkdirAll(weekDir, 0700)
 	weekPath := filepath.Join(weekDir, weekKey+".json")
 	atomicWriteJSON(weekPath, entry)
 }
@@ -745,7 +745,7 @@ func (d *Diary) readLastSync() time.Time {
 }
 
 func (d *Diary) writeLastSync(ts time.Time) {
-	os.MkdirAll(d.dir, 0755)
+	os.MkdirAll(d.dir, 0700)
 	data, _ := json.Marshal(struct {
 		TS time.Time `json:"ts"`
 	}{TS: ts})
@@ -755,7 +755,7 @@ func (d *Diary) writeLastSync(ts time.Time) {
 // atomicWrite writes data to a file atomically via tmp + rename.
 func atomicWrite(path string, data []byte) error {
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return err
 	}
 	return os.Rename(tmpPath, path)

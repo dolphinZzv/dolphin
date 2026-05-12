@@ -118,13 +118,13 @@ func TestMQTTTransportReadLineClosed(t *testing.T) {
 
 func TestMQTTTransportReadLineReceivesPayload(t *testing.T) {
 	tp := &MQTTTransport{
-		msgCh:   make(chan string, 4),
+		msgCh:   make(chan mqttMsg, 4),
 		closeCh: make(chan struct{}),
 	}
 
 	// Send a payload through the channel
 	go func() {
-		tp.msgCh <- "hello from mqtt"
+		tp.msgCh <- mqttMsg{payload: "hello from mqtt", respTopic: "resp/test"}
 	}()
 
 	line, err := tp.ReadLine()
@@ -156,7 +156,7 @@ func TestMQTTTransportWriteLinePublish(t *testing.T) {
 
 func TestMQTTTransportConcurrentReadClose(t *testing.T) {
 	tp := &MQTTTransport{
-		msgCh:   make(chan string, 4),
+		msgCh:   make(chan mqttMsg, 4),
 		closeCh: make(chan struct{}),
 	}
 
@@ -185,19 +185,18 @@ func TestMQTTTransportConcurrentReadClose(t *testing.T) {
 func TestMQTTTransportChannelFullDropped(t *testing.T) {
 	tp := &MQTTTransport{
 		cfg:     &config.MQTTConfig{Topic: "cmd", ResponseTopic: "resp"},
-		msgCh:   make(chan string, 1),
+		msgCh:   make(chan mqttMsg, 1),
 		closeCh: make(chan struct{}),
 	}
 	tp.connected.Store(true)
 
 	// Fill the channel
-	tp.msgCh <- "first"
+	tp.msgCh <- mqttMsg{payload: "first", respTopic: "resp"}
 
 	// This should not panic — the MQTT callback path uses select/default
 	// Simulate what the subscribe callback does:
-	payload := "second"
 	select {
-	case tp.msgCh <- payload:
+	case tp.msgCh <- mqttMsg{payload: "second", respTopic: "resp"}:
 		t.Log("second message sent (unexpected — channel should be full)")
 	default:
 		t.Log("second message correctly dropped (channel full)")
@@ -206,8 +205,8 @@ func TestMQTTTransportChannelFullDropped(t *testing.T) {
 	// Drain and verify
 	select {
 	case msg := <-tp.msgCh:
-		if msg != "first" {
-			t.Errorf("expected 'first', got %q", msg)
+		if msg.payload != "first" {
+			t.Errorf("expected 'first', got %q", msg.payload)
 		}
 	default:
 		t.Error("expected first message to be in channel")

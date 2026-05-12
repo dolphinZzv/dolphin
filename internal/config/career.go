@@ -318,7 +318,7 @@ func GenerateSystemMD(lang i18n.Lang) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return "", err
 	}
-	return path, os.WriteFile(path, []byte(sb.String()), 0644)
+	return path, os.WriteFile(path, []byte(sb.String()), 0600)
 }
 
 // PromptSystemMD asks the user whether to auto-generate SYSTEM.md with system info.

@@ -630,8 +630,8 @@ func TestGenerateSummaryFileContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
-	if info.Mode().Perm() != 0644 {
-		t.Errorf("file mode = %o, want 0644", info.Mode().Perm())
+	if info.Mode().Perm() != 0600 {
+		t.Errorf("file mode = %o, want 0600", info.Mode().Perm())
 	}
 }
 

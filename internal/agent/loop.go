@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/event"
+	"dolphin/internal/hook"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
@@ -17,12 +19,15 @@ import (
 
 // Agent is the core agent that runs the agent loop.
 type Agent struct {
-	cfg        *config.Config
-	sessMgr    *session.Manager
-	toolReg    *mcp.Registry
-	provider   Provider
-	ctxBuilder *ContextBuilder
-	compressor Compressor
+	cfg               *config.Config
+	sessMgr           *session.Manager
+	toolReg           *mcp.Registry
+	provider          Provider
+	ctxBuilder        *ContextBuilder
+	compressor        Compressor
+	hooks             *hook.Registry
+	events            *event.EventBus
+	heartbeatInterval int // emit heartbeat event every N turns, 0=off
 }
 
 // LoopState holds state for a single agent run.
@@ -70,6 +75,15 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 }
 
 // Run starts the agent loop with interactive I/O (stdio, SSH, etc.).
+// SetHooks sets the hook registry for this agent.
+func (a *Agent) SetHooks(h *hook.Registry) { a.hooks = h }
+
+// SetEventBus sets the event bus for this agent.
+func (a *Agent) SetEventBus(b *event.EventBus) { a.events = b }
+
+// SetHeartbeatInterval configures heartbeat event emission every N turns. 0 disables.
+func (a *Agent) SetHeartbeatInterval(n int) { a.heartbeatInterval = n }
+
 func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	zap.S().Infow("agent starting")
 
@@ -84,6 +98,23 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 
 	defer func() {
 		a.generateSummary(sess, state)
+		sid := string(sess.ID)
+		// Fire session:end hook + event
+		if a.hooks != nil {
+			a.hooks.Fire(context.Background(), hook.PointSessionEnd, &hook.Context{
+				SessionID: sid,
+				Turn:      state.Turn,
+				Values:    map[string]any{"stop_reason": state.StopReason},
+			})
+		}
+		if a.events != nil {
+			a.events.Emit(context.Background(), event.Event{
+				Type:      event.TypeSessionEnded,
+				SessionID: sid,
+				Turn:      state.Turn,
+				Data:      map[string]any{"stop_reason": state.StopReason},
+			})
+		}
 		sess.Close()
 		a.sessMgr.Remove(sess.ID)
 	}()
@@ -121,6 +152,19 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		io.WriteLine("")
 	}
 	io.WriteLine("")
+
+	// Fire session:start hook + event
+	sid := string(sess.ID)
+	hc := &hook.Context{SessionID: sid, Turn: 0, Values: make(map[string]any)}
+	if a.hooks != nil {
+		a.hooks.Fire(ctx, hook.PointSessionStart, hc)
+	}
+	if a.events != nil {
+		a.events.Emit(ctx, event.Event{
+			Type:      event.TypeSessionCreated,
+			SessionID: sid,
+		})
+	}
 
 	for {
 		select {
@@ -186,6 +230,21 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			continue
 		}
 
+		// Hook: user:input — can rewrite or reject input
+		if a.hooks != nil {
+			hc := &hook.Context{
+				SessionID: string(sess.ID),
+				Turn:      state.Turn + 1,
+				UserInput: line,
+				Values:    make(map[string]any),
+			}
+			if err := a.hooks.Fire(ctx, hook.PointUserInput, hc); err != nil {
+				io.WriteLine(fmt.Sprintf("[Rejected: %v]", err))
+				continue
+			}
+			line = hc.UserInput
+		}
+
 		state.Turn++
 		sess.Turn = state.Turn
 
@@ -194,16 +253,47 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		state.Messages = append(state.Messages, Message{Role: "user", Content: userContent})
 		sess.LogMessage("user", userContent)
 
+		// Emit user:message event
+		if a.events != nil {
+			a.events.Emit(ctx, event.Event{
+				Type:      event.TypeUserMessage,
+				SessionID: string(sess.ID),
+				Turn:      state.Turn,
+				Data:      map[string]any{"content": line},
+			})
+		}
+
 		// Run agent sub-loop (handles tool call feedback cycles)
 		if err := a.runTurn(ctx, state, systemPrompt, io, a.toolReg); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
+			if a.hooks != nil {
+				hc := &hook.Context{SessionID: string(sess.ID), Turn: state.Turn, Error: err}
+				a.hooks.Fire(ctx, hook.PointOnError, hc)
+			}
+			if a.events != nil {
+				a.events.Emit(ctx, event.Event{
+					Type:      event.TypeError,
+					SessionID: string(sess.ID),
+					Turn:      state.Turn,
+					Data:      map[string]any{"error": err.Error()},
+				})
+			}
 		}
 	}
 }
 
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
 func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry) error {
+	// Emit heartbeat event if configured
+	if a.heartbeatInterval > 0 && state.Turn > 0 && state.Turn%a.heartbeatInterval == 0 && a.events != nil {
+		a.events.Emit(ctx, event.Event{
+			Type:      event.TypeHeartbeat,
+			SessionID: string(state.Sess.ID),
+			Turn:      state.Turn,
+		})
+	}
+
 	maxSubTurns := a.cfg.LLM.MaxSubTurns
 	if maxSubTurns <= 0 {
 		maxSubTurns = 10
@@ -233,6 +323,18 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			"tokens_saved", report.TokensSaved,
 			"turn", state.Turn,
 		)
+		// Emit compression event
+		if a.events != nil {
+			a.events.Emit(ctx, event.Event{
+				Type:      event.TypeCompression,
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Data: map[string]any{
+					"dropped":      report.DroppedCount,
+					"tokens_saved": report.TokensSaved,
+				},
+			})
+		}
 	}
 
 	for i := 0; i < maxSubTurns; i++ {
@@ -273,15 +375,35 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			"tools", len(toolDefs),
 		)
 
-		// Call LLM with retry and streaming
-		llmStart := time.Now()
-		streamCh, err := a.callLLMWithRetry(ctx, ProviderRequest{
+		// Build LLM request (hooks may modify it)
+		req := &ProviderRequest{
 			Messages:  state.Messages,
 			System:    systemPrompt,
 			Tools:     toolDefs,
 			MaxTokens: a.cfg.LLM.MaxTokens,
 			Model:     a.cfg.LLM.Model,
-		})
+		}
+
+		// Hook: llm:before — plugins can modify the request or abort
+		if a.hooks != nil {
+			hc := &hook.Context{
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Request:   req,
+				Values:    make(map[string]any),
+			}
+			if err := a.hooks.Fire(ctx, hook.PointBeforeLLM, hc); err != nil {
+				return fmt.Errorf("llm call blocked: %w", err)
+			}
+			// Apply any modifications to the request
+			if modified, ok := hc.Request.(*ProviderRequest); ok {
+				state.Messages = modified.Messages
+			}
+		}
+
+		// Call LLM with retry and streaming
+		llmStart := time.Now()
+		streamCh, err := a.callLLMWithRetry(ctx, *req)
 		if err != nil {
 			return fmt.Errorf("llm call: %w", err)
 		}
@@ -312,6 +434,18 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			if blockBuf.Len() > 0 {
 				io.WriteString(blockBuf.String())
 				blockBuf.Reset()
+			}
+		}
+
+		// Hook: response:before — last chance to abort before output
+		if a.hooks != nil {
+			hc := &hook.Context{
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Values:    make(map[string]any),
+			}
+			if err := a.hooks.Fire(ctx, hook.PointBeforeResponse, hc); err != nil {
+				return fmt.Errorf("response blocked: %w", err)
 			}
 		}
 
@@ -440,6 +574,28 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			)
 		}
 
+		// Hook: llm:after
+		if a.hooks != nil {
+			a.hooks.Fire(ctx, hook.PointAfterLLM, &hook.Context{
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Response:  &ProviderResponse{Content: content, ToolCalls: providerToolCalls, Usage: finalUsage},
+			})
+		}
+		if a.events != nil {
+			evtData := map[string]any{"tool_calls": len(providerToolCalls)}
+			if finalUsage != nil {
+				evtData["input_tokens"] = finalUsage.InputTokens
+				evtData["output_tokens"] = finalUsage.OutputTokens
+			}
+			a.events.Emit(ctx, event.Event{
+				Type:      event.TypeLLMResponse,
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Data:      evtData,
+			})
+		}
+
 		// No tool calls — final response, done
 		if len(providerToolCalls) == 0 {
 			return nil
@@ -457,9 +613,56 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 				io.WriteLine(fmt.Sprintf("\n[Calling tool: %s]", tc.Name))
 			}
 
+			// Hook: tool:before — can modify args or abort
+			effectiveArgs := tc.Arguments
+			if a.hooks != nil {
+				hc := &hook.Context{
+					SessionID: string(state.Sess.ID),
+					Turn:      state.Turn,
+					ToolName:  tc.Name,
+					ToolArgs:  tc.Arguments,
+					Values:    make(map[string]any),
+				}
+				if err := a.hooks.Fire(ctx, hook.PointBeforeTool, hc); err != nil {
+					return fmt.Errorf("tool %s blocked: %w", tc.Name, err)
+				}
+				effectiveArgs = hc.ToolArgs
+			}
+			// Emit tool:called event
+			if a.events != nil {
+				a.events.Emit(ctx, event.Event{
+					Type:      event.TypeToolCalled,
+					SessionID: string(state.Sess.ID),
+					Turn:      state.Turn,
+					Data:      map[string]any{"tool": tc.Name},
+				})
+			}
+
 			toolStart := time.Now()
-			result, err := toolReg.Execute(ctx, tc.Name, tc.Arguments)
+			result, err := toolReg.Execute(ctx, tc.Name, effectiveArgs)
 			toolDuration := time.Since(toolStart)
+
+			// Hook: tool:after
+			if a.hooks != nil {
+				a.hooks.Fire(ctx, hook.PointAfterTool, &hook.Context{
+					SessionID:  string(state.Sess.ID),
+					Turn:       state.Turn,
+					ToolName:   tc.Name,
+					ToolResult: result,
+				})
+			}
+			// Emit tool:completed event
+			if a.events != nil {
+				a.events.Emit(ctx, event.Event{
+					Type:      event.TypeToolCompleted,
+					SessionID: string(state.Sess.ID),
+					Turn:      state.Turn,
+					Data: map[string]any{
+						"tool":     tc.Name,
+						"duration": toolDuration.String(),
+					},
+				})
+			}
 
 			resultContent := ""
 			if err != nil {

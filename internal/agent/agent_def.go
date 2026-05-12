@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 
@@ -51,7 +52,7 @@ func LoadAgentDefs(agentsDir string) (map[string]*AgentDef, error) {
 			def.Workspace = filepath.Join(filepath.Dir(agentsDir), "workspaces", name)
 		}
 		// Ensure workspace exists
-		os.MkdirAll(def.Workspace, 0755)
+		os.MkdirAll(def.Workspace, 0700)
 
 		defs[name] = def
 		zap.S().Infow("loaded agent definition",
@@ -71,7 +72,9 @@ func loadAgentYAML(path string) (*AgentDef, error) {
 	}
 
 	var def AgentDef
-	if err := yaml.Unmarshal(data, &def); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&def); err != nil {
 		return nil, err
 	}
 

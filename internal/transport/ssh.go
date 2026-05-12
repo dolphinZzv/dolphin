@@ -33,6 +33,9 @@ type SSHTransport struct {
 
 func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) (*SSHTransport, error) {
 	sshCfg := cfg.Transport.SSH
+	if sshCfg.Password == "" {
+		return nil, fmt.Errorf("ssh password is empty — set transport.ssh.password in config or ensure auto-generation succeeds")
+	}
 	serverCfg := &gossh.ServerConfig{
 		PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
 			zap.S().Debugw("ssh password auth", "user", conn.User())
@@ -402,9 +405,9 @@ func loadHostKey(path string) (gossh.Signer, error) {
 		if err != nil {
 			return nil, err
 		}
-		path = home + path[1:]
+		path = filepath.Clean(home + path[1:])
 	}
-	keyData, err := os.ReadFile(path)
+	keyData, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}

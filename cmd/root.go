@@ -15,10 +15,13 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/diary"
+	"dolphin/internal/event"
+	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/logger"
 	"dolphin/internal/mcp"
 	"dolphin/internal/metrics"
+	"dolphin/internal/plugin"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
@@ -208,9 +211,38 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		zap.S().Infow("crontab loaded", "file", cfg.Crontab.File)
 	}
 
+	// Init plugin system: hooks (sync) + events (async)
+	hooks := hook.NewRegistry()
+	bus := event.NewEventBus(256)
+	pm := plugin.NewManager(hooks, bus)
+
+	// Configure webhook delivery (built-in, no plugin needed)
+	if cfg.Plugins.WebhookURL != "" {
+		eventTypes := make([]event.Type, len(cfg.Plugins.WebhookEvents))
+		for i, et := range cfg.Plugins.WebhookEvents {
+			eventTypes[i] = event.Type(et)
+		}
+		if len(eventTypes) == 0 {
+			eventTypes = []event.Type{"*"}
+		}
+		bus.SetWebhook(cfg.Plugins.WebhookURL, eventTypes)
+		zap.S().Infow("webhook delivery configured", "url", cfg.Plugins.WebhookURL, "events", cfg.Plugins.WebhookEvents)
+	}
+
+	// Load script plugins from filesystem
+	if cfg.Plugins.Enabled && cfg.Plugins.Dir != "" {
+		if err := pm.LoadScripts(cfg.Plugins.Dir); err != nil {
+			zap.S().Warnw("failed to load script plugins", "error", err)
+		}
+	}
+	pm.Activate()
+
 	// Factory: creates a new coordinator per transport connection
 	newCoordinator := func() *agent.Coordinator {
 		agt := agent.New(cfg, sessMgr, toolRegistry)
+		agt.SetHooks(hooks)
+		agt.SetEventBus(bus)
+		agt.SetHeartbeatInterval(cfg.Plugins.HeartbeatTurns)
 		pool := agent.NewAgentPool(context.Background(), poolCfg)
 		if hasAgents {
 			for name, def := range agentDefs {

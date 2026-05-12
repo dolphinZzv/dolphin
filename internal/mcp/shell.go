@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -71,6 +72,15 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+
+	// Enforce command length limit
+	maxLen := s.cfg.MaxCommandLength
+	if maxLen <= 0 {
+		maxLen = 4096
+	}
+	if len(params.Command) > maxLen {
+		return &ToolResult{Content: fmt.Sprintf("command too long (%d bytes, max %d)", len(params.Command), maxLen), IsError: true}, nil
 	}
 
 	allowed := s.cfg.AllowedCommands
@@ -145,8 +155,10 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 }
 
 func (s *ShellTool) isAllowed(cmdName string) bool {
+	// Normalize: extract base name to prevent path bypass (e.g. /usr/bin/cat → cat)
+	name := filepath.Base(cmdName)
 	for _, a := range s.cfg.AllowedCommands {
-		if cmdName == a {
+		if name == a || cmdName == a {
 			return true
 		}
 	}
