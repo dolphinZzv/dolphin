@@ -334,6 +334,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// MQTT transport + coordinator
 	if cfg.Transport.MQTT.Enabled {
 		zap.S().Infow("starting mqtt transport", "broker", cfg.Transport.MQTT.Broker)
+		fmt.Fprintf(os.Stderr, "\n=== MQTT transport active ===\n")
+		fmt.Fprintf(os.Stderr, "Broker: %s  Topic: %s  Client: %s\n\n",
+			cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID)
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)
 
