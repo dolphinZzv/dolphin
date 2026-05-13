@@ -147,9 +147,9 @@ func detectFromEnv() Lang {
 		case strings.HasPrefix(val, "zh"):
 			return ZH
 		case strings.HasPrefix(val, "ja"):
-			return ZH // Japanese → Chinese as closest supported
+			return EN // Japanese → English (no Japanese translation available)
 		case strings.HasPrefix(val, "ko"):
-			return ZH // Korean → Chinese as closest supported
+			return EN // Korean → English (no Korean translation available)
 		}
 	}
 	return EN

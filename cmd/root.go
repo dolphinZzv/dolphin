@@ -81,39 +81,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		warnNoLLM(cfg)
 	}
 
-	// First-run career-guided tool loading (only when stdio is the transport)
-	if config.IsFirstRun() && cfg.Transport.Stdio.Enabled {
-		profile, err := config.RunFirstRunPrompt()
-		if err != nil {
-			zap.S().Warnw("first-run prompt failed", "error", err)
-		}
-		if profile != nil {
-			fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
-			// Augment built-in mapping with tools from configured repos (best-effort)
-			extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
-			allSkills := append([]string{}, profile.Skills...)
-			allSkills = append(allSkills, extraSkills...)
-			allMCP := append([]string{}, profile.MCP...)
-			allMCP = append(allMCP, extraMCP...)
-
-			if len(allSkills) > 0 {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(allSkills, ", "))
-			}
-			if len(allMCP) > 0 {
-				fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(allMCP, ", "))
-			}
-			fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
-			fmt.Fprintf(os.Stderr, "%s\n\n", i18n.TL(i18n.KeySetupHint))
-
-			// Ask about SYSTEM.md generation (first run only)
-			config.PromptSystemMD()
-
-			// Ask about config file generation (first run only)
-			config.PromptConfigFile()
-		}
-		// Always create the marker so first-run only triggers once
-		config.CreateFirstRunMarker()
-	}
+	// First-run career-guided tool loading
+	firstRunSetup(cfg)
 
 	// Init session manager
 	sessMgr := session.NewManager(cfg.Session.Dir)
@@ -161,6 +130,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			zap.S().Debugw("mcp tool", "name", t.Name, "source", t.Source, "desc", t.Description)
 		}
 	}
+
 	// Check for agents directory to decide coordinator vs single-agent mode
 	agentsDir := filepath.Join(".dolphin", "agents")
 	_, coordErr := os.Stat(agentsDir)
@@ -168,7 +138,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	poolCfg := agent.NewPoolConfigFromConfig(cfg.Pool)
 
-	// Pre-load user-created agent definitions (shared across connections)
+	// Pre-load user-created agent definitions
 	var agentDefs map[string]*agent.AgentDef
 	if hasAgents {
 		var err error
@@ -181,33 +151,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		zap.S().Infow("no agents directory, using single-agent mode", "dir", agentsDir)
 	}
 
-	// Initialize skill manager with multi-directory support (user + project)
-	skillDirs := []string{cfg.Skills.Dir}
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		userSkillsDir := filepath.Join(homeDir, config.UserConfigDir, "skills")
-		if userSkillsDir != cfg.Skills.Dir {
-			skillDirs = append([]string{userSkillsDir}, skillDirs...)
-		}
-	}
-	skillMgr := skill.NewManager(skillDirs...)
-	skillMgr.Load()
-	if skills := skillMgr.List(); len(skills) > 0 {
-		zap.S().Infow("skills loaded", "dirs", skillDirs, "count", len(skills))
-	}
-	// Start skill hot-reload watcher (ticker-based polling)
-	go skillMgr.WatchAndReload(context.Background(), 30*time.Second)
-
-	// Initialize user-defined /command manager (multi-dir: user + project)
-	cmdDirs := []string{filepath.Join(config.ProjectConfigDir, "commands")}
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		userCmdDir := filepath.Join(homeDir, config.UserConfigDir, "commands")
-		cmdDirs = append([]string{userCmdDir}, cmdDirs...)
-	}
-	cmdMgr := command.NewManager(cmdDirs...)
-	cmdMgr.Load()
-	if cmds := cmdMgr.List(); len(cmds) > 0 {
-		zap.S().Infow("commands loaded", "dirs", cmdDirs, "count", len(cmds))
-	}
+	// Initialize skill and command managers
+	skillMgr := initSkillManager(cfg)
+	cmdMgr := initCommandManager(cfg)
 
 	// Launch async project detection + repo recommendation (non-blocking)
 	recommendCh := make(chan *config.Recommendation, 1)
@@ -221,19 +167,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Initialize cron task manager
-	cronMgr := scheduler.NewManager(cfg.Crontab)
-	if err := cronMgr.Load(); err != nil {
-		zap.S().Warnw("crontab load error, continuing without scheduled tasks", "error", err)
-	} else {
-		zap.S().Infow("crontab loaded", "file", cfg.Crontab.File)
-	}
+	cronMgr := initCronManager(cfg)
 
 	// Init plugin system: hooks (sync) + events (async)
 	hooks := hook.NewRegistry()
 	bus := event.NewEventBus(256)
 	pm := plugin.NewManager(hooks, bus)
 
-	// Configure webhook delivery (built-in, no plugin needed)
+	// Configure webhook delivery
 	if cfg.Plugins.WebhookURL != "" {
 		eventTypes := make([]event.Type, len(cfg.Plugins.WebhookEvents))
 		for i, et := range cfg.Plugins.WebhookEvents {
@@ -270,7 +211,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
 		coord.SetCronManager(cronMgr)
-		// Non-blocking: pick up async recommendation if ready
 		select {
 		case rec := <-recommendCh:
 			if rec != nil {
@@ -281,12 +221,116 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return coord
 	}
 
-	// ---- Actor group ----
+	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, newCoordinator)
+}
 
+// firstRunSetup runs the first-run career-guided tool loading wizard.
+func firstRunSetup(cfg *config.Config) {
+	if !config.IsFirstRun() || !cfg.Transport.Stdio.Enabled {
+		return
+	}
+	profile, err := config.RunFirstRunPrompt()
+	if err != nil {
+		zap.S().Warnw("first-run prompt failed", "error", err)
+		return
+	}
+	if profile == nil {
+		config.CreateFirstRunMarker()
+		return
+	}
+
+	fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
+	extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
+	allSkills := append([]string{}, profile.Skills...)
+	allSkills = append(allSkills, extraSkills...)
+	allMCP := append([]string{}, profile.MCP...)
+	allMCP = append(allMCP, extraMCP...)
+
+	if len(allSkills) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(allSkills, ", "))
+	}
+	if len(allMCP) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(allMCP, ", "))
+	}
+	fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
+	fmt.Fprintf(os.Stderr, "%s\n\n", i18n.TL(i18n.KeySetupHint))
+
+	config.PromptSystemMD()
+	config.PromptConfigFile()
+	config.CreateFirstRunMarker()
+}
+
+func warnNoLLM(cfg *config.Config) {
+	defaultModel := cfg.LLM.Model
+	if defaultModel == "" {
+		defaultModel = "gpt-4o"
+	}
+	fmt.Fprintf(os.Stderr, "\n⚠  LLM not configured — no API key found.\n")
+	fmt.Fprintf(os.Stderr, "   Default model: %s (base_url: %s)\n", defaultModel, cfg.LLM.BaseURL)
+	fmt.Fprintf(os.Stderr, "   Set DZ_LLM_API_KEY environment variable or add api_key to config.\n")
+	fmt.Fprintf(os.Stderr, "   Run:  dolphin setup\n\n")
+}
+
+func setupLogging(cfg *config.Config) {
+	logger.Init(logger.Config{
+		Level:     cfg.LogLevel,
+		File:      cfg.LogFile,
+		MaxSize:   100,
+		MaxAge:    30,
+		MaxBackup: 3,
+	})
+}
+
+// initSkillManager creates and starts the skill manager with multi-directory support.
+func initSkillManager(cfg *config.Config) *skill.Manager {
+	skillDirs := []string{cfg.Skills.Dir}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userSkillsDir := filepath.Join(homeDir, config.UserConfigDir, "skills")
+		if userSkillsDir != cfg.Skills.Dir {
+			skillDirs = append([]string{userSkillsDir}, skillDirs...)
+		}
+	}
+	mgr := skill.NewManager(skillDirs...)
+	mgr.Load()
+	if skills := mgr.List(); len(skills) > 0 {
+		zap.S().Infow("skills loaded", "dirs", skillDirs, "count", len(skills))
+	}
+	go mgr.WatchAndReload(context.Background(), 30*time.Second)
+	return mgr
+}
+
+// initCommandManager creates and loads the user-defined /command manager.
+func initCommandManager(cfg *config.Config) *command.Manager {
+	cmdDirs := []string{filepath.Join(config.ProjectConfigDir, "commands")}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userCmdDir := filepath.Join(homeDir, config.UserConfigDir, "commands")
+		cmdDirs = append([]string{userCmdDir}, cmdDirs...)
+	}
+	mgr := command.NewManager(cmdDirs...)
+	mgr.Load()
+	if cmds := mgr.List(); len(cmds) > 0 {
+		zap.S().Infow("commands loaded", "dirs", cmdDirs, "count", len(cmds))
+	}
+	return mgr
+}
+
+// initCronManager creates and loads the cron task manager.
+func initCronManager(cfg *config.Config) *scheduler.Manager {
+	mgr := scheduler.NewManager(cfg.Crontab)
+	if err := mgr.Load(); err != nil {
+		zap.S().Warnw("crontab load error, continuing without scheduled tasks", "error", err)
+	} else {
+		zap.S().Infow("crontab loaded", "file", cfg.Crontab.File)
+	}
+	return mgr
+}
+
+// runActorGroup builds and runs the actor group for all enabled transports and services.
+func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.CDPTool, sessMgr *session.Manager, newCoordinator func() *agent.Coordinator) error {
 	var g run.Group
 	actorCount := 0
 
-	// Signal handling actor — exits the group on SIGINT/SIGTERM
+	// Signal handling actor
 	{
 		sigCh := make(chan os.Signal, 1)
 		g.Add(func() error {
@@ -301,7 +345,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		actorCount++
 	}
 
-	// Session reaper actor — periodically cleans old session files
+	// Session reaper actor
 	if maxAge, err := time.ParseDuration(cfg.Session.MaxAge); err == nil && maxAge > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -316,7 +360,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		zap.S().Warnw("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
 	}
 
-	// Diary actor — startup async catch-up + daily 20:00 sync
+	// Diary actor
 	if cfg.Diary.Dir != "" {
 		d := diary.New(diary.Config{
 			Dir:            cfg.Diary.Dir,
@@ -326,25 +370,20 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			MaxYearMonths:  cfg.Diary.MaxYearMonths,
 			MaxTotalMB:     cfg.Diary.MaxTotalMB,
 		}, cfg.Session.Dir)
-
-		// Startup: async catch-up for any unprocessed days
 		go func() { d.Sync() }()
 
-		// Daily 20:00 timer
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
-			zap.S().Infow("diary: daily sync timer started", "time", "20:00")
 			for {
 				now := time.Now()
 				next := time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, now.Location())
 				if now.After(next) {
 					next = next.AddDate(0, 0, 1)
 				}
-				wait := next.Sub(now)
 				select {
 				case <-ctx.Done():
 					return nil
-				case <-time.After(wait):
+				case <-time.After(next.Sub(now)):
 					d.Sync()
 				}
 			}
@@ -368,7 +407,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "\n=== SSH server listening on %s ===\n", addr)
 		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
-		zap.S().Infow("ssh transport listening", "addr", addr)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -380,12 +418,12 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		actorCount++
 	}
 
-	// MQTT transport + coordinator
+	// MQTT transport
 	if cfg.Transport.MQTT.Enabled {
-		zap.S().Infow("starting mqtt transport", "broker", cfg.Transport.MQTT.Broker)
 		fmt.Fprintf(os.Stderr, "\n=== MQTT transport active ===\n")
 		fmt.Fprintf(os.Stderr, "Broker: %s  Topic: %s  Client: %s\n\n",
 			cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID)
+
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)
 
@@ -404,17 +442,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		actorCount += 2
 	}
 
-	// Email transport + coordinator
+	// Email transport
 	if cfg.Transport.Email.Enabled {
-		ctx, cancel := context.WithCancel(context.Background())
-		t := transport.NewEmailTransport(&cfg.Transport.Email)
-
 		fmt.Fprintf(os.Stderr, "\n=== Email transport active ===\n")
 		fmt.Fprintf(os.Stderr, "IMAP: %s:%d (poll every %s)\n",
 			cfg.Transport.Email.IMAPHost, cfg.Transport.Email.IMAPPort,
 			cfg.Transport.Email.PollInterval)
 		fmt.Fprintf(os.Stderr, "SMTP: %s:%d\n", cfg.Transport.Email.SMTPHost, cfg.Transport.Email.SMTPPort)
 		fmt.Fprintf(os.Stderr, "Send an email to %s — subject = command\n\n", cfg.Transport.Email.From)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t := transport.NewEmailTransport(&cfg.Transport.Email)
 
 		g.Add(func() error {
 			return t.Start(ctx)
@@ -431,7 +469,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		actorCount += 2
 	}
 
-	// Stdio transport + coordinator
+	// Stdio transport
 	if cfg.Transport.Stdio.Enabled {
 		ctx, cancel := context.WithCancel(context.Background())
 		io := transport.NewStdioTransport()
@@ -453,27 +491,25 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			Handler: http.DefaultServeMux,
 		}
 		g.Add(func() error {
-			zap.S().Infow("pprof HTTP server starting", "addr", cfg.Pprof.Addr)
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("pprof server: %w", err)
 			}
 			return nil
 		}, func(err error) {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer shutdownCancel()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
 			srv.Shutdown(shutdownCtx)
 		})
 		actorCount++
 	}
 
-	// CDP shutdown actor — ensures Chrome is killed on process exit
+	// CDP shutdown actor
 	if cdpTool != nil {
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
 			<-ctx.Done()
 			return nil
 		}, func(err error) {
-			zap.S().Debugw("cdp: shutting down browser on exit")
 			cdpTool.Shutdown()
 			cancel()
 		})
@@ -489,14 +525,13 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			Handler: mux,
 		}
 		g.Add(func() error {
-			zap.S().Infow("metrics HTTP server starting", "addr", cfg.Metrics.Addr)
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("metrics server: %w", err)
 			}
 			return nil
 		}, func(err error) {
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer shutdownCancel()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
 			srv.Shutdown(shutdownCtx)
 		})
 		actorCount++
@@ -507,25 +542,4 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	return g.Run()
-}
-
-func warnNoLLM(cfg *config.Config) {
-	defaultModel := cfg.LLM.Model
-	if defaultModel == "" {
-		defaultModel = "gpt-4o"
-	}
-	fmt.Fprintf(os.Stderr, "\n⚠  LLM not configured — no API key found.\n")
-	fmt.Fprintf(os.Stderr, "   Default model: %s (base_url: %s)\n", defaultModel, cfg.LLM.BaseURL)
-	fmt.Fprintf(os.Stderr, "   Set DZ_LLM_API_KEY environment variable or add api_key to config.\n")
-	fmt.Fprintf(os.Stderr, "   Run:  dolphin setup\n\n")
-}
-
-func setupLogging(cfg *config.Config) {
-	logger.Init(logger.Config{
-		Level:     cfg.LogLevel,
-		File:      cfg.LogFile,
-		MaxSize:   100,
-		MaxAge:    30,
-		MaxBackup: 3,
-	})
 }

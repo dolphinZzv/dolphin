@@ -19,13 +19,20 @@ type Compressor interface {
 	Compress(messages []Message, maxTokens int) ([]Message, *CompressReport)
 }
 
-// DropCompressor drops old user+assistant turn groups without summarization.
-// This is the default strategy — identical to the pre-interface behavior.
-type DropCompressor struct{}
+// compressPreambleResult holds the common computation from compressPreamble.
+type compressPreambleResult struct {
+	Estimated int  // estimated token count
+	Threshold int  // 70% of maxTokens
+	KeepStart int  // index to keep (last user message and after)
+	CanDrop   bool // true if compression is feasible
+}
 
-func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+// compressPreamble runs the shared token-estimation / keepStart logic that
+// every Compress implementation repeats. Returns zero-valued result when no
+// compression is needed (caller should return nil, nil).
+func compressPreamble(messages []Message, maxTokens int) compressPreambleResult {
 	if maxTokens <= 0 {
-		return nil, nil
+		return compressPreambleResult{}
 	}
 
 	est := 0
@@ -38,11 +45,11 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 
 	threshold := int(float64(maxTokens) * 0.7)
 	if est <= threshold {
-		return nil, nil
+		return compressPreambleResult{}
 	}
 
 	if len(messages) <= 6 {
-		return nil, nil
+		return compressPreambleResult{}
 	}
 
 	// Find the oldest message we must keep: the last user message and everything after it.
@@ -56,6 +63,26 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 	if keepStart == len(messages) && len(messages) > 2 {
 		keepStart = len(messages) - 2
 	}
+
+	return compressPreambleResult{
+		Estimated: est,
+		Threshold: threshold,
+		KeepStart: keepStart,
+		CanDrop:   keepStart > 0,
+	}
+}
+
+// DropCompressor drops old user+assistant turn groups without summarization.
+// This is the default strategy — identical to the pre-interface behavior.
+type DropCompressor struct{}
+
+func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+	pre := compressPreamble(messages, maxTokens)
+	if !pre.CanDrop {
+		return nil, nil
+	}
+	keepStart := pre.KeepStart
+	est := pre.Estimated
 
 	// Walk from the front, dropping complete user+response turn groups.
 	result := make([]Message, len(messages))

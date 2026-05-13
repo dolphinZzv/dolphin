@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
@@ -190,60 +190,12 @@ func (t *sseTransport) sendRequest(ctx context.Context, reqJSON map[string]any) 
 
 // parseSSEResponse reads an SSE stream from the POST response body and extracts
 // the JSON-RPC result matching the given request ID.
-func (t *sseTransport) parseSSEResponse(r io.Reader, reqID any) (json.RawMessage, error) {
-	scanner := bufio.NewScanner(r)
-	var dataBuf []byte
-
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		if strings.HasPrefix(line, "data:") {
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			dataBuf = append(dataBuf, []byte(data)...)
-		} else if line == "" && len(dataBuf) > 0 {
-			var msg struct {
-				ID     json.RawMessage `json:"id"`
-				Result json.RawMessage `json:"result"`
-				Error  *struct {
-					Code    int    `json:"code"`
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			if err := json.Unmarshal(dataBuf, &msg); err == nil {
-				if msg.Error != nil {
-					return nil, fmt.Errorf("jsonrpc error: %s (code %d)", msg.Error.Message, msg.Error.Code)
-				}
-				return msg.Result, nil
-			}
-			dataBuf = dataBuf[:0]
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read sse response: %w", err)
-	}
-	return nil, fmt.Errorf("no response event found")
+func (t *sseTransport) parseSSEResponse(r io.Reader, _ any) (json.RawMessage, error) {
+	return parseSSEResult(r)
 }
 
 func (t *sseTransport) sendNotification(ctx context.Context, notif map[string]any) error {
-	body, err := json.Marshal(notif)
-	if err != nil {
-		return fmt.Errorf("marshal notification: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.messageURL, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create notification: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	t.setHeaders(httpReq)
-
-	resp, err := t.client.Do(httpReq)
-	if err != nil {
-		return fmt.Errorf("send notification: %w", err)
-	}
-	resp.Body.Close()
-	return nil
+	return NewSSENotification(ctx, t.messageURL, notif, t.setHeaders, t.client)
 }
 
 func (t *sseTransport) close() error {

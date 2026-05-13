@@ -22,38 +22,11 @@ func NewSegmentCompressor(mergeLimit int) *SegmentCompressor {
 }
 
 func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
-	if maxTokens <= 0 {
+	pre := compressPreamble(messages, maxTokens)
+	if !pre.CanDrop {
 		return nil, nil
 	}
-
-	est := 0
-	for _, m := range messages {
-		est += estimateTokens(string(m.Content))
-		if m.Role == "assistant" {
-			est += 20
-		}
-	}
-
-	threshold := int(float64(maxTokens) * 0.7)
-	if est <= threshold {
-		return nil, nil
-	}
-
-	if len(messages) <= 6 {
-		return nil, nil
-	}
-
-	// Find the oldest message we must keep: the last user message and everything after it.
-	keepStart := len(messages)
-	for j := len(messages) - 1; j >= 0; j-- {
-		if messages[j].Role == "user" {
-			keepStart = j
-			break
-		}
-	}
-	if keepStart == len(messages) && len(messages) > 2 {
-		keepStart = len(messages) - 2
-	}
+	keepStart := pre.KeepStart
 
 	// Collect the raw messages being dropped (non-summary, non-synthetic).
 	var droppedRaw []Message

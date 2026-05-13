@@ -370,220 +370,198 @@ You are a coordinator agent. Your job:
 
 // registerCoordinatorTools adds coordinator-only tools to the agent registry.
 func (c *Coordinator) registerCoordinatorTools() {
-	tools := []struct {
-		name        string
-		description string
-		schema      map[string]any
-		handler     func(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error)
-	}{
-		{
-			name:        "dispatch_task",
-			description: "Dispatch a task to a specialized agent for async processing. The agent will process it and you'll see the result in your next turn.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"agent":   map[string]any{"type": "string", "description": "Target agent name"},
-					"task":    map[string]any{"type": "string", "description": "Detailed task description"},
-					"timeout": map[string]any{"type": "integer", "description": "Timeout in seconds (optional)"},
+	c.registerCoordTool("dispatch_task",
+		"Dispatch a task to a specialized agent for async processing. The agent will process it and you'll see the result in your next turn.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"agent":   map[string]any{"type": "string", "description": "Target agent name"},
+				"task":    map[string]any{"type": "string", "description": "Detailed task description"},
+				"timeout": map[string]any{"type": "integer", "description": "Timeout in seconds (optional)"},
+			},
+			"required": []string{"agent", "task"},
+		},
+		c.handleDispatchTask,
+	)
+	c.registerCoordTool("create_agent",
+		"Create a temporary agent for a novel task. Use this when no existing agent fits the user's request.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":    map[string]any{"type": "string", "description": "Agent name"},
+				"role":    map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
+				"tools":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
+				"model":   map[string]any{"type": "string", "description": "Model override (optional)"},
+				"timeout": map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
+			},
+			"required": []string{"name", "role"},
+		},
+		c.handleCreateAgent,
+	)
+	c.registerCoordTool("get_agent_status",
+		"Get the status of all agents or a specific agent.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"agent": map[string]any{"type": "string", "description": "Agent name (optional, empty = all)"},
+			},
+		},
+		c.handleGetAgentStatus,
+	)
+	c.registerCoordTool("cancel_task",
+		"Cancel a running task by its task ID.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"task_id": map[string]any{"type": "string", "description": "Task ID to cancel"},
+			},
+			"required": []string{"task_id"},
+		},
+		c.handleCancelTask,
+	)
+	c.registerCoordTool("delete_agent",
+		"Delete a temporary agent and clean up its workspace.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "Agent name to delete"},
+			},
+			"required": []string{"name"},
+		},
+		c.handleDeleteAgent,
+	)
+	c.registerCoordTool("search_mcp_tools",
+		"Search available MCP tools by name or description. Use this when you need a tool not in your current tool list.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "Search query (matched against tool name and description)"},
+			},
+			"required": []string{"query"},
+		},
+		c.handleSearchMCPTools,
+	)
+	c.registerCoordTool("search_skills",
+		"Search available skills by name or description. Skills are specialized capabilities that can be loaded for detailed instructions.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "Search query (matched against skill name and description)"},
+			},
+			"required": []string{"query"},
+		},
+		c.handleSearchSkills,
+	)
+	c.registerCoordTool("load_skill",
+		"Load a skill's full content. Use this when you need the detailed instructions for a specific skill (e.g., for code review, data analysis).",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "Skill name to load"},
+			},
+			"required": []string{"name"},
+		},
+		c.handleLoadSkill,
+	)
+	c.registerCoordTool("add_cron_task",
+		"Add a scheduled task that runs on a cron schedule.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "description": "Unique task name"},
+				"schedule":    map[string]any{"type": "string", "description": "5-field cron expression (e.g. \"0 18 * * 1-5\")"},
+				"description": map[string]any{"type": "string", "description": "Human-readable description"},
+				"task":        map[string]any{"type": "string", "description": "Instructions for the agent when task runs"},
+			},
+			"required": []string{"name", "schedule", "description", "task"},
+		},
+		c.handleAddCronTask,
+	)
+	c.registerCoordTool("remove_cron_task",
+		"Remove a scheduled task by name.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "Task name to remove"},
+			},
+			"required": []string{"name"},
+		},
+		c.handleRemoveCronTask,
+	)
+	c.registerCoordTool("list_cron_tasks",
+		"List all scheduled tasks with their status and schedule.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		c.handleListCronTasks,
+	)
+	c.registerCoordTool("toggle_cron_task",
+		"Enable or disable a scheduled task.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":    map[string]any{"type": "string", "description": "Task name"},
+				"enabled": map[string]any{"type": "boolean", "description": "true to enable, false to disable"},
+			},
+			"required": []string{"name", "enabled"},
+		},
+		c.handleToggleCronTask,
+	)
+	c.registerCoordTool("config",
+		"Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"action": map[string]any{
+					"type":        "string",
+					"enum":        []string{"list", "get", "set", "save"},
+					"description": "Action: list (show all settings), get (read a path), set (modify a path), save (persist to disk)",
 				},
-				"required": []string{"agent", "task"},
-			},
-			handler: c.handleDispatchTask,
-		},
-		{
-			name:        "create_agent",
-			description: "Create a temporary agent for a novel task. Use this when no existing agent fits the user's request.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":    map[string]any{"type": "string", "description": "Agent name"},
-					"role":    map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
-					"tools":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
-					"model":   map[string]any{"type": "string", "description": "Model override (optional)"},
-					"timeout": map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds, llm.temperature. Use list to see all paths.",
 				},
-				"required": []string{"name", "role"},
-			},
-			handler: c.handleCreateAgent,
-		},
-		{
-			name:        "get_agent_status",
-			description: "Get the status of all agents or a specific agent.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"agent": map[string]any{"type": "string", "description": "Agent name (optional, empty = all)"},
+				"value": map[string]any{
+					"description": "New value for the setting (used with set action). Type depends on the setting.",
+				},
+				"file": map[string]any{
+					"type":        "string",
+					"description": "Target file path for save action (optional, defaults to .dolphin/config.yaml)",
 				},
 			},
-			handler: c.handleGetAgentStatus,
+			"required": []string{"action"},
 		},
-		{
-			name:        "cancel_task",
-			description: "Cancel a running task by its task ID.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"task_id": map[string]any{"type": "string", "description": "Task ID to cancel"},
+		c.handleConfig,
+	)
+	c.registerCoordTool("load_mcp_tools",
+		"Load MCP tools by name so they become available for use as API-level tools. Use search_mcp_tools first to discover available tool names. Loaded tools will appear in the tool list starting from your next turn.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tools": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Names of MCP tools to load. Use search_mcp_tools to find available tools.",
 				},
-				"required": []string{"task_id"},
 			},
-			handler: c.handleCancelTask,
+			"required": []string{"tools"},
 		},
-		{
-			name:        "delete_agent",
-			description: "Delete a temporary agent and clean up its workspace.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name": map[string]any{"type": "string", "description": "Agent name to delete"},
-				},
-				"required": []string{"name"},
-			},
-			handler: c.handleDeleteAgent,
-		},
-		{
-			name:        "search_mcp_tools",
-			description: "Search available MCP tools by name or description. Use this when you need a tool not in your current tool list.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{"type": "string", "description": "Search query (matched against tool name and description)"},
-				},
-				"required": []string{"query"},
-			},
-			handler: c.handleSearchMCPTools,
-		},
-		{
-			name:        "search_skills",
-			description: "Search available skills by name or description. Skills are specialized capabilities that can be loaded for detailed instructions.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{"type": "string", "description": "Search query (matched against skill name and description)"},
-				},
-				"required": []string{"query"},
-			},
-			handler: c.handleSearchSkills,
-		},
-		{
-			name:        "load_skill",
-			description: "Load a skill's full content. Use this when you need the detailed instructions for a specific skill (e.g., for code review, data analysis).",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name": map[string]any{"type": "string", "description": "Skill name to load"},
-				},
-				"required": []string{"name"},
-			},
-			handler: c.handleLoadSkill,
-		},
-		{
-			name:        "add_cron_task",
-			description: "Add a scheduled task that runs on a cron schedule.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":        map[string]any{"type": "string", "description": "Unique task name"},
-					"schedule":    map[string]any{"type": "string", "description": "5-field cron expression (e.g. \"0 18 * * 1-5\")"},
-					"description": map[string]any{"type": "string", "description": "Human-readable description"},
-					"task":        map[string]any{"type": "string", "description": "Instructions for the agent when task runs"},
-				},
-				"required": []string{"name", "schedule", "description", "task"},
-			},
-			handler: c.handleAddCronTask,
-		},
-		{
-			name:        "remove_cron_task",
-			description: "Remove a scheduled task by name.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name": map[string]any{"type": "string", "description": "Task name to remove"},
-				},
-				"required": []string{"name"},
-			},
-			handler: c.handleRemoveCronTask,
-		},
-		{
-			name:        "list_cron_tasks",
-			description: "List all scheduled tasks with their status and schedule.",
-			schema: map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
-			},
-			handler: c.handleListCronTasks,
-		},
-		{
-			name:        "toggle_cron_task",
-			description: "Enable or disable a scheduled task.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":    map[string]any{"type": "string", "description": "Task name"},
-					"enabled": map[string]any{"type": "boolean", "description": "true to enable, false to disable"},
-				},
-				"required": []string{"name", "enabled"},
-			},
-			handler: c.handleToggleCronTask,
-		},
-		{
-			name:        "config",
-			description: "Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"action": map[string]any{
-						"type":        "string",
-						"enum":        []string{"list", "get", "set", "save"},
-						"description": "Action: list (show all settings), get (read a path), set (modify a path), save (persist to disk)",
-					},
-					"path": map[string]any{
-						"type":        "string",
-						"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds, llm.temperature. Use list to see all paths.",
-					},
-					"value": map[string]any{
-						"description": "New value for the setting (used with set action). Type depends on the setting.",
-					},
-					"file": map[string]any{
-						"type":        "string",
-						"description": "Target file path for save action (optional, defaults to .dolphin/config.yaml)",
-					},
-				},
-				"required": []string{"action"},
-			},
-			handler: c.handleConfig,
-		},
-		{
-			name:        "load_mcp_tools",
-			description: "Load MCP tools by name so they become available for use as API-level tools. Use search_mcp_tools first to discover available tool names. Loaded tools will appear in the tool list starting from your next turn.",
-			schema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"tools": map[string]any{
-						"type":        "array",
-						"items":       map[string]any{"type": "string"},
-						"description": "Names of MCP tools to load. Use search_mcp_tools to find available tools.",
-					},
-				},
-				"required": []string{"tools"},
-			},
-			handler: c.handleLoadMCPTools,
-		},
-	}
+		c.handleLoadMCPTools,
+	)
+}
 
-	for _, t := range tools {
-		schema, _ := json.Marshal(t.schema)
-		ht := &handlerTool{
-			def: mcp.ToolDefinition{
-				Name:        t.name,
-				Description: t.description,
-				InputSchema: schema,
-			},
-			handler: t.handler,
-		}
-		c.toolReg.Register(ht)
-		zap.S().Debugw("coordinator tool registered", "tool", t.name)
-	}
+func (c *Coordinator) registerCoordTool(name, description string, schema map[string]any, handler func(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error)) {
+	schemaJSON, _ := json.Marshal(schema)
+	c.toolReg.Register(&handlerTool{
+		def: mcp.ToolDefinition{
+			Name:        name,
+			Description: description,
+			InputSchema: schemaJSON,
+		},
+		handler: handler,
+	})
+	zap.S().Debugw("coordinator tool registered", "tool", name)
 }
 
 // ---- Tool handlers ----

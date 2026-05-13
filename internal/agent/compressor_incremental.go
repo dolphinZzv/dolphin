@@ -28,30 +28,11 @@ func NewIncrementalCompressor(provider Provider) *IncrementalCompressor {
 }
 
 func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
-	if maxTokens <= 0 || len(messages) <= 6 {
+	pre := compressPreamble(messages, maxTokens)
+	if !pre.CanDrop {
 		return nil, nil
 	}
-
-	est := 0
-	for _, m := range messages {
-		est += estimateTokens(string(m.Content))
-	}
-	threshold := int(float64(maxTokens) * 0.7)
-	if est <= threshold {
-		return nil, nil
-	}
-
-	// Find the last user message position
-	keepStart := len(messages)
-	for j := len(messages) - 1; j >= 0; j-- {
-		if messages[j].Role == "user" {
-			keepStart = j
-			break
-		}
-	}
-	if keepStart == len(messages) && len(messages) > 2 {
-		keepStart = len(messages) - 2
-	}
+	keepStart := pre.KeepStart
 
 	ic.mu.Lock()
 	ic.turnsSinceUpdate++
