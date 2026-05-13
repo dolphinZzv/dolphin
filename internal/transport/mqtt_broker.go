@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 
+	"dolphin/internal/config"
+
 	mqtt "github.com/mochi-mqtt/server/v2"
 	"github.com/mochi-mqtt/server/v2/hooks/auth"
 	"github.com/mochi-mqtt/server/v2/listeners"
@@ -18,16 +20,18 @@ type EmbeddedBroker struct {
 }
 
 // NewEmbeddedBroker creates a new embedded MQTT broker listening on addr (e.g. ":1883" or "127.0.0.1:1883").
-func NewEmbeddedBroker(addr string) *EmbeddedBroker {
+func NewEmbeddedBroker(addr string, accounts []config.MQTTAccount) *EmbeddedBroker {
 	return &EmbeddedBroker{addr: addr}
 }
 
-// Start creates the server, adds an allow-all auth hook, binds a TCP listener,
-// and begins serving in a background goroutine.
-func (b *EmbeddedBroker) Start() error {
+// Start creates the server, adds an auth hook with the configured accounts, binds
+// a TCP listener, and begins serving in a background goroutine.
+func (b *EmbeddedBroker) Start(accounts []config.MQTTAccount) error {
 	b.server = mqtt.New(nil)
 
-	if err := b.server.AddHook(new(auth.AllowHook), nil); err != nil {
+	// Build auth ledger from configured accounts.
+	ledger := buildLedger(accounts)
+	if err := b.server.AddHook(new(auth.Hook), &auth.Options{Ledger: ledger}); err != nil {
 		return fmt.Errorf("add auth hook: %w", err)
 	}
 
@@ -45,7 +49,7 @@ func (b *EmbeddedBroker) Start() error {
 		}
 	}()
 
-	zap.S().Infow("embedded mqtt broker started", "address", b.addr)
+	zap.S().Infow("embedded mqtt broker started", "address", b.addr, "accounts", len(accounts))
 	return nil
 }
 
@@ -69,4 +73,18 @@ func (b *EmbeddedBroker) ClientAddr() string {
 		host = "localhost"
 	}
 	return net.JoinHostPort(host, port)
+}
+
+func buildLedger(accounts []config.MQTTAccount) *auth.Ledger {
+	users := make(auth.Users, len(accounts))
+	for _, a := range accounts {
+		users[a.Username] = auth.UserRule{
+			Username: auth.RString(a.Username),
+			Password: auth.RString(a.Password),
+			ACL: auth.Filters{
+				"#": auth.ReadWrite,
+			},
+		}
+	}
+	return &auth.Ledger{Users: users}
 }

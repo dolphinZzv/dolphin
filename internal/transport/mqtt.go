@@ -69,6 +69,12 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(t.cfg.Broker)
 	opts.SetClientID(t.cfg.ClientID)
+	if t.cfg.Username != "" {
+		opts.SetUsername(t.cfg.Username)
+	}
+	if t.cfg.Password != "" {
+		opts.SetPassword(t.cfg.Password)
+	}
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(10 * time.Second)
 	opts.SetCleanSession(false) // preserve subscriptions across reconnect

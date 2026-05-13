@@ -112,14 +112,22 @@ type SSHConfig struct {
 	Password string `mapstructure:"password"`
 }
 
+type MQTTAccount struct {
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
 type MQTTConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	Broker        string `mapstructure:"broker"`
-	Topic         string `mapstructure:"topic"`
-	ResponseTopic string `mapstructure:"response_topic"`
-	ClientID      string `mapstructure:"client_id"`
-	Embedded      bool   `mapstructure:"embedded"`
-	EmbeddedAddr  string `mapstructure:"embedded_addr"`
+	Enabled          bool          `mapstructure:"enabled"`
+	Broker           string        `mapstructure:"broker"`
+	Topic            string        `mapstructure:"topic"`
+	ResponseTopic    string        `mapstructure:"response_topic"`
+	ClientID         string        `mapstructure:"client_id"`
+	Embedded         bool          `mapstructure:"embedded"`
+	EmbeddedAddr     string        `mapstructure:"embedded_addr"`
+	EmbeddedAccounts []MQTTAccount `mapstructure:"embedded_accounts"`
+	Username         string        `mapstructure:"username"`
+	Password         string        `mapstructure:"password"`
 }
 
 type EmailConfig struct {
@@ -370,6 +378,31 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_MQTT_EMBEDDED_ADDR"); v != "" {
 		cfg.Transport.MQTT.EmbeddedAddr = v
+	}
+	if v := os.Getenv("DZ_MQTT_USER"); v != "" {
+		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Username: v})
+		} else {
+			cfg.Transport.MQTT.EmbeddedAccounts[0].Username = v
+		}
+	}
+	if v := os.Getenv("DZ_MQTT_PASSWORD"); v != "" {
+		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Password: v})
+		} else {
+			cfg.Transport.MQTT.EmbeddedAccounts[0].Password = v
+		}
+	}
+
+	// Auto-generate MQTT broker account if embedded broker is enabled and no accounts configured.
+	if cfg.Transport.MQTT.Enabled && cfg.Transport.MQTT.Embedded && len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+		buf := make([]byte, 12)
+		if _, err := rand.Read(buf); err == nil {
+			cfg.Transport.MQTT.EmbeddedAccounts = []MQTTAccount{{
+				Username: "dolphin",
+				Password: hex.EncodeToString(buf),
+			}}
+		}
 	}
 
 	// Auto-generate SSH password if empty. Fails closed — if generation fails,

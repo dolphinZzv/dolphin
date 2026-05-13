@@ -423,12 +423,18 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 	if cfg.Transport.MQTT.Enabled {
 		// Start embedded MQTT broker when configured, so no external broker is needed.
 		if cfg.Transport.MQTT.Embedded {
-			broker := transport.NewEmbeddedBroker(cfg.Transport.MQTT.EmbeddedAddr)
-			if err := broker.Start(); err != nil {
+			accounts := cfg.Transport.MQTT.EmbeddedAccounts
+			broker := transport.NewEmbeddedBroker(cfg.Transport.MQTT.EmbeddedAddr, accounts)
+			if err := broker.Start(accounts); err != nil {
 				return fmt.Errorf("embedded mqtt broker: %w", err)
 			}
 			defer broker.Close()
 			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
+			// Auto-populate client credentials from the first embedded account.
+			if cfg.Transport.MQTT.Username == "" && len(accounts) > 0 {
+				cfg.Transport.MQTT.Username = accounts[0].Username
+				cfg.Transport.MQTT.Password = accounts[0].Password
+			}
 		}
 
 		fmt.Fprintf(os.Stderr, "\n=== MQTT transport active ===\n")

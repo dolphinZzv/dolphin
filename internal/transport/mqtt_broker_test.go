@@ -4,11 +4,17 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/config"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+func testAccounts() []config.MQTTAccount {
+	return []config.MQTTAccount{{Username: "test", Password: "secret"}}
+}
+
 func TestNewEmbeddedBroker(t *testing.T) {
-	b := NewEmbeddedBroker(":9999")
+	b := NewEmbeddedBroker(":9999", testAccounts())
 	if b == nil {
 		t.Fatal("NewEmbeddedBroker returned nil")
 	}
@@ -21,15 +27,13 @@ func TestNewEmbeddedBroker(t *testing.T) {
 }
 
 func TestEmbeddedBrokerStartClose(t *testing.T) {
-	b := NewEmbeddedBroker(":19999")
-	if err := b.Start(); err != nil {
+	b := NewEmbeddedBroker(":19999", testAccounts())
+	if err := b.Start(testAccounts()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if b.server == nil {
 		t.Fatal("server should be non-nil after Start")
 	}
-
-	// Closing should succeed without error.
 	if err := b.Close(); err != nil {
 		t.Errorf("Close: %v", err)
 	}
@@ -48,7 +52,7 @@ func TestEmbeddedBrokerClientAddr(t *testing.T) {
 		{"invalid", "localhost:1883"},
 	}
 	for _, tt := range tests {
-		b := NewEmbeddedBroker(tt.addr)
+		b := NewEmbeddedBroker(tt.addr, testAccounts())
 		got := b.ClientAddr()
 		if got != tt.want {
 			t.Errorf("ClientAddr(%q) = %q, want %q", tt.addr, got, tt.want)
@@ -57,16 +61,17 @@ func TestEmbeddedBrokerClientAddr(t *testing.T) {
 }
 
 func TestEmbeddedBrokerClientConnect(t *testing.T) {
-	b := NewEmbeddedBroker(":19998")
-	if err := b.Start(); err != nil {
+	b := NewEmbeddedBroker(":19998", testAccounts())
+	if err := b.Start(testAccounts()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer b.Close()
 
-	// Connect a real MQTT client to the embedded broker.
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker("tcp://" + b.ClientAddr())
 	opts.SetClientID("test-client")
+	opts.SetUsername("test")
+	opts.SetPassword("secret")
 	opts.SetConnectTimeout(5 * time.Second)
 	opts.SetAutoReconnect(false)
 
@@ -82,21 +87,48 @@ func TestEmbeddedBrokerClientConnect(t *testing.T) {
 	}
 }
 
+func TestEmbeddedBrokerClientConnectBadAuth(t *testing.T) {
+	b := NewEmbeddedBroker(":19996", testAccounts())
+	if err := b.Start(testAccounts()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer b.Close()
+
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker("tcp://" + b.ClientAddr())
+	opts.SetClientID("test-client-bad")
+	opts.SetUsername("test")
+	opts.SetPassword("wrong")
+	opts.SetConnectTimeout(5 * time.Second)
+	opts.SetAutoReconnect(false)
+
+	client := mqtt.NewClient(opts)
+	token := client.Connect()
+	if token.WaitTimeout(10*time.Second) && token.Error() == nil {
+		t.Fatal("client should fail to connect with wrong password")
+	}
+}
+
 func TestEmbeddedBrokerPubSub(t *testing.T) {
-	b := NewEmbeddedBroker(":19997")
-	if err := b.Start(); err != nil {
+	b := NewEmbeddedBroker(":19997", testAccounts())
+	if err := b.Start(testAccounts()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer b.Close()
 
 	addr := "tcp://" + b.ClientAddr()
 
-	// Subscriber
-	subOpts := mqtt.NewClientOptions()
-	subOpts.AddBroker(addr)
-	subOpts.SetClientID("sub-client")
-	subOpts.SetAutoReconnect(false)
-	sub := mqtt.NewClient(subOpts)
+	clientOpts := func(id string) *mqtt.ClientOptions {
+		o := mqtt.NewClientOptions()
+		o.AddBroker(addr)
+		o.SetClientID(id)
+		o.SetUsername("test")
+		o.SetPassword("secret")
+		o.SetAutoReconnect(false)
+		return o
+	}
+
+	sub := mqtt.NewClient(clientOpts("sub-client"))
 	if token := sub.Connect(); token.WaitTimeout(10*time.Second) && token.Error() != nil {
 		t.Fatalf("sub connect: %v", token.Error())
 	}
@@ -107,12 +139,7 @@ func TestEmbeddedBrokerPubSub(t *testing.T) {
 		received <- string(msg.Payload())
 	})
 
-	// Publisher
-	pubOpts := mqtt.NewClientOptions()
-	pubOpts.AddBroker(addr)
-	pubOpts.SetClientID("pub-client")
-	pubOpts.SetAutoReconnect(false)
-	pub := mqtt.NewClient(pubOpts)
+	pub := mqtt.NewClient(clientOpts("pub-client"))
 	if token := pub.Connect(); token.WaitTimeout(10*time.Second) && token.Error() != nil {
 		t.Fatalf("pub connect: %v", token.Error())
 	}

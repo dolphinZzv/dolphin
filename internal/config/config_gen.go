@@ -112,6 +112,11 @@ transport:
     client_id: dolphinnzZ-agent
     embedded: true
     embedded_addr: :1883
+    embedded_accounts:
+      - username: dolphinnzZ
+        password: ""          # auto-generated if empty; set manually to override
+    username: ""              # client credentials for broker connection
+    password: ""              # auto-populated from first embedded account if empty
   email:
     enabled: false
     smtp_host: ""
@@ -275,6 +280,11 @@ transport:
     client_id: dolphinnzZ-agent
     embedded: true
     embedded_addr: :1883
+    embedded_accounts:
+      - username: dolphinnzZ
+        password: ""          # 为空则自动生成随机密码；手动设置则覆盖
+    username: ""              # 客户端连接 broker 的凭据
+    password: ""              # 为空则自动取第一个 embedded 账号
   email:
     enabled: false
     smtp_host: ""
