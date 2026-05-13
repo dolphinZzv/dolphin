@@ -3,17 +3,13 @@
 # 所有设置都有默认值 — 只需取消注释需要修改的部分。
 
 # ── LLM 提供商 ────────────────────────────────────────────
-# 中国地区推荐 DeepSeek / 通义千问 / 智谱 GLM 等兼容 OpenAI 接口的服务商。
+# 中国地区推荐 DeepSeek / MiniMax / 智谱 GLM / 通义千问 / Kimi 等。
+# 配置多个 provider 时，启动时会逐个检测，自动选择第一个可用的。
 llm:
+  # 单 provider（兼容原有配置和 DZ_LLM_* 环境变量）：
   type: openai                # "openai" 或 "anthropic"
   base_url: https://api.deepseek.com/v1
-                              # DeepSeek:   https://api.deepseek.com/v1
-                              # MiniMax:    https://api.minimax.chat/v1
-                              # 智谱 GLM:   https://open.bigmodel.cn/api/paas/v4
-                              # 通义千问:   https://dashscope.aliyuncs.com/compatible-mode/v1
-                              # Kimi:      https://api.moonshot.cn/v1
-  model: deepseek-chat        # 模型名称，也可通过环境变量 DZ_LLM_MODEL 设置
-                              # 中国推荐: deepseek-chat、minimax-text-01、glm-4-plus、qwen-max
+  model: deepseek-v4-pro
   api_key: ""                 # 建议通过环境变量 DZ_LLM_API_KEY 设置
   max_tokens: 4096
   max_context_tokens: 1048576 # 超过 70% 时触发上下文压缩
@@ -21,6 +17,34 @@ llm:
   max_sub_turns: 10           # 每轮用户输入最多工具调用反馈循环次数
   compress_mode: drop         # "drop" | "segment" | "tiered" | "incremental" | "topic"
   segment_merge_limit: 100    # segment 模式下的递归合并阈值
+
+  # 多 provider：取消注释并填入 API key，启动时自动选可用的。
+  # providers:
+  #   - name: deepseek
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://api.deepseek.com/v1
+  #     model: deepseek-v4-pro
+  #   - name: minimax
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://api.minimax.chat/v1
+  #     model: MiniMax-M2.7
+  #   - name: glm
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://open.bigmodel.cn/api/paas/v4
+  #     model: glm-5
+  #   - name: qwen
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  #     model: qwen3.6-max-preview
+  #   - name: kimi
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://api.moonshot.ai/v1
+  #     model: kimi-k2.6
 
 # ── 会话 ──────────────────────────────────────────────────
 session:

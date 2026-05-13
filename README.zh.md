@@ -44,25 +44,25 @@ go build -o dolphin ./main.go
 
 # DeepSeek 示例（中国地区可直接访问）
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="deepseek-chat"
+export DZ_LLM_MODEL="deepseek-v4-pro"
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_TYPE="openai"
 
-# MiniMax 示例
+# MiniMax M2.7 示例
 # export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="minimax-text-01"
+# export DZ_LLM_MODEL="MiniMax-M2.7"
 # export DZ_LLM_BASE_URL="https://api.minimax.chat/v1"
 # export DZ_LLM_TYPE="openai"
 
-# 智谱 GLM 示例
+# 智谱 GLM-5 示例
 # export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="glm-4-plus"
+# export DZ_LLM_MODEL="glm-5"
 # export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 # export DZ_LLM_TYPE="openai"
 
-# 通义千问示例
+# 通义千问 Qwen3.6 示例
 # export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="qwen-max"
+# export DZ_LLM_MODEL="qwen3.6-max-preview"
 # export DZ_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 # export DZ_LLM_TYPE="openai"
 
@@ -74,7 +74,7 @@ export DZ_LLM_TYPE="openai"
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **是** | — | LLM API 密钥 |
-| `DZ_LLM_MODEL` | 否 | `deepseek-chat` | 模型名称（如 `deepseek-chat`、`minimax-text-01`、`glm-4-plus`、`qwen-max`） |
+| `DZ_LLM_MODEL` | 否 | `deepseek-v4-pro` | 模型名称（如 `deepseek-v4-pro`、`MiniMax-M2.7`、`glm-5`、`qwen3.6-max-preview`） |
 | `DZ_LLM_BASE_URL` | 否 | `https://api.deepseek.com/v1` | API 基础地址（自定义端点、代理） |
 | `DZ_LLM_TYPE` | 否 | `openai` | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
 | `DZ_LLM_MAX_TOKENS` | 否 | `4096` | 每次回复最大 token 数 |
@@ -84,11 +84,11 @@ export DZ_LLM_TYPE="openai"
 
 | 服务商 | 模型 | 接口地址 | 接入方式 |
 |--------|------|----------|----------|
-| **DeepSeek** | `deepseek-chat` | `https://api.deepseek.com/v1` | OpenAI 兼容 |
-| **MiniMax** | `minimax-text-01` | `https://api.minimax.chat/v1` | OpenAI 兼容 |
-| **智谱 GLM** | `glm-4-plus` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
-| **通义千问** | `qwen-max`、`qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
-| **Kimi** | `moonshot-v1-8k` | `https://api.moonshot.cn/v1` | OpenAI 兼容 |
+| **DeepSeek** | `deepseek-v4-pro` | `https://api.deepseek.com/v1` | OpenAI 兼容 |
+| **MiniMax** | `MiniMax-M2.7` | `https://api.minimax.chat/v1` | OpenAI 兼容 |
+| **智谱 GLM** | `glm-5` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
+| **通义千问** | `qwen3.6-max-preview` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
+| **Kimi** | `kimi-k2.6` | `https://api.moonshot.ai/v1` | OpenAI 兼容 |
 
 以上服务商均兼容 OpenAI 接口格式，设置 `DZ_LLM_TYPE=openai` 即可使用。
 
@@ -111,7 +111,7 @@ export DZ_LLM_TYPE="openai"
 ```bash
 # DeepSeek（中国推荐）
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="deepseek-chat"
+export DZ_LLM_MODEL="deepseek-v4-pro"
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 ./dolphin
 ```

@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"dolphin/internal/config"
@@ -19,15 +22,17 @@ import (
 
 // Agent is the core agent that runs the agent loop.
 type Agent struct {
-	cfg               *config.Config
-	sessMgr           *session.Manager
-	toolReg           *mcp.Registry
-	provider          Provider
-	ctxBuilder        *ContextBuilder
-	compressor        Compressor
-	hooks             *hook.Registry
-	events            *event.EventBus
-	heartbeatInterval int // emit heartbeat event every N turns, 0=off
+	cfg                *config.Config
+	sessMgr            *session.Manager
+	toolReg            *mcp.Registry
+	provider           Provider
+	ctxBuilder         *ContextBuilder
+	compressor         Compressor
+	hooks              *hook.Registry
+	events             *event.EventBus
+	heartbeatInterval  int // emit heartbeat event every N turns, 0=off
+	availableProviders []config.ProviderConfig
+	providerIndex      int
 }
 
 // LoopState holds state for a single agent run.
@@ -43,35 +48,213 @@ type LoopState struct {
 }
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
-	var provider Provider
-	zap.S().Infow("selecting provider", "type", cfg.LLM.Type, "model", cfg.LLM.Model, "base_url", cfg.LLM.BaseURL)
-	switch cfg.LLM.Type {
-	case "anthropic":
-		provider = NewAnthropicProvider(&cfg.LLM)
-	default:
-		provider = NewOpenAIProvider(&cfg.LLM)
-	}
+	providers := cfg.LLM.EffectiveProviders()
+	provider, selIdx := selectProvider(cfg)
 
 	a := &Agent{
-		cfg:        cfg,
-		sessMgr:    sessMgr,
-		toolReg:    toolReg,
-		provider:   provider,
-		ctxBuilder: NewContextBuilder(),
+		cfg:                cfg,
+		sessMgr:            sessMgr,
+		toolReg:            toolReg,
+		provider:           provider,
+		ctxBuilder:         NewContextBuilder(),
+		availableProviders: providers,
+		providerIndex:      selIdx,
 	}
-	switch cfg.LLM.CompressMode {
+	a.rebuildCompressor()
+	return a
+}
+
+// switchToNextProvider switches to the next available provider.
+// Returns true on success, false if no more providers to try.
+func (a *Agent) switchToNextProvider() bool {
+	for i := a.providerIndex + 1; i < len(a.availableProviders); i++ {
+		pc := a.availableProviders[i]
+		p := NewProviderFromConfig(&pc)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := p.HealthCheck(ctx)
+		cancel()
+
+		if err == nil {
+			a.providerIndex = i
+			a.provider = p
+			// Copy back to legacy fields for downstream compat.
+			a.cfg.LLM.Type = pc.Type
+			a.cfg.LLM.BaseURL = pc.BaseURL
+			a.cfg.LLM.APIKey = pc.APIKey
+			a.cfg.LLM.Model = pc.Model
+			a.cfg.LLM.MaxTokens = pc.MaxTokens
+			a.rebuildCompressor()
+			zap.S().Infow("failed over to provider", "name", pc.Name, "model", pc.Model)
+			return true
+		}
+		zap.S().Warnw("failover health check failed", "name", pc.Name, "error", err)
+	}
+	return false
+}
+
+func (a *Agent) rebuildCompressor() {
+	switch a.cfg.LLM.CompressMode {
 	case "segment":
-		a.compressor = NewSegmentCompressor(cfg.LLM.SegmentMergeLimit)
+		a.compressor = NewSegmentCompressor(a.cfg.LLM.SegmentMergeLimit)
 	case "tiered":
-		a.compressor = NewTieredCompressor(provider)
+		a.compressor = NewTieredCompressor(a.provider)
 	case "incremental":
-		a.compressor = NewIncrementalCompressor(provider)
+		a.compressor = NewIncrementalCompressor(a.provider)
 	case "topic":
-		a.compressor = NewTopicCompressor(provider)
+		a.compressor = NewTopicCompressor(a.provider)
 	default:
 		a.compressor = &DropCompressor{}
 	}
-	return a
+}
+
+// selectProvider runs health checks on all configured providers concurrently,
+// then picks the first available one in configured order.
+// Returns the selected Provider and its index in the providers list.
+func selectProvider(cfg *config.Config) (Provider, int) {
+	providers := cfg.LLM.EffectiveProviders()
+	if len(providers) == 0 {
+		zap.S().Fatal("no LLM providers configured")
+	}
+
+	type jobResult struct {
+		idx      int
+		provider Provider
+		pc       config.ProviderConfig
+		ok       bool
+		ms       int64
+		err      string
+	}
+
+	n := len(providers)
+	ch := make(chan *jobResult, n)
+	var wg sync.WaitGroup
+
+	for i, pc := range providers {
+		wg.Add(1)
+		go func(idx int, pcfg config.ProviderConfig) {
+			defer wg.Done()
+			p := NewProviderFromConfig(&pcfg)
+
+			// Skip health check for placeholder/test API keys.
+			if isPlaceholderKey(pcfg.APIKey) {
+				ch <- &jobResult{idx, p, pcfg, true, 0, ""}
+				return
+			}
+
+			start := time.Now()
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := p.HealthCheck(ctx)
+			cancel()
+
+			// Retry once on network jitter.
+			if err != nil {
+				start = time.Now()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				err = p.HealthCheck(ctx)
+				cancel()
+			}
+
+			ms := time.Since(start).Milliseconds()
+			if err != nil {
+				ch <- &jobResult{idx, p, pcfg, false, ms, err.Error()}
+			} else {
+				ch <- &jobResult{idx, p, pcfg, true, ms, ""}
+			}
+		}(i, pc)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	// Collect all results.
+	var results []*jobResult
+	for r := range ch {
+		results = append(results, r)
+	}
+	// Restore config order.
+	sort.Slice(results, func(i, j int) bool { return results[i].idx < results[j].idx })
+
+	// Build banner.
+	{
+		var buf strings.Builder
+		buf.WriteString("\nLLM Providers:\n")
+		for _, r := range results {
+			if r.ok {
+				buf.WriteString(fmt.Sprintf("  ✓ %s (%s) — %dms\n", r.pc.Name, r.pc.Model, r.ms))
+			} else {
+				buf.WriteString(fmt.Sprintf("  ✗ %s (%s) — %dms %s\n", r.pc.Name, r.pc.Model, r.ms, r.err))
+			}
+		}
+		// Pick first available in config order.
+		selected := false
+		for _, r := range results {
+			if r.ok {
+				buf.WriteString(fmt.Sprintf("→ Using: %s\n", r.pc.Name))
+				selected = true
+				fmt.Fprint(os.Stderr, buf.String())
+
+				zap.S().Infow("selected LLM provider",
+					"name", r.pc.Name,
+					"type", r.pc.Type,
+					"model", r.pc.Model,
+					"base_url", r.pc.BaseURL,
+					"ms", r.ms,
+				)
+				// Copy back to legacy fields for downstream compat.
+				cfg.LLM.Type = r.pc.Type
+				cfg.LLM.BaseURL = r.pc.BaseURL
+				cfg.LLM.APIKey = r.pc.APIKey
+				cfg.LLM.Model = r.pc.Model
+				cfg.LLM.MaxTokens = r.pc.MaxTokens
+				return r.provider, r.idx
+			}
+		}
+		if !selected {
+			buf.WriteString("→ No available provider\n")
+			fmt.Fprint(os.Stderr, buf.String())
+		}
+	}
+
+	// All failed.
+	printProviderHelp(providers)
+	return NewProviderFromConfig(&providers[0]), 0 // fall back to first
+}
+
+func printProviderHelp(providers []config.ProviderConfig) {
+	var buf strings.Builder
+	buf.WriteString("\n")
+	buf.WriteString("╔════════════════════════════════════════════════════════════╗\n")
+	buf.WriteString("║  All LLM providers are unavailable.                     ║\n")
+	buf.WriteString("║  Check your API keys and network connection.            ║\n")
+	buf.WriteString("╚════════════════════════════════════════════════════════════╝\n")
+	buf.WriteString("\nConfigured providers:\n")
+	for _, pc := range providers {
+		link := providerLink(pc.Name)
+		buf.WriteString(fmt.Sprintf("  - %s (%s)", pc.Name, pc.BaseURL))
+		if link != "" {
+			buf.WriteString(fmt.Sprintf("\n    Get API key: %s", link))
+		}
+		buf.WriteString("\n")
+	}
+	fmt.Fprint(os.Stderr, buf.String())
+}
+
+func providerLink(name string) string {
+	links := map[string]string{
+		"deepseek":   "https://platform.deepseek.com/api_keys",
+		"minimax":    "https://platform.minimaxi.com/",
+		"glm":        "https://open.bigmodel.cn/usercenter/apikeys",
+		"qwen":       "https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen",
+		"kimi":       "https://kimi.moonshot.cn/",
+	}
+	lower := strings.ToLower(name)
+	for key, link := range links {
+		if strings.Contains(lower, key) {
+			return link
+		}
+	}
+	return ""
 }
 
 // Run starts the agent loop with interactive I/O (stdio, SSH, etc.).
@@ -210,8 +393,16 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			}
 			continue
 		}
+		if line == "/provider" || strings.HasPrefix(line, "/provider ") {
+			a.handleProviderCommand(strings.TrimSpace(line), io)
+			continue
+		}
+		if line == "/status" {
+			a.handleStatusCommand(state, io)
+			continue
+		}
 		if line == "/help" {
-			io.WriteLine("Commands: /exit - quit, /help - this help, /mcp - list MCP tools")
+			io.WriteLine("Commands: /exit - quit, /help - this help, /mcp - list MCP tools, /provider - list/switch LLM provider, /status - session info")
 			toolDefs := a.toolReg.List()
 			if len(toolDefs) > 0 {
 				io.WriteString("Loaded MCP tools: ")
@@ -281,6 +472,76 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			}
 		}
 	}
+}
+
+// handleProviderCommand processes /provider and /provider switch <name> commands.
+func (a *Agent) handleProviderCommand(line string, io transport.UserIO) {
+	if line == "/provider" {
+		io.WriteLine(fmt.Sprintf("Current: %s (%s)", a.provider.Name(), a.cfg.LLM.Model))
+		io.WriteLine(fmt.Sprintf("Available providers (%d):", len(a.availableProviders)))
+		for i, pc := range a.availableProviders {
+			mark := " "
+			if i == a.providerIndex {
+				mark = "→"
+			}
+			io.WriteLine(fmt.Sprintf("  %s %s (%s)", mark, pc.Name, pc.Model))
+		}
+		io.WriteLine("Usage: /provider switch <name> to switch, /provider switch to auto-switch")
+		return
+	}
+
+	// /provider switch <name> or /provider switch
+	rest := strings.TrimPrefix(line, "/provider ")
+	if rest == "switch" {
+		// Auto-switch to next available
+		if a.switchToNextProvider() {
+			io.WriteLine(fmt.Sprintf("Switched to %s (%s)", a.provider.Name(), a.cfg.LLM.Model))
+		} else {
+			io.WriteLine("No other providers available.")
+		}
+		return
+	}
+	if strings.HasPrefix(rest, "switch ") {
+		target := strings.TrimSpace(strings.TrimPrefix(rest, "switch "))
+		for i, pc := range a.availableProviders {
+			if strings.EqualFold(pc.Name, target) {
+				if i == a.providerIndex {
+					io.WriteLine(fmt.Sprintf("Already using %s.", pc.Name))
+					return
+				}
+				p := NewProviderFromConfig(&pc)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				err := p.HealthCheck(ctx)
+				cancel()
+				if err != nil {
+					io.WriteLine(fmt.Sprintf("Provider %s is not available: %v", pc.Name, err))
+					return
+				}
+				a.providerIndex = i
+				a.provider = p
+				a.cfg.LLM.Type = pc.Type
+				a.cfg.LLM.BaseURL = pc.BaseURL
+				a.cfg.LLM.APIKey = pc.APIKey
+				a.cfg.LLM.Model = pc.Model
+				a.cfg.LLM.MaxTokens = pc.MaxTokens
+				a.rebuildCompressor()
+				io.WriteLine(fmt.Sprintf("Switched to %s (%s)", pc.Name, pc.Model))
+				return
+			}
+		}
+		io.WriteLine(fmt.Sprintf("Provider %q not found. Use /provider to see available providers.", target))
+	}
+}
+
+// handleStatusCommand displays current session and agent status.
+func (a *Agent) handleStatusCommand(state *LoopState, io transport.UserIO) {
+	io.WriteLine("=== Session Status ===")
+	io.WriteLine(fmt.Sprintf("Provider:   %s (%s)", a.provider.Name(), a.cfg.LLM.Model))
+	io.WriteLine(fmt.Sprintf("Base URL:   %s", a.cfg.LLM.BaseURL))
+	io.WriteLine(fmt.Sprintf("Turn:       %d / %d", state.Turn, a.cfg.Session.MaxLoop))
+	io.WriteLine(fmt.Sprintf("Tool Calls: %d", state.ToolCallCount))
+	io.WriteLine(fmt.Sprintf("Errors:     %d", state.ErrorCount))
+	io.WriteLine(fmt.Sprintf("Compressions: %d", state.CompressionCount))
 }
 
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
@@ -738,7 +999,12 @@ func extractText(content json.RawMessage) string {
 	return buf.String()
 }
 
+func isPlaceholderKey(key string) bool {
+	return key == "" || key == "test-key" || key == "sk-placeholder" || strings.HasPrefix(key, "test-")
+}
+
 // callLLMWithRetry calls CompleteStream with exponential backoff retry.
+// On exhaustion, it fails over to the next available provider if any.
 func (a *Agent) callLLMWithRetry(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
 	maxRetries := 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -753,7 +1019,6 @@ func (a *Agent) callLLMWithRetry(ctx context.Context, req ProviderRequest) (<-ch
 		zap.S().Warnw("llm call failed, retrying",
 			"attempt", attempt+1,
 			"max", maxRetries,
-			"wait", wait,
 			"error", err,
 		)
 		select {
@@ -762,7 +1027,38 @@ func (a *Agent) callLLMWithRetry(ctx context.Context, req ProviderRequest) (<-ch
 		case <-time.After(wait):
 		}
 	}
-	return a.provider.CompleteStream(ctx, req) // last try
+
+	// Retries exhausted — try failover to next provider
+	origName := a.provider.Name()
+	if a.switchToNextProvider() {
+		zap.S().Warnw("failed over to next provider after retry exhaustion",
+			"from", origName,
+			"to", a.provider.Name(),
+		)
+		// Re-retry on new provider
+		for attempt := 0; attempt < maxRetries; attempt++ {
+			ch, err := a.provider.CompleteStream(ctx, req)
+			if err == nil {
+				return ch, nil
+			}
+			if !isRetryable(err) {
+				return nil, err
+			}
+			wait := time.Duration(1<<uint(attempt)) * time.Second
+			zap.S().Warnw("failover llm call failed, retrying",
+				"attempt", attempt+1,
+				"max", maxRetries,
+				"error", err,
+			)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(wait):
+			}
+		}
+	}
+
+	return a.provider.CompleteStream(ctx, req) // last try on current (or failover) provider
 }
 
 func isRetryable(err error) bool {

@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+
+	"dolphin/internal/config"
 )
 
 // ProviderType identifies the LLM backend.
@@ -84,6 +86,18 @@ type ToolCallBegin struct {
 // Provider is the interface for LLM backends.
 type Provider interface {
 	Type() ProviderType
+	Name() string
 	Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error)
 	CompleteStream(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error)
+	HealthCheck(ctx context.Context) error
+}
+
+// NewProviderFromConfig creates a Provider from a provider config.
+func NewProviderFromConfig(cfg *config.ProviderConfig) Provider {
+	switch cfg.Type {
+	case "anthropic":
+		return NewAnthropicProvider(cfg)
+	default:
+		return NewOpenAIProvider(cfg)
+	}
 }

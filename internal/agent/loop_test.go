@@ -24,6 +24,8 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) Type() ProviderType { return "openai" }
+func (m *mockProvider) Name() string       { return "mock" }
+func (m *mockProvider) HealthCheck(_ context.Context) error { return nil }
 func (m *mockProvider) Complete(_ context.Context, _ ProviderRequest) (*ProviderResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

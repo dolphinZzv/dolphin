@@ -18,15 +18,17 @@ type OpenAIProvider struct {
 	model  string
 	maxTok int
 	temp   float64
+	name   string
 }
 
-func NewOpenAIProvider(cfg *config.LLMConfig) *OpenAIProvider {
+func NewOpenAIProvider(cfg *config.ProviderConfig) *OpenAIProvider {
 	conf := openai.DefaultConfig(cfg.APIKey)
 	if cfg.BaseURL != "" {
 		conf.BaseURL = cfg.BaseURL
 	}
 
 	zap.S().Infow("openai provider created",
+		"name", cfg.Name,
 		"base_url", cfg.BaseURL,
 		"model", cfg.Model,
 	)
@@ -35,10 +37,17 @@ func NewOpenAIProvider(cfg *config.LLMConfig) *OpenAIProvider {
 		client: openai.NewClientWithConfig(conf),
 		model:  cfg.Model,
 		maxTok: cfg.MaxTokens,
+		name:   cfg.Name,
 	}
 }
 
 func (p *OpenAIProvider) Type() ProviderType { return ProviderOpenAI }
+func (p *OpenAIProvider) Name() string       { return p.name }
+
+func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
+	_, err := p.client.ListModels(ctx)
+	return err
+}
 
 func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error) {
 	llmRequests.Inc()

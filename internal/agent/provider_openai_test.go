@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewOpenAIProvider(t *testing.T) {
-	cfg := &config.LLMConfig{
+	cfg := &config.ProviderConfig{
 		APIKey:    "test-key",
 		BaseURL:   "https://example.com/v1",
 		Model:     "gpt-4o",
@@ -29,7 +29,7 @@ func TestNewOpenAIProvider(t *testing.T) {
 }
 
 func TestOpenAIProviderType(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	if p.Type() != ProviderOpenAI {
 		t.Errorf("Type() = %v", ProviderOpenAI)
@@ -37,7 +37,7 @@ func TestOpenAIProviderType(t *testing.T) {
 }
 
 func TestOpenAIBuildMessagesWithSystem(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	msgs := p.buildMessages(ProviderRequest{
 		System: "You are a helpful assistant.",
@@ -57,7 +57,7 @@ func TestOpenAIBuildMessagesWithSystem(t *testing.T) {
 }
 
 func TestOpenAIBuildMessagesAssistantWithToolCall(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	msgs := p.buildMessages(ProviderRequest{
 		Messages: []Message{
@@ -92,7 +92,7 @@ func TestOpenAIBuildMessagesAssistantWithToolCall(t *testing.T) {
 }
 
 func TestOpenAIBuildMessagesToolOnly(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	msgs := p.buildMessages(ProviderRequest{
 		Messages: []Message{
@@ -117,7 +117,7 @@ func TestOpenAIBuildMessagesToolOnly(t *testing.T) {
 }
 
 func TestOpenAIBuildMessagesNoSystem(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	msgs := p.buildMessages(ProviderRequest{
 		Messages: []Message{
@@ -130,7 +130,7 @@ func TestOpenAIBuildMessagesNoSystem(t *testing.T) {
 }
 
 func TestOpenAIBuildTools(t *testing.T) {
-	cfg := &config.LLMConfig{APIKey: "test"}
+	cfg := &config.ProviderConfig{APIKey: "test"}
 	p := NewOpenAIProvider(cfg)
 	tools := p.buildTools([]ToolDef{
 		{

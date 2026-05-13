@@ -15,6 +15,20 @@ const configTemplateEN = `# dolphin configuration
 # This file is auto-generated. Edit and restart to apply changes.
 
 # ── LLM Provider ──────────────────────────────────────────
+# Set multiple providers under providers: for automatic failover.
+# Startup tries each in order and uses the first that responds.
+#   providers:
+#     - name: deepseek
+#       type: openai
+#       api_key: ""
+#       base_url: https://api.deepseek.com/v1
+#       model: deepseek-v4-pro
+#   providers:
+#     - name: deepseek
+#       type: openai
+#       api_key: ""
+#       base_url: https://api.deepseek.com/v1
+#       model: deepseek-v4-pro
 llm:
   type: openai            # "openai" or "anthropic"
   base_url: https://api.openai.com/v1
@@ -133,6 +147,19 @@ const configTemplateZH = `# dolphin 配置文件
 # 此文件由程序自动生成。修改后重启即可生效。
 
 # ── LLM 提供商 ────────────────────────────────────────────
+# 配置多 provider 时启动会逐个检测，自动选择第一个可用的：
+#   providers:
+#     - name: deepseek
+#       type: openai
+#       api_key: ""
+#       base_url: https://api.deepseek.com/v1
+#       model: deepseek-v4-pro
+#   providers:
+#     - name: deepseek
+#       type: openai
+#       api_key: ""
+#       base_url: https://api.deepseek.com/v1
+#       model: deepseek-v4-pro
 llm:
   type: openai            # "openai" 或 "anthropic"
   base_url: https://api.openai.com/v1

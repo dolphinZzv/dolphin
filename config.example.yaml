@@ -3,7 +3,11 @@
 # All settings have defaults — uncomment only what you need to change.
 
 # ── LLM Provider ──────────────────────────────────────────
+# Single provider (legacy): set via top-level fields or DZ_LLM_* env vars.
+# Multi-provider: set `providers` list below. Startup tries each in order
+# with a health check and uses the first that responds.
 llm:
+  # Legacy single-provider fields (used when `providers` is empty):
   type: openai                # "openai" or "anthropic"
   base_url: https://api.openai.com/v1
   model: gpt-4o               # model name, or set via DZ_LLM_MODEL env
@@ -14,6 +18,29 @@ llm:
   max_sub_turns: 10           # max tool-call feedback loops per user turn
   compress_mode: drop         # "drop" | "segment" | "tiered" | "incremental" | "topic"
   segment_merge_limit: 100    # segments before recursive merge (segment mode)
+
+  # Multi-provider: uncomment and fill in API keys, startup picks first working one.
+  # providers:
+  #   - name: deepseek
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://api.deepseek.com/v1
+  #     model: deepseek-v4-pro
+  #   - name: minimax
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://api.minimax.chat/v1
+  #     model: MiniMax-M2.7
+  #   - name: glm
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://open.bigmodel.cn/api/paas/v4
+  #     model: glm-5
+  #   - name: qwen
+  #     type: openai
+  #     api_key: ""
+  #     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  #     model: qwen3.6-max-preview
 
 # ── Sessions ──────────────────────────────────────────────
 session:

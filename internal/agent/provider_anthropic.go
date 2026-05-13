@@ -23,10 +23,11 @@ type AnthropicProvider struct {
 	apiKey  string
 	model   string
 	maxTok  int
+	name    string
 	client  *http.Client
 }
 
-func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
+func NewAnthropicProvider(cfg *config.ProviderConfig) *AnthropicProvider {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com"
@@ -34,6 +35,7 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 	baseURL = strings.TrimRight(baseURL, "/")
 
 	zap.S().Infow("anthropic provider created",
+		"name", cfg.Name,
 		"base_url", baseURL,
 		"model", cfg.Model,
 		"has_key", cfg.APIKey != "",
@@ -44,11 +46,36 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 		apiKey:  cfg.APIKey,
 		model:   cfg.Model,
 		maxTok:  cfg.MaxTokens,
+		name:    cfg.Name,
 		client:  &http.Client{Timeout: 5 * time.Minute},
 	}
 }
 
 func (p *AnthropicProvider) Type() ProviderType { return ProviderAnthropic }
+func (p *AnthropicProvider) Name() string       { return p.name }
+
+func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
+	body := map[string]any{
+		"model":      p.model,
+		"max_tokens": 1,
+		"messages":   []map[string]any{{"role": "user", "content": "hi"}},
+	}
+	raw, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	p.setHeaders(req)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("status=%d", resp.StatusCode)
+	}
+	return nil
+}
 
 // ---- API types ----
 

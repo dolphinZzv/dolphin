@@ -39,17 +39,50 @@ type Config struct {
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
 }
 
+// ProviderConfig defines a single LLM provider endpoint.
+type ProviderConfig struct {
+	Name      string `mapstructure:"name"`
+	Type      string `mapstructure:"type"` // "openai" or "anthropic"
+	BaseURL   string `mapstructure:"base_url"`
+	APIKey    string `mapstructure:"api_key"`
+	Model     string `mapstructure:"model"`
+	MaxTokens int    `mapstructure:"max_tokens"`
+}
+
 type LLMConfig struct {
-	Type              string  `mapstructure:"type"` // "openai" or "anthropic"
-	BaseURL           string  `mapstructure:"base_url"`
-	APIKey            string  `mapstructure:"api_key"`
-	Model             string  `mapstructure:"model"`
-	MaxTokens         int     `mapstructure:"max_tokens"`
-	MaxContextTokens  int     `mapstructure:"max_context_tokens"` // context window limit before compression
+	// Legacy single-provider fields (populated by env vars for backward compat).
+	Type     string `mapstructure:"type"`
+	BaseURL  string `mapstructure:"base_url"`
+	APIKey   string `mapstructure:"api_key"`
+	Model    string `mapstructure:"model"`
+	MaxTokens int    `mapstructure:"max_tokens"`
+
+	// Agent-level settings (shared regardless of which provider is active).
+	MaxContextTokens  int     `mapstructure:"max_context_tokens"`
 	Temperature       float64 `mapstructure:"temperature"`
 	MaxSubTurns       int     `mapstructure:"max_sub_turns"`
-	CompressMode      string  `mapstructure:"compress_mode"`       // "drop" | "segment" | "tiered" | "incremental" | "topic"
-	SegmentMergeLimit int     `mapstructure:"segment_merge_limit"` // A: segments at any level before recursive merge
+	CompressMode      string  `mapstructure:"compress_mode"`
+	SegmentMergeLimit int     `mapstructure:"segment_merge_limit"`
+
+	// Multi-provider: if set, startup selects the first that passes health check.
+	Providers []ProviderConfig `mapstructure:"providers"`
+}
+
+// EffectiveProviders returns the list of provider configs to try at startup.
+// If multi-provider config is set, it returns those. Otherwise, it builds a
+// single entry from the legacy fields (env var overrides).
+func (l *LLMConfig) EffectiveProviders() []ProviderConfig {
+	if len(l.Providers) > 0 {
+		return l.Providers
+	}
+	return []ProviderConfig{{
+		Name:      "default",
+		Type:      l.Type,
+		BaseURL:   l.BaseURL,
+		APIKey:    l.APIKey,
+		Model:     l.Model,
+		MaxTokens: l.MaxTokens,
+	}}
 }
 
 type SessionConfig struct {
@@ -436,8 +469,24 @@ func configType(path string) string {
 
 // Validate checks the configuration and returns an error for invalid settings.
 func (c *Config) Validate() error {
-	if c.LLM.Type != "" && c.LLM.Type != "openai" && c.LLM.Type != "anthropic" {
-		return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q`, c.LLM.Type)
+	// If multi-provider is configured, validate each entry.
+	if len(c.LLM.Providers) > 0 {
+		for i, p := range c.LLM.Providers {
+			if p.Type != "" && p.Type != "openai" && p.Type != "anthropic" {
+				return fmt.Errorf(`llm.providers[%d].type must be "openai" or "anthropic", got %q`, i, p.Type)
+			}
+			if p.APIKey == "" {
+				return fmt.Errorf("llm.providers[%d].api_key is required", i)
+			}
+			if p.Model == "" {
+				return fmt.Errorf("llm.providers[%d].model is required", i)
+			}
+		}
+	} else {
+		// Validate legacy single-provider fields.
+		if c.LLM.Type != "" && c.LLM.Type != "openai" && c.LLM.Type != "anthropic" {
+			return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q`, c.LLM.Type)
+		}
 	}
 	if c.LLM.MaxTokens <= 0 {
 		return fmt.Errorf("llm.max_tokens must be > 0")
