@@ -1,0 +1,162 @@
+# 安装 dolphin
+
+[English](INSTALL.md) | [中文](INSTALL.zh.md)
+
+dolphin 支持 **Linux** 和 **macOS** 系统。选择最适合你的安装方式。
+
+## 前置要求
+
+- **LLM API 密钥** — 来自 OpenAI（或兼容 OpenAI 接口的服务商）、Anthropic，或国内大模型服务商
+- **Go 1.26+**（仅源码编译时需要）
+
+## 方式一：下载预编译二进制（推荐）
+
+从 [latest release](https://github.com/dolphin/dolphin/releases/latest) 下载对应平台的压缩包，解压后将 `dolphin` 二进制放入 `PATH`。
+
+| 平台 | 文件名 |
+|------|--------|
+| Linux x86_64 | `dolphin_<版本>_linux_x86_64.tar.gz` |
+| Linux arm64 | `dolphin_<版本>_linux_arm64.tar.gz` |
+| macOS Intel | `dolphin_<版本>_macOS_x86_64.tar.gz` |
+| macOS Apple Silicon | `dolphin_<版本>_macOS_arm64.tar.gz` |
+
+```bash
+# 示例：Linux x86_64
+VERSION="v1.0.0"   # 替换为实际最新版本号
+curl -LO "https://github.com/dolphin/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_linux_x86_64.tar.gz"
+tar xzf "dolphin_${VERSION}_linux_x86_64.tar.gz"
+sudo mv dolphin /usr/local/bin/
+rm "dolphin_${VERSION}_linux_x86_64.tar.gz"
+```
+
+```bash
+# 示例：macOS Apple Silicon
+VERSION="v1.0.0"
+curl -LO "https://github.com/dolphin/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_macOS_arm64.tar.gz"
+tar xzf "dolphin_${VERSION}_macOS_arm64.tar.gz"
+sudo mv dolphin /usr/local/bin/
+rm "dolphin_${VERSION}_macOS_arm64.tar.gz"
+```
+
+## 方式二：使用 `go install` 安装
+
+需要 Go 1.26+。
+
+```bash
+go install github.com/dolphin/dolphin@latest
+```
+
+`dolphin` 二进制会安装到 `$GOPATH/bin` 目录（默认是 `$HOME/go/bin`）。请确保该目录已在 `PATH` 中。
+
+安装指定版本：
+
+```bash
+go install github.com/dolphin/dolphin@v1.0.0
+```
+
+## 方式三：源码编译
+
+```bash
+git clone https://github.com/dolphin/dolphin.git
+cd dolphin
+make build   # 生成 ./dolphin
+# 或手动编译：
+# go build -ldflags="-X 'dolphin/cmd.Version=$(version)'" -o dolphin .
+```
+
+开发版本（Version 为 `dev`）：
+
+```bash
+make build
+# 或
+go build -o dolphin .
+```
+
+## 验证安装
+
+```bash
+dolphin --version
+```
+
+应看到如下输出：
+
+```
+dolphin dev
+```
+
+## 配置 API 密钥
+
+dolphin 运行至少需要一个 API 密钥。通过环境变量设置：
+
+```bash
+# OpenAI
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_MODEL="gpt-4o"
+export DZ_LLM_BASE_URL="https://api.openai.com/v1"
+export DZ_LLM_TYPE="openai"
+
+# 或 DeepSeek（中国用户推荐）
+# export DZ_LLM_API_KEY="sk-..."
+# export DZ_LLM_MODEL="deepseek-v4-pro"
+# export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+# export DZ_LLM_TYPE="openai"
+
+./dolphin
+```
+
+首次运行会进入设置向导 — 选择角色、选填生成配置文件和系统信息文件。所有数据均存储在本地。
+
+### 中国地区推荐模型
+
+| 服务商 | 模型 | 接口地址 |
+|--------|------|----------|
+| **DeepSeek** | `deepseek-v4-pro` | `https://api.deepseek.com/v1` |
+| **MiniMax** | `MiniMax-M2.7` | `https://api.minimax.chat/v1` |
+| **智谱 GLM** | `glm-5` | `https://open.bigmodel.cn/api/paas/v4` |
+| **通义千问** | `qwen3.6-max-preview` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| **Kimi** | `kimi-k2.6` | `https://api.moonshot.ai/v1` |
+
+以上均兼容 OpenAI 接口格式，设置 `DZ_LLM_TYPE=openai` 即可使用。
+
+## 升级
+
+使用内置的更新命令：
+
+```bash
+dolphin update          # 升级到最新版本
+dolphin update v1.0.0   # 升级到指定版本
+dolphin update --list   # 列出可用版本
+```
+
+或重新通过上述方式安装。
+
+## 常见问题
+
+### "command not found: dolphin"
+
+二进制文件不在 `PATH` 中。将其移动到 `PATH` 包含的目录（如 `/usr/local/bin`），或将安装目录加入 `PATH`：
+
+```bash
+export PATH=$PATH:/usr/local/bin
+```
+
+### "permission denied"
+
+确保二进制文件有执行权限：
+
+```bash
+chmod +x /path/to/dolphin
+```
+
+### 没有 Go 环境
+
+使用方式一（下载预编译二进制）代替源码编译。
+
+### 校验文件完整性
+
+每个 release 附带 `checksums.txt` 文件。验证下载的压缩包：
+
+```bash
+sha256sum dolphin_*.tar.gz
+# 与 release 中的 checksums.txt 对比
+```

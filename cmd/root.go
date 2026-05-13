@@ -57,6 +57,9 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.SetVersionTemplate("dolphin {{.Version}}\n")
 
 	cmd.AddCommand(NewSetupCmd())
+	cmd.AddCommand(NewResetCmd())
+	cmd.AddCommand(NewNewCmd())
+	cmd.AddCommand(NewUpdateCmd())
 
 	return cmd
 }
