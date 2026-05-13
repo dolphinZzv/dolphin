@@ -198,8 +198,8 @@ func listVersions() error {
 	}
 
 	var releases []struct {
-		TagName string `json:"tag_name"`
-		Prerelease bool `json:"prerelease"`
+		TagName    string `json:"tag_name"`
+		Prerelease bool   `json:"prerelease"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return err

@@ -158,6 +158,7 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+
 // restrictiveNotes is appended to the standard template to document security
 // hardening applied in restrictive mode. This approach reuses the standard
 // template comments but overrides specific values via yaml overlay below.
@@ -318,6 +319,7 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+
 func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
 	tmplEN := restrictiveTemplateEN + configTemplateEN
 	tmplZH := restrictiveTemplateZH + configTemplateZH

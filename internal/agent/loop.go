@@ -126,8 +126,8 @@ func (a *Agent) switchToProvider(name string) bool {
 	return false
 }
 
-func (a *Agent) SetVersion(v string)     { a.version = v }
-func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
+func (a *Agent) SetVersion(v string)   { a.version = v }
+func (a *Agent) SetBuildTime(t string) { a.buildTime = t }
 
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
@@ -278,11 +278,11 @@ func printProviderHelp(providers []config.ProviderConfig) {
 
 func providerLink(name string) string {
 	links := map[string]string{
-		"deepseek":   "https://platform.deepseek.com/api_keys",
-		"minimax":    "https://platform.minimaxi.com/",
-		"glm":        "https://open.bigmodel.cn/usercenter/apikeys",
-		"qwen":       "https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen",
-		"kimi":       "https://kimi.moonshot.cn/",
+		"deepseek": "https://platform.deepseek.com/api_keys",
+		"minimax":  "https://platform.minimaxi.com/",
+		"glm":      "https://open.bigmodel.cn/usercenter/apikeys",
+		"qwen":     "https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen",
+		"kimi":     "https://kimi.moonshot.cn/",
 	}
 	lower := strings.ToLower(name)
 	for key, link := range links {

@@ -1272,7 +1272,6 @@ func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 	}
 }
 
-
 func TestConfigToolList(t *testing.T) {
 	cfg := config.DefaultConfig()
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}

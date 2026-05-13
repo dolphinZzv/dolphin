@@ -51,11 +51,9 @@ release-snapshot:
 
 distribute:
 	@branch=$$(git symbolic-ref --short HEAD); \
-	echo "Pushing $$branch to github, gitee, gitea..."; \
+	echo "Pushing $$branch to github, gitee..."; \
 	git push github "$$branch" && echo "  ✓ github" \
 		|| echo "  ✗ github"; \
 	git push gitee "$$branch" && echo "  ✓ gitee" \
 		|| echo "  ✗ gitee"; \
-	git push gitea "$$branch" && echo "  ✓ gitea" \
-		|| echo "  ✗ gitea"; \
 	echo "Done."

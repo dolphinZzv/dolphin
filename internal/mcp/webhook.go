@@ -149,7 +149,6 @@ func (w *WebhookTool) Execute(ctx context.Context, input json.RawMessage) (*Tool
 	}, nil
 }
 
-
 // sanitizeURL strips query params for logging to avoid leaking secrets in URLs.
 func sanitizeURL(rawURL string) string {
 	u, err := url.Parse(rawURL)

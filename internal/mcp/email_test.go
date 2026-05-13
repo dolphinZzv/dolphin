@@ -611,7 +611,7 @@ func TestEmailFetchPOP3(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
@@ -649,7 +649,7 @@ func TestEmailSearchPOP3(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"second","max_results":5}`))
@@ -676,7 +676,7 @@ func TestEmailSearchPOP3EmptyMailbox(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"anything","max_results":5}`))
@@ -717,7 +717,7 @@ func TestEmailSearchPOP3QueryFilter(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"beta","max_results":5}`))
@@ -754,7 +754,7 @@ func TestEmailSearchPOP3MaxResults(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
 
@@ -830,7 +830,7 @@ func TestEmailPOP3NoDelete(t *testing.T) {
 	cfg.Transport.Email.POP3Host = host
 	cfg.Transport.Email.POP3Port = port
 	cfg.Transport.Email.IMAPHost = host
-		cfg.Transport.Email.SkipTLSVerify = true
+	cfg.Transport.Email.SkipTLSVerify = true
 
 	tool := NewEmailTool(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"test","max_results":5}`))

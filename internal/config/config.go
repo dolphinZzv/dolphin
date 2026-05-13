@@ -51,10 +51,10 @@ type ProviderConfig struct {
 
 type LLMConfig struct {
 	// Legacy single-provider fields (populated by env vars for backward compat).
-	Type     string `mapstructure:"type"`
-	BaseURL  string `mapstructure:"base_url"`
-	APIKey   string `mapstructure:"api_key"`
-	Model    string `mapstructure:"model"`
+	Type      string `mapstructure:"type"`
+	BaseURL   string `mapstructure:"base_url"`
+	APIKey    string `mapstructure:"api_key"`
+	Model     string `mapstructure:"model"`
 	MaxTokens int    `mapstructure:"max_tokens"`
 
 	// Agent-level settings (shared regardless of which provider is active).
@@ -121,20 +121,20 @@ type MQTTConfig struct {
 }
 
 type EmailConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	Protocol     string `mapstructure:"protocol"`      // "imap" (default) or "pop3"
-	SMTPHost     string `mapstructure:"smtp_host"`
-	SMTPPort     int    `mapstructure:"smtp_port"`
-	IMAPHost     string `mapstructure:"imap_host"`
-	IMAPPort     int    `mapstructure:"imap_port"`
-	POP3Host     string `mapstructure:"pop3_host"`     // defaults to IMAPHost / SMTPHost
-	POP3Port     int    `mapstructure:"pop3_port"`     // default 995 (TLS)
-	Username     string `mapstructure:"username"`
-	Password     string `mapstructure:"password"`
-	From         string `mapstructure:"from"`
-	UseTLS       bool   `mapstructure:"use_tls"`
-	SkipTLSVerify bool `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
-	PollInterval string `mapstructure:"poll_interval"` // IMAP poll interval, e.g. "10s"
+	Enabled       bool   `mapstructure:"enabled"`
+	Protocol      string `mapstructure:"protocol"` // "imap" (default) or "pop3"
+	SMTPHost      string `mapstructure:"smtp_host"`
+	SMTPPort      int    `mapstructure:"smtp_port"`
+	IMAPHost      string `mapstructure:"imap_host"`
+	IMAPPort      int    `mapstructure:"imap_port"`
+	POP3Host      string `mapstructure:"pop3_host"` // defaults to IMAPHost / SMTPHost
+	POP3Port      int    `mapstructure:"pop3_port"` // default 995 (TLS)
+	Username      string `mapstructure:"username"`
+	Password      string `mapstructure:"password"`
+	From          string `mapstructure:"from"`
+	UseTLS        bool   `mapstructure:"use_tls"`
+	SkipTLSVerify bool   `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
+	PollInterval  string `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
 }
 
 type MCPConfig struct {

@@ -53,7 +53,9 @@ func parseSSEResult(r io.Reader) (json.RawMessage, error) {
 
 // NewSSENotification creates an HTTP POST request for a JSON-RPC notification.
 // The given doer executes the request and the response body is closed.
-func NewSSENotification(ctx context.Context, url string, notif map[string]any, setHeaders func(*http.Request), doer interface{ Do(*http.Request) (*http.Response, error) }) error {
+func NewSSENotification(ctx context.Context, url string, notif map[string]any, setHeaders func(*http.Request), doer interface {
+	Do(*http.Request) (*http.Response, error)
+}) error {
 	body, err := json.Marshal(notif)
 	if err != nil {
 		return fmt.Errorf("marshal notification: %w", err)

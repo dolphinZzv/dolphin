@@ -68,11 +68,11 @@ func TestOpenAICompleteStreamWithThinking(t *testing.T) {
 	defer server.Close()
 
 	provider := &OpenAIProvider{
-		model:   "deepseek-test",
-		maxTok:  4096,
-		name:    "test",
-		temp:    0.7,
-		baseURL: server.URL,
+		model:    "deepseek-test",
+		maxTok:   4096,
+		name:     "test",
+		temp:     0.7,
+		baseURL:  server.URL,
 		httpDoer: http.DefaultClient,
 	}
 

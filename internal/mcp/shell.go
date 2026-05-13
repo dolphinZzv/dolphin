@@ -183,7 +183,6 @@ func containsShellMeta(s string) bool {
 	return false
 }
 
-
 // truncateCommand sanitizes a shell command for logging:
 // truncates to 200 chars and removes newlines.
 func truncateCommand(cmd string) string {
