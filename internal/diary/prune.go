@@ -38,47 +38,35 @@ func (d *Diary) pruneDays() error {
 		return nil
 	}
 
-	yearDirs, err := os.ReadDir(d.dir)
+	monthPaths, err := d.yearMonthDirs()
 	if err != nil {
 		return err
 	}
-	for _, yd := range yearDirs {
-		if !yd.IsDir() || len(yd.Name()) != 4 {
-			continue
-		}
-		monthDirs, err := os.ReadDir(filepath.Join(d.dir, yd.Name()))
+	for _, mp := range monthPaths {
+		dayDirs, err := os.ReadDir(mp)
 		if err != nil {
 			continue
 		}
-		for _, md := range monthDirs {
-			if !md.IsDir() || len(md.Name()) != 2 {
+		for _, dd := range dayDirs {
+			if !dd.IsDir() || len(dd.Name()) != 2 {
 				continue
 			}
-			dayDirs, err := os.ReadDir(filepath.Join(d.dir, yd.Name(), md.Name()))
-			if err != nil {
+			dayDir := filepath.Join(mp, dd.Name())
+			sessionsPath := filepath.Join(dayDir, "sessions.jsonl")
+			refs := d.loadDaySessionsFrom(sessionsPath)
+			if len(refs) <= limit {
 				continue
 			}
-			for _, dd := range dayDirs {
-				if !dd.IsDir() || len(dd.Name()) != 2 {
-					continue
-				}
-				dayDir := filepath.Join(d.dir, yd.Name(), md.Name(), dd.Name())
-				sessionsPath := filepath.Join(dayDir, "sessions.jsonl")
-				refs := d.loadDaySessionsFrom(sessionsPath)
-				if len(refs) <= limit {
-					continue
-				}
-				// Remove oldest, keep newest
-				pruned := refs[len(refs)-limit:]
-				if err := d.writeDaySessions(sessionsPath, pruned); err != nil {
-					zap.S().Warnw("diary: prune day sessions failed", "path", sessionsPath, "error", err)
-					continue
-				}
-				date, _ := parseDateFromPath(dayDir)
-				entry := d.buildDayEntry(date, pruned)
-				dayPath := filepath.Join(dayDir, "day.json")
-				atomicWriteJSON(dayPath, entry)
+			// Remove oldest, keep newest
+			pruned := refs[len(refs)-limit:]
+			if err := d.writeDaySessions(sessionsPath, pruned); err != nil {
+				zap.S().Warnw("diary: prune day sessions failed", "path", sessionsPath, "error", err)
+				continue
 			}
+			date, _ := parseDateFromPath(dayDir)
+			entry := d.buildDayEntry(date, pruned)
+			dayPath := filepath.Join(dayDir, "day.json")
+			atomicWriteJSON(dayPath, entry)
 		}
 	}
 	return nil
@@ -91,48 +79,34 @@ func (d *Diary) pruneWeeks() error {
 		return nil
 	}
 
-	// Collect all week entries
-	yearDirs, err := os.ReadDir(d.dir)
+	monthPaths, err := d.yearMonthDirs()
 	if err != nil {
 		return err
 	}
-	for _, yd := range yearDirs {
-		if !yd.IsDir() || len(yd.Name()) != 4 {
-			continue
-		}
-		monthDirs, err := os.ReadDir(filepath.Join(d.dir, yd.Name()))
+	for _, mp := range monthPaths {
+		entries, err := os.ReadDir(mp)
 		if err != nil {
 			continue
 		}
-		for _, md := range monthDirs {
-			if !md.IsDir() || len(md.Name()) != 2 {
+		for _, e := range entries {
+			if e.IsDir() || !strings.Contains(e.Name(), "-W") || !strings.HasSuffix(e.Name(), ".json") {
 				continue
 			}
-			monthPath := filepath.Join(d.dir, yd.Name(), md.Name())
-			entries, err := os.ReadDir(monthPath)
-			if err != nil {
+			weekPath := filepath.Join(mp, e.Name())
+			entry, err := d.readEntry(weekPath)
+			if err != nil || entry == nil {
 				continue
 			}
-			for _, e := range entries {
-				if e.IsDir() || !strings.Contains(e.Name(), "-W") || !strings.HasSuffix(e.Name(), ".json") {
-					continue
-				}
-				weekPath := filepath.Join(monthPath, e.Name())
-				entry, err := d.readEntry(weekPath)
-				if err != nil || entry == nil {
-					continue
-				}
-				if len(entry.Children) <= limit {
-					continue
-				}
-				// Remove oldest day dirs, keep newest
-				pruned := entry.Children[len(entry.Children)-limit:]
-				for _, ch := range entry.Children[:len(entry.Children)-limit] {
-					os.RemoveAll(filepath.Join(d.dir, ch.Path))
-				}
-				entry.Children = pruned
-				atomicWriteJSON(weekPath, entry)
+			if len(entry.Children) <= limit {
+				continue
 			}
+			// Remove oldest day dirs, keep newest
+			pruned := entry.Children[len(entry.Children)-limit:]
+			for _, ch := range entry.Children[:len(entry.Children)-limit] {
+				os.RemoveAll(filepath.Join(d.dir, ch.Path))
+			}
+			entry.Children = pruned
+			atomicWriteJSON(weekPath, entry)
 		}
 	}
 	return nil
@@ -145,38 +119,25 @@ func (d *Diary) pruneMonths() error {
 		return nil
 	}
 
-	yearDirs, err := os.ReadDir(d.dir)
+	monthPaths, err := d.yearMonthDirs()
 	if err != nil {
 		return err
 	}
-	for _, yd := range yearDirs {
-		if !yd.IsDir() || len(yd.Name()) != 4 {
+	for _, mp := range monthPaths {
+		monthJSON := filepath.Join(mp, "month.json")
+		entry, err := d.readEntry(monthJSON)
+		if err != nil || entry == nil {
 			continue
 		}
-		monthDirs, err := os.ReadDir(filepath.Join(d.dir, yd.Name()))
-		if err != nil {
+		if len(entry.Children) <= limit {
 			continue
 		}
-		for _, md := range monthDirs {
-			if !md.IsDir() || len(md.Name()) != 2 {
-				continue
-			}
-			monthPath := filepath.Join(d.dir, yd.Name(), md.Name())
-			monthJSON := filepath.Join(monthPath, "month.json")
-			entry, err := d.readEntry(monthJSON)
-			if err != nil || entry == nil {
-				continue
-			}
-			if len(entry.Children) <= limit {
-				continue
-			}
-			pruned := entry.Children[len(entry.Children)-limit:]
-			for _, ch := range entry.Children[:len(entry.Children)-limit] {
-				os.Remove(filepath.Join(d.dir, ch.Path))
-			}
-			entry.Children = pruned
-			atomicWriteJSON(monthJSON, entry)
+		pruned := entry.Children[len(entry.Children)-limit:]
+		for _, ch := range entry.Children[:len(entry.Children)-limit] {
+			os.Remove(filepath.Join(d.dir, ch.Path))
 		}
+		entry.Children = pruned
+		atomicWriteJSON(monthJSON, entry)
 	}
 	return nil
 }
@@ -254,6 +215,31 @@ func (d *Diary) pruneTotalSize() error {
 		zap.S().Infow("diary: pruned year for total size limit", "year", yd, "freed_mb", ys/(1024*1024))
 	}
 	return nil
+}
+
+// yearMonthDirs returns all year/month subdirectory paths under d.dir.
+func (d *Diary) yearMonthDirs() ([]string, error) {
+	yearDirs, err := os.ReadDir(d.dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, yd := range yearDirs {
+		if !yd.IsDir() || len(yd.Name()) != 4 {
+			continue
+		}
+		monthDirs, err := os.ReadDir(filepath.Join(d.dir, yd.Name()))
+		if err != nil {
+			continue
+		}
+		for _, md := range monthDirs {
+			if !md.IsDir() || len(md.Name()) != 2 {
+				continue
+			}
+			out = append(out, filepath.Join(d.dir, yd.Name(), md.Name()))
+		}
+	}
+	return out, nil
 }
 
 // loadDaySessionsFrom reads sessions from a path.

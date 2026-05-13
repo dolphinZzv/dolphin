@@ -66,22 +66,22 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 		parts = append(parts, BuiltinSkills)
 	}
 
-	// 4. AGENTS.md (agent > project > user > system)
+	// 3. AGENTS.md (agent > project > user > system)
 	if agents := b.loadFileFallback(agentDir, "AGENTS.md"); agents != "" {
 		parts = append(parts, "## Agent Definitions\n"+agents)
 	}
 
-	// 5. RULES.md
+	// 4. RULES.md
 	if rules := b.loadFileFallback(agentDir, "RULES.md"); rules != "" {
 		parts = append(parts, "## Rules\n"+rules)
 	}
 
-	// 6. USER.md
+	// 5. USER.md
 	if user := b.loadFileFallback(agentDir, "USER.md"); user != "" {
 		parts = append(parts, "## User Context\n"+user)
 	}
 
-	// 7. SYSTEM.md (user dir only — generated once, injected every startup)
+	// 6. SYSTEM.md (user dir only — generated once, injected every startup)
 	if sys := b.loadSystemMD(); sys != "" {
 		parts = append(parts, "## System\n"+sys)
 	}

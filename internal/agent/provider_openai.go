@@ -274,86 +274,51 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 }
 
 func (p *OpenAIProvider) buildMessages(req ProviderRequest) []openai.ChatCompletionMessage {
-	var msgs []openai.ChatCompletionMessage
+	raw := p.buildMessagesRaw(req)
+	msgs := make([]openai.ChatCompletionMessage, 0, len(raw))
+	for _, r := range raw {
+		msgs = append(msgs, rawToOpenAIMsg(r))
+	}
+	return msgs
+}
 
-	// System prompt
-	if req.System != "" {
-		msgs = append(msgs, openai.ChatCompletionMessage{
-			Role:    openai.ChatMessageRoleSystem,
-			Content: req.System,
-		})
+func rawToOpenAIMsg(raw map[string]any) openai.ChatCompletionMessage {
+	msg := openai.ChatCompletionMessage{
+		Role: raw["role"].(string),
 	}
 
-	// Conversation history
-	for _, m := range req.Messages {
-		switch m.Role {
-		case "user":
-			msgs = append(msgs, openai.ChatCompletionMessage{
-				Role:    openai.ChatMessageRoleUser,
-				Content: string(m.Content),
-			})
-		case "assistant":
-			msg := openai.ChatCompletionMessage{
-				Role: openai.ChatMessageRoleAssistant,
-			}
-			// Parse content blocks for tool calls and thinking
-			var blocks []map[string]any
-			if err := json.Unmarshal(m.Content, &blocks); err == nil {
-				var textParts []string
-				for _, b := range blocks {
-					switch b["type"] {
-					case "text":
-						if text, ok := b["text"].(string); ok {
-							textParts = append(textParts, text)
-						}
-					case "thinking":
-						// DeepSeek requires reasoning_content to be included
-						// in assistant messages when reasoning was used.
-						if thinking, ok := b["thinking"].(string); ok {
-							// We include reasoning_content directly in the message
-							// via the structured output, since go-openai doesn't
-							// have a ReasoningContent field on ChatCompletionMessage.
-							if msg.Content != "" {
-								msg.Content += "\n"
-							}
-							msg.Content += thinking
-						}
-					case "tool_use":
-						id, _ := b["id"].(string)
-						name, _ := b["name"].(string)
-						input := b["input"]
-						inputJSON, _ := json.Marshal(input)
-						msg.ToolCalls = append(msg.ToolCalls, openai.ToolCall{
-							ID:   id,
-							Type: "function",
-							Function: openai.FunctionCall{
-								Name:      name,
-								Arguments: string(inputJSON),
-							},
-						})
-					}
-				}
-				if len(textParts) > 0 {
-					msg.Content = strings.Join(textParts, "\n")
-				}
-			}
-			if msg.Content == "" && len(msg.ToolCalls) > 0 {
-				msg.Content = ""
-			}
-			msgs = append(msgs, msg)
+	if content, ok := raw["content"].(string); ok {
+		msg.Content = content
+	}
 
-		case "tool":
-			tcID := extractToolCallID(m.Content)
-			content := extractToolResult(m.Content)
-			msgs = append(msgs, openai.ChatCompletionMessage{
-				Role:       openai.ChatMessageRoleTool,
-				ToolCallID: tcID,
-				Content:    content,
-			})
+	// Merge reasoning_content into content for go-openai compatibility
+	if reasoning, ok := raw["reasoning_content"].(string); ok {
+		if msg.Content != "" {
+			msg.Content += "\n"
+		}
+		msg.Content += reasoning
+	}
+
+	if tcs, ok := raw["tool_calls"].([]any); ok {
+		for _, tc := range tcs {
+			if tcMap, ok := tc.(map[string]any); ok {
+				id, _ := tcMap["id"].(string)
+				funcMap, _ := tcMap["function"].(map[string]any)
+				name, _ := funcMap["name"].(string)
+				args, _ := funcMap["arguments"].(string)
+				msg.ToolCalls = append(msg.ToolCalls, openai.ToolCall{
+					ID:   id,
+					Type: "function",
+					Function: openai.FunctionCall{
+						Name:      name,
+						Arguments: args,
+					},
+				})
+			}
 		}
 	}
 
-	return msgs
+	return msg
 }
 
 func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any {

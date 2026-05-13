@@ -408,7 +408,9 @@ func DefaultConfig() *Config {
 	v := viper.New()
 	setDefaults(v)
 	var cfg Config
-	v.Unmarshal(&cfg)
+	if err := v.Unmarshal(&cfg); err != nil {
+		zap.S().Errorw("unmarshal default config", "error", err)
+	}
 	cfg.Session.Dir = "/tmp/dolphin"
 	return &cfg
 }
@@ -475,26 +477,24 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 		existing.MCP.Loaded = append(existing.MCP.Loaded, m)
 	}
 
-	data, err := yaml.Marshal(&existing)
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-
 	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	// Append to existing file (preserve other settings)
-	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	if err != nil {
-		return fmt.Errorf("open config: %w", err)
+	// Read existing config as full YAML map, merge tool selections, write back.
+	// Read-modify-write avoids YAML corruption from blind append.
+	full := make(map[string]any)
+	if existingData, err := os.ReadFile(configPath); err == nil {
+		yaml.Unmarshal(existingData, &full)
 	}
-	defer f.Close()
-
-	// Write a separator and the new section
-	f.WriteString("\n# Tool selections (auto-generated)\n")
-	f.Write(data)
-	return nil
+	// Merge the merged loaded-tools into the full config
+	full["skills"] = existing.Skills
+	full["mcp"] = existing.MCP
+	out, err := yaml.Marshal(full)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return os.WriteFile(configPath, out, 0600)
 }
 
 func configType(path string) string {

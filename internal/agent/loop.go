@@ -590,57 +590,14 @@ func (a *Agent) handleStatusCommand(state *LoopState, io transport.UserIO) {
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
 // extraTools specifies MCP tool names that should be available to the LLM (beyond the always-available search_mcp_tools).
 func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry, extraTools map[string]bool) error {
-	// Emit heartbeat event if configured
-	if a.heartbeatInterval > 0 && state.Turn > 0 && state.Turn%a.heartbeatInterval == 0 && a.events != nil {
-		a.events.Emit(ctx, event.Event{
-			Type:      event.TypeHeartbeat,
-			SessionID: string(state.Sess.ID),
-			Turn:      state.Turn,
-		})
-	}
+	a.emitHeartbeat(state)
 
 	maxSubTurns := a.cfg.LLM.MaxSubTurns
 	if maxSubTurns <= 0 {
 		maxSubTurns = 10
 	}
 
-	// Compress history if approaching context limit
-	comp := a.compressor
-	if comp == nil {
-		comp = &DropCompressor{}
-	}
-	compressed, report := comp.Compress(state.Messages, a.cfg.LLM.MaxContextTokens)
-	if report != nil && report.DroppedCount > 0 {
-		state.Messages = compressed
-		// Log each summary segment to the session directory
-		for _, seg := range extractSummarySegments(compressed) {
-			state.Sess.LogCompression(session.CompressMeta{
-				Level:        seg.Level,
-				CoveredCount: seg.CoveredCount,
-				Summary:      seg.Content,
-				TokensSaved:  report.TokensSaved,
-			})
-			state.CompressionCount++
-		}
-		zap.S().Debugw("context compressed",
-			"dropped", report.DroppedCount,
-			"remaining", len(compressed),
-			"tokens_saved", report.TokensSaved,
-			"turn", state.Turn,
-		)
-		// Emit compression event
-		if a.events != nil {
-			a.events.Emit(ctx, event.Event{
-				Type:      event.TypeCompression,
-				SessionID: string(state.Sess.ID),
-				Turn:      state.Turn,
-				Data: map[string]any{
-					"dropped":      report.DroppedCount,
-					"tokens_saved": report.TokensSaved,
-				},
-			})
-		}
-	}
+	a.compressHistory(ctx, state)
 
 	for i := 0; i < maxSubTurns; i++ {
 		select {
@@ -649,25 +606,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		default:
 		}
 
-		// Get tool definitions — only explicitly loaded tools + search_mcp_tools
-		var mcpDefs []mcp.ToolDefinition
-		nameSet := map[string]bool{"search_mcp_tools": true}
-		for name := range extraTools {
-			nameSet[name] = true
-		}
-		for name := range nameSet {
-			if t, ok := toolReg.Get(name); ok {
-				mcpDefs = append(mcpDefs, t.Definition())
-			}
-		}
-		toolDefs := make([]ToolDef, len(mcpDefs))
-		for j, d := range mcpDefs {
-			toolDefs[j] = ToolDef{
-				Name:        d.Name,
-				Description: d.Description,
-				InputSchema: d.InputSchema,
-			}
-		}
+		toolDefs := a.buildTurnToolDefs(extraTools, toolReg)
 
 		zap.S().Debugw("llm stream start",
 			"turn", state.Turn,
@@ -676,7 +615,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			"tools", len(toolDefs),
 		)
 
-		// Build LLM request (hooks may modify it)
+		// Build LLM request
 		req := &ProviderRequest{
 			Messages:  state.Messages,
 			System:    systemPrompt,
@@ -686,20 +625,8 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		}
 
 		// Hook: llm:before — plugins can modify the request or abort
-		if a.hooks != nil {
-			hc := &hook.Context{
-				SessionID: string(state.Sess.ID),
-				Turn:      state.Turn,
-				Request:   req,
-				Values:    make(map[string]any),
-			}
-			if err := a.hooks.Fire(ctx, hook.PointBeforeLLM, hc); err != nil {
-				return fmt.Errorf("llm call blocked: %w", err)
-			}
-			// Apply any modifications to the request
-			if modified, ok := hc.Request.(*ProviderRequest); ok {
-				state.Messages = modified.Messages
-			}
+		if err := a.fireBeforeLLM(ctx, state, req); err != nil {
+			return err
 		}
 
 		// Call LLM with retry and streaming
@@ -709,319 +636,417 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			return fmt.Errorf("llm call: %w", err)
 		}
 
-		// Process stream: accumulate text (progressive output) and tool calls
-		var textBuf strings.Builder
-		var thinkingBuf strings.Builder
-		var thinkingSignature string
-		type buildingTool struct {
-			ID      string
-			Name    string
-			ArgsBuf strings.Builder
-		}
-		var tools []buildingTool
-		var toolIdx = -1
-		var finalUsage *Usage
-
-		// Determine write strategy based on transport capabilities
+		// Process stream and build assistant message
 		caps := io.Capabilities()
-
-		// For block transports, buffer output and only flush at threshold or stream end.
-		// No periodic flush — each mqtt publish is a separate message, so we want
-		// one message per complete turn response, not fragments.
-		var blockBuf strings.Builder
-		const blockFlushThreshold = 1024
-
-		flushBlock := func() {
-			if blockBuf.Len() > 0 {
-				io.WriteString(blockBuf.String())
-				blockBuf.Reset()
-			}
+		result := a.processStream(ctx, io, streamCh, caps, state.Turn, string(state.Sess.ID))
+		if result.err != nil {
+			return result.err
 		}
-
-		// Hook: response:before — last chance to abort before output
-		if a.hooks != nil {
-			hc := &hook.Context{
-				SessionID: string(state.Sess.ID),
-				Turn:      state.Turn,
-				Values:    make(map[string]any),
-			}
-			if err := a.hooks.Fire(ctx, hook.PointBeforeResponse, hc); err != nil {
-				return fmt.Errorf("response blocked: %w", err)
-			}
-		}
-
-		if caps.Streaming {
-			io.WriteLine("") // spacing before response (streaming: typewriter effect)
-		}
-
-		for chunk := range streamCh {
-			select {
-			case <-ctx.Done():
-				flushBlock()
-				return ctx.Err()
-			default:
-			}
-
-			if chunk.Done {
-				break
-			}
-
-			// Text content — write progressively for typewriter effect
-			if len(chunk.Content) > 0 {
-				text := extractText(chunk.Content)
-				if text != "" {
-					textBuf.WriteString(text)
-					if caps.Streaming {
-						io.WriteString(text)
-					} else {
-						blockBuf.WriteString(text)
-						if blockBuf.Len() >= blockFlushThreshold {
-							flushBlock()
-						}
-					}
-				}
-			}
-
-			// Tool call start
-			if chunk.ToolCallBegin != nil {
-				tools = append(tools, buildingTool{
-					ID:   chunk.ToolCallBegin.ID,
-					Name: chunk.ToolCallBegin.Name,
-				})
-				toolIdx = len(tools) - 1
-			}
-
-			// Content block delta (text, thinking, tool args)
-			if chunk.BlockDelta != "" && chunk.DeltaType == "thinking" {
-				thinkingBuf.WriteString(chunk.BlockDelta)
-			}
-
-			// Thinking signature (message-level delta, passed back for thinking blocks)
-			if chunk.BlockSignature != "" {
-				thinkingSignature = chunk.BlockSignature
-			}
-
-			// Tool call argument delta
-			if chunk.ToolCallDelta != "" && toolIdx >= 0 {
-				tools[toolIdx].ArgsBuf.WriteString(chunk.ToolCallDelta)
-			}
-
-			// Usage info (arrives at end on some providers)
-			if chunk.Usage != nil {
-				finalUsage = chunk.Usage
-			}
-
-		}
-
-		// Final flush: send any remaining buffered content as a single message.
-		if !caps.Streaming && blockBuf.Len() > 0 {
-			blockBuf.WriteString("\n")
-			flushBlock()
-		} else if caps.Streaming {
-			io.WriteLine("") // trailing newline after streaming
-		}
-
 		llmDuration := time.Since(llmStart)
 
-		// Build full assistant message content blocks
-		var outBlocks []map[string]any
-		// Thinking block (provider-agnostic, with optional signature)
-		if thinkingBuf.Len() > 0 {
-			thinkingBlock := map[string]any{
-				"type":     "thinking",
-				"thinking": thinkingBuf.String(),
-			}
-			if thinkingSignature != "" {
-				thinkingBlock["signature"] = thinkingSignature
-			}
-			outBlocks = append(outBlocks, thinkingBlock)
-		}
-		if textBuf.Len() > 0 {
-			outBlocks = append(outBlocks, map[string]any{"type": "text", "text": textBuf.String()})
-		}
-		var providerToolCalls []ToolCall
-		for _, tc := range tools {
-			argsJSON := json.RawMessage(tc.ArgsBuf.String())
-			outBlocks = append(outBlocks, map[string]any{
-				"type":  "tool_use",
-				"id":    tc.ID,
-				"name":  tc.Name,
-				"input": argsJSON,
-			})
-			providerToolCalls = append(providerToolCalls, ToolCall{
-				ID:        tc.ID,
-				Name:      tc.Name,
-				Arguments: argsJSON,
-			})
-		}
-
-		content, _ := json.Marshal(outBlocks)
+		// Build assistant message content blocks from stream result
+		content, toolCalls := a.buildAssistantMessage(result, state)
 		state.Messages = append(state.Messages, Message{Role: "assistant", Content: content})
 
-		// Log to session
-		state.Sess.LogMessage("assistant", content)
-		for _, tc := range providerToolCalls {
-			state.Sess.LogToolCall(tc.Name, tc.Arguments)
-		}
-		// Log usage and timing
-		if finalUsage != nil {
-			zap.S().Debugw("llm response",
-				"turn", state.Turn,
-				"sub_turn", i,
-				"duration", llmDuration,
-				"input_tokens", finalUsage.InputTokens,
-				"output_tokens", finalUsage.OutputTokens,
-				"tool_calls", len(providerToolCalls),
-			)
-		}
+		// Logging, hooks, events
+		a.logLLMResponse(ctx, state, i, llmDuration, content, toolCalls, result.usage)
 
-		// Hook: llm:after
-		if a.hooks != nil {
-			a.hooks.Fire(ctx, hook.PointAfterLLM, &hook.Context{
-				SessionID: string(state.Sess.ID),
-				Turn:      state.Turn,
-				Response:  &ProviderResponse{Content: content, ToolCalls: providerToolCalls, Usage: finalUsage},
-			})
-		}
-		if a.events != nil {
-			evtData := map[string]any{"tool_calls": len(providerToolCalls)}
-			if finalUsage != nil {
-				evtData["input_tokens"] = finalUsage.InputTokens
-				evtData["output_tokens"] = finalUsage.OutputTokens
-			}
-			a.events.Emit(ctx, event.Event{
-				Type:      event.TypeLLMResponse,
-				SessionID: string(state.Sess.ID),
-				Turn:      state.Turn,
-				Data:      evtData,
-			})
-		}
-
-		// No tool calls — final response, done
-		if len(providerToolCalls) == 0 {
+		if len(toolCalls) == 0 {
 			return nil
 		}
 
 		// Execute tool calls
-		state.ToolCallCount += len(providerToolCalls)
-		for _, tc := range providerToolCalls {
-			zap.S().Debugw("executing tool",
-				"name", tc.Name,
-				"turn", state.Turn,
-				"arguments", string(tc.Arguments),
-			)
-			if a.cfg.LogLevel == "debug" && caps.Streaming {
-				io.WriteLine(fmt.Sprintf("\n[Calling tool: %s]", tc.Name))
-			}
-
-			// Hook: tool:before — can modify args or abort
-			effectiveArgs := tc.Arguments
-			if a.hooks != nil {
-				hc := &hook.Context{
-					SessionID: string(state.Sess.ID),
-					Turn:      state.Turn,
-					ToolName:  tc.Name,
-					ToolArgs:  tc.Arguments,
-					Values:    make(map[string]any),
-				}
-				if err := a.hooks.Fire(ctx, hook.PointBeforeTool, hc); err != nil {
-					return fmt.Errorf("tool %s blocked: %w", tc.Name, err)
-				}
-				effectiveArgs = hc.ToolArgs
-			}
-			// Emit tool:called event
-			if a.events != nil {
-				a.events.Emit(ctx, event.Event{
-					Type:      event.TypeToolCalled,
-					SessionID: string(state.Sess.ID),
-					Turn:      state.Turn,
-					Data:      map[string]any{"tool": tc.Name},
-				})
-			}
-
-			toolStart := time.Now()
-			result, err := toolReg.Execute(ctx, tc.Name, effectiveArgs)
-			toolDuration := time.Since(toolStart)
-
-			// Hook: tool:after
-			if a.hooks != nil {
-				a.hooks.Fire(ctx, hook.PointAfterTool, &hook.Context{
-					SessionID:  string(state.Sess.ID),
-					Turn:       state.Turn,
-					ToolName:   tc.Name,
-					ToolResult: result,
-				})
-			}
-			// Emit tool:completed event
-			if a.events != nil {
-				a.events.Emit(ctx, event.Event{
-					Type:      event.TypeToolCompleted,
-					SessionID: string(state.Sess.ID),
-					Turn:      state.Turn,
-					Data: map[string]any{
-						"tool":     tc.Name,
-						"duration": toolDuration.String(),
-					},
-				})
-			}
-
-			resultContent := ""
-			if err != nil {
-				resultContent = fmt.Sprintf("Error: %v", err)
-			} else if result != nil {
-				resultContent = result.Content
-			}
-
-			// Truncate oversized tool results
-			llmResultContent := resultContent
-			const maxResultLen = 2000
-			if len(llmResultContent) > maxResultLen {
-				llmResultContent = llmResultContent[:maxResultLen] +
-					fmt.Sprintf("\n... [result truncated, %d bytes total]", len(resultContent))
-			}
-
-			zap.S().Debugw("tool result",
-				"name", tc.Name,
-				"turn", state.Turn,
-				"duration", toolDuration,
-				"is_error", err != nil || (result != nil && result.IsError),
-				"result_len", len(resultContent),
-			)
-
-			// Build tool result message block (Anthropic tool_result format)
-			innerContent, _ := json.Marshal([]map[string]any{
-				{"type": "text", "text": llmResultContent},
-			})
-			resultBlock, _ := json.Marshal([]map[string]any{
-				{
-					"type":        "tool_result",
-					"tool_use_id": tc.ID,
-					"content":     json.RawMessage(innerContent),
-				},
-			})
-			state.Messages = append(state.Messages, Message{
-				Role:    "tool",
-				Content: resultBlock,
-			})
-
-			isErr := err != nil || (result != nil && result.IsError)
-			if isErr {
-				state.ErrorCount++
-			}
-			state.Sess.LogToolResult(tc.Name, resultBlock, isErr)
-
-			if isErr {
-				zap.S().Debugw("tool error", "name", tc.Name, "error", resultContent)
-			} else {
-				zap.S().Debugw("tool completed", "name", tc.Name)
-			}
-		}
+		a.executeToolCalls(ctx, io, state, toolCalls, toolReg, caps)
 	}
 
 	if a.cfg.LogLevel == "debug" {
 		io.WriteLine("\n[Max tool call iterations reached. Ending turn.]")
 	}
 	return nil
+}
+
+type streamResult struct {
+	text              string
+	thinking          string
+	thinkingSignature string
+	toolCalls         []ToolCall
+	usage             *Usage
+	err               error
+}
+
+func (a *Agent) emitHeartbeat(state *LoopState) {
+	if a.heartbeatInterval > 0 && state.Turn > 0 && state.Turn%a.heartbeatInterval == 0 && a.events != nil {
+		a.events.Emit(context.Background(), event.Event{
+			Type:      event.TypeHeartbeat,
+			SessionID: string(state.Sess.ID),
+			Turn:      state.Turn,
+		})
+	}
+}
+
+func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
+	comp := a.compressor
+	if comp == nil {
+		comp = &DropCompressor{}
+	}
+	compressed, report := comp.Compress(state.Messages, a.cfg.LLM.MaxContextTokens)
+	if report == nil || report.DroppedCount == 0 {
+		return
+	}
+	state.Messages = compressed
+	for _, seg := range extractSummarySegments(compressed) {
+		state.Sess.LogCompression(session.CompressMeta{
+			Level:        seg.Level,
+			CoveredCount: seg.CoveredCount,
+			Summary:      seg.Content,
+			TokensSaved:  report.TokensSaved,
+		})
+		state.CompressionCount++
+	}
+	zap.S().Debugw("context compressed",
+		"dropped", report.DroppedCount,
+		"remaining", len(compressed),
+		"tokens_saved", report.TokensSaved,
+		"turn", state.Turn,
+	)
+	if a.events != nil {
+		a.events.Emit(ctx, event.Event{
+			Type:      event.TypeCompression,
+			SessionID: string(state.Sess.ID),
+			Turn:      state.Turn,
+			Data: map[string]any{
+				"dropped":      report.DroppedCount,
+				"tokens_saved": report.TokensSaved,
+			},
+		})
+	}
+}
+
+func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Registry) []ToolDef {
+	var mcpDefs []mcp.ToolDefinition
+	nameSet := map[string]bool{"search_mcp_tools": true}
+	for name := range extraTools {
+		nameSet[name] = true
+	}
+	for name := range nameSet {
+		if t, ok := toolReg.Get(name); ok {
+			mcpDefs = append(mcpDefs, t.Definition())
+		}
+	}
+	toolDefs := make([]ToolDef, len(mcpDefs))
+	for j, d := range mcpDefs {
+		toolDefs[j] = ToolDef{
+			Name:        d.Name,
+			Description: d.Description,
+			InputSchema: d.InputSchema,
+		}
+	}
+	return toolDefs
+}
+
+func (a *Agent) fireBeforeLLM(ctx context.Context, state *LoopState, req *ProviderRequest) error {
+	if a.hooks == nil {
+		return nil
+	}
+	hc := &hook.Context{
+		SessionID: string(state.Sess.ID),
+		Turn:      state.Turn,
+		Request:   req,
+		Values:    make(map[string]any),
+	}
+	if err := a.hooks.Fire(ctx, hook.PointBeforeLLM, hc); err != nil {
+		return fmt.Errorf("llm call blocked: %w", err)
+	}
+	if modified, ok := hc.Request.(*ProviderRequest); ok {
+		state.Messages = modified.Messages
+	}
+	return nil
+}
+
+func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh <-chan StreamChunk, caps transport.Capabilities, turn int, sessionID string) *streamResult {
+	var textBuf strings.Builder
+	var thinkingBuf strings.Builder
+	var thinkingSignature string
+	type buildingTool struct {
+		ID      string
+		Name    string
+		ArgsBuf strings.Builder
+	}
+	var tools []buildingTool
+	toolIdx := -1
+	var finalUsage *Usage
+
+	var blockBuf strings.Builder
+	const blockFlushThreshold = 1024
+
+	flushBlock := func() {
+		if blockBuf.Len() > 0 {
+			io.WriteString(blockBuf.String())
+			blockBuf.Reset()
+		}
+	}
+
+	// Hook: response:before — last chance to abort before output
+	if a.hooks != nil {
+		hc := &hook.Context{
+			SessionID: sessionID,
+			Turn:      turn,
+			Values:    make(map[string]any),
+		}
+		if err := a.hooks.Fire(ctx, hook.PointBeforeResponse, hc); err != nil {
+			return &streamResult{err: fmt.Errorf("response blocked: %w", err)}
+		}
+	}
+
+	if caps.Streaming {
+		io.WriteLine("")
+	}
+
+	for chunk := range streamCh {
+		select {
+		case <-ctx.Done():
+			flushBlock()
+			return &streamResult{err: ctx.Err()}
+		default:
+		}
+
+		if chunk.Done {
+			break
+		}
+
+		if len(chunk.Content) > 0 {
+			text := extractText(chunk.Content)
+			if text != "" {
+				textBuf.WriteString(text)
+				if caps.Streaming {
+					io.WriteString(text)
+				} else {
+					blockBuf.WriteString(text)
+					if blockBuf.Len() >= blockFlushThreshold {
+						flushBlock()
+					}
+				}
+			}
+		}
+
+		if chunk.ToolCallBegin != nil {
+			tools = append(tools, buildingTool{
+				ID:   chunk.ToolCallBegin.ID,
+				Name: chunk.ToolCallBegin.Name,
+			})
+			toolIdx = len(tools) - 1
+		}
+
+		if chunk.BlockDelta != "" && chunk.DeltaType == "thinking" {
+			thinkingBuf.WriteString(chunk.BlockDelta)
+		}
+
+		if chunk.BlockSignature != "" {
+			thinkingSignature = chunk.BlockSignature
+		}
+
+		if chunk.ToolCallDelta != "" && toolIdx >= 0 {
+			tools[toolIdx].ArgsBuf.WriteString(chunk.ToolCallDelta)
+		}
+
+		if chunk.Usage != nil {
+			finalUsage = chunk.Usage
+		}
+	}
+
+	if !caps.Streaming && blockBuf.Len() > 0 {
+		blockBuf.WriteString("\n")
+		flushBlock()
+	} else if caps.Streaming {
+		io.WriteLine("")
+	}
+
+	// Build tool calls from accumulated buffers
+	var providerToolCalls []ToolCall
+	for _, tc := range tools {
+		providerToolCalls = append(providerToolCalls, ToolCall{
+			ID:        tc.ID,
+			Name:      tc.Name,
+			Arguments: json.RawMessage(tc.ArgsBuf.String()),
+		})
+	}
+
+	return &streamResult{
+		text:              textBuf.String(),
+		thinking:          thinkingBuf.String(),
+		thinkingSignature: thinkingSignature,
+		toolCalls:         providerToolCalls,
+		usage:             finalUsage,
+	}
+}
+
+func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (json.RawMessage, []ToolCall) {
+	var outBlocks []map[string]any
+	if result.thinking != "" {
+		thinkingBlock := map[string]any{
+			"type":     "thinking",
+			"thinking": result.thinking,
+		}
+		if result.thinkingSignature != "" {
+			thinkingBlock["signature"] = result.thinkingSignature
+		}
+		outBlocks = append(outBlocks, thinkingBlock)
+	}
+	if result.text != "" {
+		outBlocks = append(outBlocks, map[string]any{"type": "text", "text": result.text})
+	}
+	for _, tc := range result.toolCalls {
+		outBlocks = append(outBlocks, map[string]any{
+			"type":  "tool_use",
+			"id":    tc.ID,
+			"name":  tc.Name,
+			"input": tc.Arguments,
+		})
+	}
+	content, _ := json.Marshal(outBlocks)
+	return content, result.toolCalls
+}
+
+func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []ToolCall, usage *Usage) {
+	state.Sess.LogMessage("assistant", content)
+	for _, tc := range toolCalls {
+		state.Sess.LogToolCall(tc.Name, tc.Arguments)
+	}
+	if usage != nil {
+		zap.S().Debugw("llm response",
+			"turn", state.Turn,
+			"sub_turn", subTurn,
+			"duration", llmDuration,
+			"input_tokens", usage.InputTokens,
+			"output_tokens", usage.OutputTokens,
+			"tool_calls", len(toolCalls),
+		)
+	}
+	if a.hooks != nil {
+		a.hooks.Fire(ctx, hook.PointAfterLLM, &hook.Context{
+			SessionID: string(state.Sess.ID),
+			Turn:      state.Turn,
+			Response:  &ProviderResponse{Content: content, ToolCalls: toolCalls, Usage: usage},
+		})
+	}
+	if a.events != nil {
+		evtData := map[string]any{"tool_calls": len(toolCalls)}
+		if usage != nil {
+			evtData["input_tokens"] = usage.InputTokens
+			evtData["output_tokens"] = usage.OutputTokens
+		}
+		a.events.Emit(ctx, event.Event{
+			Type:      event.TypeLLMResponse,
+			SessionID: string(state.Sess.ID),
+			Turn:      state.Turn,
+			Data:      evtData,
+		})
+	}
+}
+
+func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state *LoopState, toolCalls []ToolCall, toolReg *mcp.Registry, caps transport.Capabilities) {
+	state.ToolCallCount += len(toolCalls)
+	for _, tc := range toolCalls {
+		zap.S().Debugw("executing tool",
+			"name", tc.Name,
+			"turn", state.Turn,
+			"arguments", string(tc.Arguments),
+		)
+		if a.cfg.LogLevel == "debug" && caps.Streaming {
+			io.WriteLine(fmt.Sprintf("\n[Calling tool: %s]", tc.Name))
+		}
+
+		effectiveArgs := tc.Arguments
+		if a.hooks != nil {
+			hc := &hook.Context{
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				ToolName:  tc.Name,
+				ToolArgs:  tc.Arguments,
+				Values:    make(map[string]any),
+			}
+			if err := a.hooks.Fire(ctx, hook.PointBeforeTool, hc); err != nil {
+				zap.S().Errorw("tool blocked", "name", tc.Name, "error", err)
+				continue
+			}
+			effectiveArgs = hc.ToolArgs
+		}
+		if a.events != nil {
+			a.events.Emit(ctx, event.Event{
+				Type:      event.TypeToolCalled,
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Data:      map[string]any{"tool": tc.Name},
+			})
+		}
+
+		toolStart := time.Now()
+		result, err := toolReg.Execute(ctx, tc.Name, effectiveArgs)
+		toolDuration := time.Since(toolStart)
+
+		if a.hooks != nil {
+			a.hooks.Fire(ctx, hook.PointAfterTool, &hook.Context{
+				SessionID:  string(state.Sess.ID),
+				Turn:       state.Turn,
+				ToolName:   tc.Name,
+				ToolResult: result,
+			})
+		}
+		if a.events != nil {
+			a.events.Emit(ctx, event.Event{
+				Type:      event.TypeToolCompleted,
+				SessionID: string(state.Sess.ID),
+				Turn:      state.Turn,
+				Data: map[string]any{
+					"tool":     tc.Name,
+					"duration": toolDuration.String(),
+				},
+			})
+		}
+
+		resultContent := ""
+		if err != nil {
+			resultContent = fmt.Sprintf("Error: %v", err)
+		} else if result != nil {
+			resultContent = result.Content
+		}
+
+		const maxResultLen = 2000
+		llmResultContent := resultContent
+		if len(llmResultContent) > maxResultLen {
+			llmResultContent = llmResultContent[:maxResultLen] +
+				fmt.Sprintf("\n... [result truncated, %d bytes total]", len(resultContent))
+		}
+
+		zap.S().Debugw("tool result",
+			"name", tc.Name,
+			"turn", state.Turn,
+			"duration", toolDuration,
+			"is_error", err != nil || (result != nil && result.IsError),
+			"result_len", len(resultContent),
+		)
+
+		innerContent, _ := json.Marshal([]map[string]any{
+			{"type": "text", "text": llmResultContent},
+		})
+		resultBlock, _ := json.Marshal([]map[string]any{
+			{
+				"type":        "tool_result",
+				"tool_use_id": tc.ID,
+				"content":     json.RawMessage(innerContent),
+			},
+		})
+		state.Messages = append(state.Messages, Message{
+			Role:    "tool",
+			Content: resultBlock,
+		})
+
+		isErr := err != nil || (result != nil && result.IsError)
+		if isErr {
+			state.ErrorCount++
+		}
+		state.Sess.LogToolResult(tc.Name, resultBlock, isErr)
+	}
 }
 
 // extractText extracts the text portion from a content block array.
