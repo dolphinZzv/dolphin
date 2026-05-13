@@ -62,7 +62,7 @@ changelog:
 
 release:
   github:
-    owner: dolphin
+    owner: dolphinZzv
     name: dolphin
   draft: true
   make_latest: false

@@ -22,13 +22,13 @@ const configTemplateEN = `# dolphin configuration
 #       type: openai
 #       api_key: ""
 #       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-pro
+#       model: deepseek-v4-flash
 #   providers:
 #     - name: deepseek
 #       type: openai
 #       api_key: ""
 #       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-pro
+#       model: deepseek-v4-flash
 llm:
   type: openai            # "openai" or "anthropic"
   base_url: https://api.openai.com/v1
@@ -156,13 +156,13 @@ const configTemplateZH = `# dolphin 配置文件
 #       type: openai
 #       api_key: ""
 #       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-pro
+#       model: deepseek-v4-flash
 #   providers:
 #     - name: deepseek
 #       type: openai
 #       api_key: ""
 #       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-pro
+#       model: deepseek-v4-flash
 llm:
   type: openai            # "openai" 或 "anthropic"
   base_url: https://api.openai.com/v1
