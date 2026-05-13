@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +20,7 @@ import (
 	"github.com/emersion/go-imap/client"
 )
 
-// EmailTool provides SMTP send and IMAP search/fetch as a built-in MCP tool.
+// EmailTool provides SMTP send and IMAP/POP3 search/fetch as a built-in MCP tool.
 type EmailTool struct {
 	cfg    *config.Config
 	schema json.RawMessage
@@ -31,7 +33,7 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 			"action": map[string]any{
 				"type":        "string",
 				"enum":        []string{"send", "search", "fetch"},
-				"description": "send: send an email; search: search inbox; fetch: read a specific email body",
+				"description": "send: send an email; search: search mailbox; fetch: read a specific email body",
 			},
 			"to": map[string]any{
 				"type":        "string",
@@ -47,7 +49,7 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 			},
 			"query": map[string]any{
 				"type":        "string",
-				"description": "search text to match in subject or sender (search action)",
+				"description": "search text to match in subject or sender (search action). Prefix with 'from:' or 'subject:' for field-specific search (IMAP only); POP3 searches all text.",
 			},
 			"max_results": map[string]any{
 				"type":        "integer",
@@ -55,11 +57,11 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 			},
 			"seq": map[string]any{
 				"type":        "integer",
-				"description": "IMAP sequence number (required for fetch action)",
+				"description": "message sequence number (1 = oldest, required for fetch action). Returned by search action.",
 			},
 			"unread_only": map[string]any{
 				"type":        "boolean",
-				"description": "only search unread messages (search only, default false)",
+				"description": "only search unread messages (IMAP only, default false)",
 			},
 		},
 		"required": []string{"action"},
@@ -70,7 +72,7 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 func (e *EmailTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "email",
-		Description: "Send and receive emails via SMTP/IMAP. Actions: send (send an email), search (search inbox messages), fetch (read a specific email body by sequence number). Requires transport.email to be configured.",
+		Description: "Send and receive emails via SMTP/IMAP/POP3. Actions: send (send an email), search (search mailbox messages), fetch (read a specific email body by sequence number). Supports IMAP and POP3 (see transport.email.protocol). Requires transport.email to be configured.",
 		InputSchema: e.schema,
 		Priority:    e.cfg.MCP.Email.Priority,
 		Source:      "built-in",
@@ -85,7 +87,7 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		Body       string `json:"body,omitempty"`
 		Query      string `json:"query,omitempty"`
 		MaxResults int    `json:"max_results,omitempty"`
-		Seq        uint32 `json:"seq,omitempty"`
+		Seq        int    `json:"seq,omitempty"`
 		UnreadOnly bool   `json:"unread_only,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
@@ -106,8 +108,8 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		}
 		return e.search(ecfg, params.Query, params.UnreadOnly, params.MaxResults)
 	case "fetch":
-		if params.Seq == 0 {
-			return &ToolResult{Content: "seq (IMAP sequence number) is required for fetch action.", IsError: true}, nil
+		if params.Seq <= 0 {
+			return &ToolResult{Content: "seq (message sequence number, 1 = oldest) is required for fetch action.", IsError: true}, nil
 		}
 		return e.fetch(ecfg, params.Seq)
 	default:
@@ -203,6 +205,14 @@ func sendPlain(addr, host, from string, to []string, msg, user, pass string) err
 // ── Search ───────────────────────────────────────────────────────────
 
 func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*ToolResult, error) {
+	protocol := strings.ToLower(ecfg.Protocol)
+	if protocol == "pop3" {
+		return e.searchPOP3(ecfg, query, maxResults)
+	}
+	return e.searchIMAP(ecfg, query, unreadOnly, maxResults)
+}
+
+func (e *EmailTool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*ToolResult, error) {
 	c, err := dialIMAP(ecfg)
 	if err != nil {
 		return &ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
@@ -222,16 +232,12 @@ func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bo
 		criteria.WithoutFlags = []string{"\\Seen"}
 	}
 	if query != "" {
-		// Support "from:..." and "subject:..." prefixes, otherwise search both
-		criteria.Text = []string{query}
 		if strings.HasPrefix(strings.ToLower(query), "from:") {
-			criteria.Text = nil
-			fromVal := strings.TrimSpace(query[5:])
-			criteria.Header = map[string][]string{"From": {fromVal}}
+			criteria.Header = map[string][]string{"From": {strings.TrimSpace(query[5:])}}
 		} else if strings.HasPrefix(strings.ToLower(query), "subject:") {
-			criteria.Text = nil
-			subjVal := strings.TrimSpace(query[8:])
-			criteria.Header = map[string][]string{"Subject": {subjVal}}
+			criteria.Header = map[string][]string{"Subject": {strings.TrimSpace(query[8:])}}
+		} else {
+			criteria.Text = []string{query}
 		}
 	}
 
@@ -243,13 +249,12 @@ func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bo
 		return &ToolResult{Content: "No matching emails found."}, nil
 	}
 
-	// Take the most recent N messages
+	// Most recent N messages
 	start := 0
 	if len(seqNums) > maxResults {
 		start = len(seqNums) - maxResults
 	}
 	latest := seqNums[start:]
-
 	seqset := new(goimap.SeqSet)
 	seqset.AddNum(latest...)
 
@@ -263,32 +268,80 @@ func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bo
 		if msg == nil || msg.Envelope == nil {
 			continue
 		}
-		from := ""
-		if len(msg.Envelope.From) > 0 {
-			from = msg.Envelope.From[0].PersonalName
-			if from == "" {
-				from = msg.Envelope.From[0].MailboxName + "@" + msg.Envelope.From[0].HostName
-			}
-		}
-		results = append(results, fmt.Sprintf("Seq:%d | %s | %s | %s",
-			msg.SeqNum,
-			msg.Envelope.Date.Format("2006-01-02 15:04"),
-			truncate(from, 40),
-			truncate(msg.Envelope.Subject, 60)))
+		results = append(results, formatEnvelope(int(msg.SeqNum), msg.Envelope))
 	}
 
 	if len(results) == 0 {
 		return &ToolResult{Content: "No matching emails found."}, nil
 	}
 
-	summary := fmt.Sprintf("Found %d matching emails (showing %d):\n\n%s",
-		len(seqNums), len(results), strings.Join(results, "\n"))
-	return &ToolResult{Content: summary}, nil
+	return &ToolResult{Content: fmt.Sprintf("Found %d matching emails (showing %d):\n\n%s",
+		len(seqNums), len(results), strings.Join(results, "\n"))}, nil
+}
+
+func (e *EmailTool) searchPOP3(ecfg *config.EmailConfig, query string, maxResults int) (*ToolResult, error) {
+	p, err := dialPOP3(ecfg)
+	if err != nil {
+		return &ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
+	}
+	defer p.quit()
+
+	count := p.messageCount()
+	if count == 0 {
+		return &ToolResult{Content: "No messages in mailbox."}, nil
+	}
+
+	// Determine which messages to scan (most recent first)
+	start := 1
+	if count > maxResults {
+		start = count - maxResults + 1
+	}
+
+	var results []string
+	for i := start; i <= count; i++ {
+		raw, err := p.retrHeaders(i)
+		if err != nil {
+			continue
+		}
+		// Try parsing with net/mail
+		if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
+			subj := parsed.Header.Get("Subject")
+			from := parsed.Header.Get("From")
+			date := parsed.Header.Get("Date")
+
+			// Filter by query
+			if query != "" {
+				subjLower := strings.ToLower(subj)
+				fromLower := strings.ToLower(from)
+				qLower := strings.ToLower(query)
+				if !strings.Contains(subjLower, qLower) && !strings.Contains(fromLower, qLower) {
+					continue
+				}
+			}
+
+			results = append(results, fmt.Sprintf("Seq:%d | %s | %s | %s",
+				i, formatDate(date), truncate(from, 40), truncate(subj, 60)))
+		}
+	}
+
+	if len(results) == 0 {
+		return &ToolResult{Content: "No matching emails found."}, nil
+	}
+
+	return &ToolResult{Content: strings.Join(results, "\n")}, nil
 }
 
 // ── Fetch ────────────────────────────────────────────────────────────
 
-func (e *EmailTool) fetch(ecfg *config.EmailConfig, seq uint32) (*ToolResult, error) {
+func (e *EmailTool) fetch(ecfg *config.EmailConfig, seq int) (*ToolResult, error) {
+	protocol := strings.ToLower(ecfg.Protocol)
+	if protocol == "pop3" {
+		return e.fetchPOP3(ecfg, seq)
+	}
+	return e.fetchIMAP(ecfg, uint32(seq))
+}
+
+func (e *EmailTool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*ToolResult, error) {
 	c, err := dialIMAP(ecfg)
 	if err != nil {
 		return &ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
@@ -313,45 +366,42 @@ func (e *EmailTool) fetch(ecfg *config.EmailConfig, seq uint32) (*ToolResult, er
 		return &ToolResult{Content: fmt.Sprintf("Message seq %d not found.", seq), IsError: true}, nil
 	}
 
-	// Read the RFC822 body
-	var bodyText string
-	for _, literal := range msg.Body {
-		data, err := io.ReadAll(literal)
-		if err != nil {
-			continue
-		}
-		bodyText = string(data)
-		break
-	}
-
-	if bodyText == "" {
-		return &ToolResult{Content: "No body content found."}, nil
-	}
-
-	// Parse with net/mail for headers + body
-	r := strings.NewReader(bodyText)
-	parsed, err := mail.ReadMessage(r)
-	if err != nil {
-		// Return raw body if parsing fails
-		bodyPreview := truncate(bodyText, 2000)
-		return &ToolResult{Content: fmt.Sprintf("Seq: %d\n(raw content, parse failed: %s)\n\n%s", seq, err.Error(), bodyPreview)}, nil
-	}
-
-	header := parsed.Header
-	from := header.Get("From")
-	to := header.Get("To")
-	subject := header.Get("Subject")
-	date := header.Get("Date")
-	bodyBytes, _ := io.ReadAll(parsed.Body)
-	bodyStr := string(bodyBytes)
-
-	result := fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d\n\n%s",
-		from, to, subject, date, seq, truncate(bodyStr, 10000))
-
-	return &ToolResult{Content: result}, nil
+	return formatMessageBody(msg.Body, int(seq)), nil
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+func (e *EmailTool) fetchPOP3(ecfg *config.EmailConfig, seq int) (*ToolResult, error) {
+	p, err := dialPOP3(ecfg)
+	if err != nil {
+		return &ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
+	}
+	defer p.quit()
+
+	count := p.messageCount()
+	if seq < 1 || seq > count {
+		return &ToolResult{Content: fmt.Sprintf("Invalid seq %d. Mailbox has %d messages (1-%d).", seq, count, count), IsError: true}, nil
+	}
+
+	raw, err := p.retr(seq)
+	if err != nil {
+		return &ToolResult{Content: fmt.Sprintf("Failed to fetch message %d: %s", seq, err.Error()), IsError: true}, nil
+	}
+
+	if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
+		header := parsed.Header
+		bodyBytes, _ := io.ReadAll(parsed.Body)
+		return &ToolResult{Content: fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d\n\n%s",
+			header.Get("From"), header.Get("To"), header.Get("Subject"),
+			header.Get("Date"), seq, truncate(string(bodyBytes), 10000))}, nil
+	}
+
+	return &ToolResult{Content: fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 10000))}, nil
+}
+
+// ── IMAP helpers ─────────────────────────────────────────────────────
+
+func tlsConfigForEmail(ecfg *config.EmailConfig) *tls.Config {
+	return &tls.Config{InsecureSkipVerify: ecfg.SkipTLSVerify}
+}
 
 func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
 	host := ecfg.IMAPHost
@@ -362,10 +412,9 @@ func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
 	if port <= 0 {
 		port = 993
 	}
-	addr := fmt.Sprintf("%s:%d", host, port)
 
 	d := &net.Dialer{Timeout: 30 * time.Second}
-	tlsConn, err := tls.DialWithDialer(d, "tcp", addr, nil)
+	tlsConn, err := tls.DialWithDialer(d, "tcp", fmt.Sprintf("%s:%d", host, port), tlsConfigForEmail(ecfg))
 	if err != nil {
 		return nil, err
 	}
@@ -381,3 +430,229 @@ func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
 	return c, nil
 }
 
+func formatEnvelope(seq int, env *goimap.Envelope) string {
+	from := ""
+	if len(env.From) > 0 {
+		from = env.From[0].PersonalName
+		if from == "" {
+			from = env.From[0].MailboxName + "@" + env.From[0].HostName
+		}
+	}
+	return fmt.Sprintf("Seq:%d | %s | %s | %s",
+		seq,
+		env.Date.Format("2006-01-02 15:04"),
+		truncate(from, 40),
+		truncate(env.Subject, 60))
+}
+
+func formatMessageBody(body map[*goimap.BodySectionName]goimap.Literal, seq int) *ToolResult {
+	var raw string
+	for _, literal := range body {
+		data, err := io.ReadAll(literal)
+		if err != nil {
+			continue
+		}
+		raw = string(data)
+		break
+	}
+	if raw == "" {
+		return &ToolResult{Content: "No body content found."}
+	}
+
+	if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
+		header := parsed.Header
+		bodyBytes, _ := io.ReadAll(parsed.Body)
+		return &ToolResult{Content: fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d\n\n%s",
+			header.Get("From"), header.Get("To"), header.Get("Subject"),
+			header.Get("Date"), seq, truncate(string(bodyBytes), 10000))}
+	}
+
+	return &ToolResult{Content: fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 2000))}
+}
+
+// ── POP3 client ──────────────────────────────────────────────────────
+//
+// Minimal POP3 client that never issues DELE — remote messages are never
+// deleted. Implements RFC 1939 over TLS.
+
+type pop3Conn struct {
+	conn   net.Conn
+	rw     *bufio.ReadWriter
+	count  int
+	logged bool
+}
+
+func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
+	host := ecfg.POP3Host
+	if host == "" {
+		host = ecfg.IMAPHost
+	}
+	if host == "" {
+		host = ecfg.SMTPHost
+	}
+	port := ecfg.POP3Port
+	if port <= 0 {
+		port = 995
+	}
+
+	d := &net.Dialer{Timeout: 30 * time.Second}
+	tlsConn, err := tls.DialWithDialer(d, "tcp", fmt.Sprintf("%s:%d", host, port), tlsConfigForEmail(ecfg))
+	if err != nil {
+		// Fallback to plain with STARTTLS-like on port 110
+		plainConn, err2 := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, 110), 30*time.Second)
+		if err2 != nil {
+			return nil, fmt.Errorf("pop3 connect failed (TLS %s:%d and plain :110): %w / %s", host, port, err, err2)
+		}
+		tlsConn = tls.Client(plainConn, &tls.Config{ServerName: host, InsecureSkipVerify: ecfg.SkipTLSVerify})
+	}
+
+	p := &pop3Conn{
+		conn: tlsConn,
+		rw:   bufio.NewReadWriter(bufio.NewReader(tlsConn), bufio.NewWriter(tlsConn)),
+	}
+
+	// Read greeting
+	line, err := p.readLine()
+	if err != nil {
+		tlsConn.Close()
+		return nil, fmt.Errorf("pop3 greeting: %w", err)
+	}
+	if !strings.HasPrefix(line, "+OK") {
+		tlsConn.Close()
+		return nil, fmt.Errorf("pop3 unexpected greeting: %s", line)
+	}
+
+	// USER
+	if _, err := p.cmd("USER %s", ecfg.Username); err != nil {
+		tlsConn.Close()
+		return nil, fmt.Errorf("pop3 user: %w", err)
+	}
+	// PASS
+	if _, err := p.cmd("PASS %s", ecfg.Password); err != nil {
+		tlsConn.Close()
+		return nil, fmt.Errorf("pop3 pass: %w", err)
+	}
+	p.logged = true
+
+	// STAT to get message count
+	statLine, err := p.cmd("STAT")
+		if err != nil {
+		p.quit()
+		return nil, fmt.Errorf("pop3 stat: %w", err)
+	}
+	// "+OK 42 123456" → count=42
+	parts := strings.Fields(statLine)
+	if len(parts) >= 2 {
+		p.count, _ = strconv.Atoi(parts[1])
+	}
+
+	return p, nil
+}
+
+func (p *pop3Conn) cmd(format string, args ...any) (string, error) {
+		msg := fmt.Sprintf(format, args...)
+		if _, err := p.rw.WriteString(msg + "\r\n"); err != nil {
+			return "", err
+		}
+		if err := p.rw.Flush(); err != nil {
+			return "", err
+		}
+		line, err := p.readLine()
+		if err != nil {
+			return "", err
+		}
+		if !strings.HasPrefix(line, "+OK") {
+			return "", fmt.Errorf("POP3 error: %s", line)
+		}
+		return line, nil
+	}
+
+func (p *pop3Conn) readLine() (string, error) {
+	line, err := p.rw.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
+func (p *pop3Conn) messageCount() int {
+	return p.count
+}
+
+// retrHeaders fetches only the headers of message n using TOP (RFC 2980).
+// Falls back to full RETR if TOP is not supported.
+func (p *pop3Conn) retrHeaders(n int) (string, error) {
+	// Try TOP first (lines=0 = headers only)
+	topCmd := fmt.Sprintf("TOP %d 0", n)
+	if _, err := p.rw.WriteString(topCmd + "\r\n"); err != nil {
+		return "", err
+	}
+	if err := p.rw.Flush(); err != nil {
+		return "", err
+	}
+
+	line, err := p.readLine()
+	if err != nil {
+		return "", err
+	}
+
+	if strings.HasPrefix(line, "+OK") {
+		return p.readMultiline(), nil
+	}
+
+	// TOP not supported, fall back to full RETR
+	return p.retr(n)
+}
+
+// retr fetches the full message n.
+func (p *pop3Conn) retr(n int) (string, error) {
+	if _, err := p.cmd("RETR %d", n); err != nil {
+		return "", err
+	}
+	return p.readMultiline(), nil
+}
+
+func (p *pop3Conn) readMultiline() string {
+	var lines []string
+	for {
+		line, err := p.readLine()
+		if err != nil {
+			break
+		}
+		// End of multi-line response
+		if line == "." {
+			break
+		}
+		// Remove byte-stuffed leading dot
+		if strings.HasPrefix(line, "..") {
+			line = line[1:]
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (p *pop3Conn) quit() {
+	if !p.logged {
+		return
+	}
+	p.rw.WriteString("QUIT\r\n")
+	p.rw.Flush()
+	p.conn.Close()
+	p.logged = false
+}
+
+// ── General helpers ──────────────────────────────────────────────────
+
+func formatDate(s string) string {
+	t, err := time.Parse(time.RFC1123Z, s)
+	if err == nil {
+		return t.Format("2006-01-02 15:04")
+	}
+	t, err = time.Parse(time.RFC1123, s)
+	if err == nil {
+		return t.Format("2006-01-02 15:04")
+	}
+	// Return as-is if can't parse
+	return s
+}

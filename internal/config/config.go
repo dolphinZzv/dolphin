@@ -122,14 +122,18 @@ type MQTTConfig struct {
 
 type EmailConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
+	Protocol     string `mapstructure:"protocol"`      // "imap" (default) or "pop3"
 	SMTPHost     string `mapstructure:"smtp_host"`
 	SMTPPort     int    `mapstructure:"smtp_port"`
 	IMAPHost     string `mapstructure:"imap_host"`
 	IMAPPort     int    `mapstructure:"imap_port"`
+	POP3Host     string `mapstructure:"pop3_host"`     // defaults to IMAPHost / SMTPHost
+	POP3Port     int    `mapstructure:"pop3_port"`     // default 995 (TLS)
 	Username     string `mapstructure:"username"`
 	Password     string `mapstructure:"password"`
 	From         string `mapstructure:"from"`
 	UseTLS       bool   `mapstructure:"use_tls"`
+	SkipTLSVerify bool `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
 	PollInterval string `mapstructure:"poll_interval"` // IMAP poll interval, e.g. "10s"
 }
 
@@ -472,6 +476,19 @@ func configType(path string) string {
 	default:
 		return "yaml"
 	}
+}
+
+// LLMConfigured returns true if the config has at least one LLM provider with an API key.
+func (c *Config) LLMConfigured() bool {
+	if len(c.LLM.Providers) > 0 {
+		for _, p := range c.LLM.Providers {
+			if p.APIKey != "" {
+				return true
+			}
+		}
+		return false
+	}
+	return c.LLM.APIKey != ""
 }
 
 // Validate checks the configuration and returns an error for invalid settings.
