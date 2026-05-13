@@ -129,6 +129,27 @@ cp config.example.yaml .dolphin/config.yaml        # 英文
 cp config.example.zh.yaml .dolphin/config.yaml      # 中文
 ```
 
+## 源码编译
+
+dolphin 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。完整安装方式（预编译二进制、go install 等）见 [INSTALL.zh.md](INSTALL.zh.md)。
+
+快速参考：
+
+```bash
+git clone https://github.com/dolphinZzv/dolphin.git
+cd dolphin
+
+# Linux / macOS
+make build                  # 开发版本（版本号 = dev）
+make build VERSION=v1.0.0   # 发布版本
+
+# Windows（PowerShell）
+go build -o dolphin.exe .   # 开发版本
+
+# Windows（通过 Chocolatey/winget 安装 make 后）
+make build                  # 开发版本
+```
+
 ## 项目结构
 
 ```

@@ -87,6 +87,27 @@ export DZ_LLM_MODEL="gpt-4o"
 ./dolphin
 ```
 
+## Build from source
+
+dolphin supports **Linux**, **macOS**, and **Windows** (arm64 and x86_64). See [INSTALL.md](INSTALL.md) for all options (pre-built binaries, go install, etc.).
+
+Quick reference:
+
+```bash
+git clone https://github.com/dolphinZzv/dolphin.git
+cd dolphin
+
+# Linux / macOS
+make build              # development build (version = dev)
+make build VERSION=v1.0.0   # release build
+
+# Windows (PowerShell)
+go build -o dolphin.exe .   # development build
+
+# Windows (with make, via Chocolatey/winget)
+make build                  # development build
+```
+
 ## Project structure
 
 ```
