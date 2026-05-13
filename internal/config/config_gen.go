@@ -369,7 +369,7 @@ func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
 	}
 	output := append([]byte(header), data...)
 
-	if err := os.WriteFile(path, output, 0644); err != nil {
+	if err := os.WriteFile(path, output, 0600); err != nil {
 		return "", fmt.Errorf("write config: %w", err)
 	}
 	return path, nil
@@ -388,7 +388,7 @@ func GenerateConfigFile(lang i18n.Lang) (string, error) {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
 
-	if err := os.WriteFile(path, []byte(tmpl), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(tmpl), 0600); err != nil {
 		return "", fmt.Errorf("write config: %w", err)
 	}
 	return path, nil

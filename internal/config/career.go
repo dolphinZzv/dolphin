@@ -140,7 +140,7 @@ func CreateFirstRunMarker() error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte{}, 0644)
+	return os.WriteFile(path, []byte{}, 0600)
 }
 
 // careerKeywords maps career names to search keywords for matching repo tools.

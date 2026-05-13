@@ -228,7 +228,7 @@ func (f *RepoFetcher) writeCache(repoName string, m *ToolManifest) {
 		return
 	}
 	data, _ := json.Marshal(m)
-	os.WriteFile(path, data, 0644)
+	os.WriteFile(path, data, 0600)
 }
 
 // cachePath returns the cache file path for a repo, replacing "/" with "-".

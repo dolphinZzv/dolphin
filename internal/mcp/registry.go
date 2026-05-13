@@ -134,6 +134,9 @@ func (r *Registry) LoadServers() error {
 				r.tools[def.Name] = wrapper
 				r.stats[def.Name] = &ToolStats{}
 				zap.S().Debugw("mcp tool registered (bare)", "tool", def.Name, "server", name)
+			} else {
+				zap.S().Warnw("mcp tool name collision — bare name skipped, use server:name prefix",
+					"tool", def.Name, "server", name)
 			}
 		}
 

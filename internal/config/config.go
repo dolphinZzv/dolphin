@@ -487,9 +487,22 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	if existingData, err := os.ReadFile(configPath); err == nil {
 		yaml.Unmarshal(existingData, &full)
 	}
-	// Merge the merged loaded-tools into the full config
-	full["skills"] = existing.Skills
-	full["mcp"] = existing.MCP
+	// Merge the merged loaded-tools into the full config.
+	// Deep-merge into existing section maps to avoid overwriting other settings
+	// like mcp.shell or skills.dir.
+	fullSkills, ok := full["skills"].(map[string]any)
+	if !ok {
+		fullSkills = make(map[string]any)
+		full["skills"] = fullSkills
+	}
+	fullSkills["loaded"] = existing.Skills.Loaded
+
+	fullMCP, ok := full["mcp"].(map[string]any)
+	if !ok {
+		fullMCP = make(map[string]any)
+		full["mcp"] = fullMCP
+	}
+	fullMCP["loaded"] = existing.MCP.Loaded
 	out, err := yaml.Marshal(full)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

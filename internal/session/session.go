@@ -326,13 +326,8 @@ func (m *Manager) StartReaper(ctx context.Context, maxAge time.Duration, interva
 }
 
 func (m *Manager) reapOldSessions(maxAge time.Duration) {
-	// Build set of active session files under lock (P0#3)
 	m.mu.Lock()
-	activeFiles := make(map[string]bool, len(m.sessions))
-	for _, s := range m.sessions {
-		activeFiles[s.file.Name()] = true
-	}
-	m.mu.Unlock()
+	defer m.mu.Unlock()
 
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
@@ -353,7 +348,15 @@ func (m *Manager) reapOldSessions(maxAge time.Duration) {
 		}
 		if now.Sub(info.ModTime()) > maxAge {
 			path := filepath.Join(m.dir, name)
-			if activeFiles[path] {
+			// Skip files belonging to active sessions
+			isActive := false
+			for _, s := range m.sessions {
+				if s.file.Name() == path {
+					isActive = true
+					break
+				}
+			}
+			if isActive {
 				continue
 			}
 			if err := os.Remove(path); err != nil {

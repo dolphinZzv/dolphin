@@ -266,7 +266,7 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("create config dir: %v", err), IsError: true}, nil
 	}
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("write config: %v", err), IsError: true}, nil
 	}
 
