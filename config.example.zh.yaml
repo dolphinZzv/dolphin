@@ -125,6 +125,70 @@ diary:
   max_year_months: 12         # 每年最多保留的月数
   max_total_mb: 500           # 日记总大小上限，超出则删除最旧年份
 
+# ── 插件（Hook + Event 扩展系统）────────────────────────────
+# dolphin 提供两套扩展机制：
+#
+#   Hook（同步）— 在 agent 循环的特定节点拦截执行。
+#                 在可中止的节点返回错误可中断流程。
+#   Event（异步）— 订阅后台分发的事件通知。
+#                  内置投递方式：Webhook（HTTP POST）、JSONL 日志。
+#
+# 两种机制均可通过放置在插件目录下的脚本驱动。
+
+plugins:
+  enabled: true
+  dir: ~/.dolphin/plugins/       # 脚本插件目录
+
+  # ── 事件 Webhook ──────────────────────────────────────────
+  # 将选定事件以 JSON 格式 POST 到 HTTP 端点。
+  webhook_url: ""                 # 如 "https://hooks.example.com/dolphin"
+  webhook_events: ["*"]           # 投递的事件类型，["*"] = 全部
+
+  # 可用事件：
+  #   session:created    session:ended
+  #   user:message       llm:response
+  #   tool:called        tool:completed
+  #   compression        error
+  #   heartbeat          agent:dispatched   agent:completed
+  #   skill:loaded
+  #
+  # 示例：只投递工具和 agent 事件：
+  # webhook_events: ["tool:called", "tool:completed", "agent:dispatched", "agent:completed"]
+
+  # ── 心跳 ──────────────────────────────────────────────────
+  # 每 N 轮触发一次 heartbeat 事件（0 = 关闭）。
+  heartbeat_turns: 0              # 如 5 = 每 5 轮发一次心跳
+
+# ── Hook 插件脚本示例 ────────────────────────────────────
+# 将可执行脚本或 .md 文件放入 ~/.dolphin/plugins/。
+# 每个脚本从 stdin 接收 hook 上下文的 JSON，可在 stdout 返回修改后的 JSON。
+#
+# 可用 Hook 节点（† = 可中止）：
+#   session:start    session:end      user:input†
+#   llm:before†      llm:after        tool:before†
+#   tool:after       response:before  error
+#
+# ── 示例脚本 ─────────────────────────────────────────────
+#
+# --- ~/.dolphin/plugins/audit-input.sh ---
+# #!/bin/bash
+# # 记录用户输入到日志文件。
+# # Hook 节点: user:input
+# read -r json
+# echo "$json" | jq '.user_input' >> /var/log/dolphin-input.log
+# echo "$json"    # 原样透传
+#
+# --- ~/.dolphin/plugins/session-start.sh ---
+# #!/bin/bash
+# # 会话开始时通知外部系统。
+# # Hook 节点: session:start
+# read -r json
+# session_id=$(echo "$json" | jq -r '.session_id')
+# curl -sf -X POST "https://hooks.example.com/session/start" \
+#   -H "Content-Type: application/json" \
+#   -d "{\"session_id\": \"$session_id\"}" &>/dev/null
+# echo "$json"
+
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log

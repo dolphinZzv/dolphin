@@ -126,12 +126,15 @@ diary:
 log_level: info
 log_file: .dolphin/logs/agent.log
 
+# Hook (sync): intercept agent loop at session:start, user:input, llm:*, tool:*
+# Event (async): subscribe to notifications via webhook or JSONL log
+# Place script plugins in ~/.dolphin/plugins/ to register handlers
 plugins:
   enabled: true
   dir: "~/.dolphin/plugins/"
-  webhook_url: ""
-  webhook_events: ["*"]
-  heartbeat_turns: 0
+  webhook_url: ""                 # POST events as JSON to HTTP endpoint
+  webhook_events: ["*"]           # event types: session:*, user:*, llm:*, tool:*, agent:*, error
+  heartbeat_turns: 0              # emit heartbeat every N turns (0 = off)
 
 pprof:
   enabled: false
@@ -257,12 +260,15 @@ diary:
 log_level: info
 log_file: .dolphin/logs/agent.log
 
+# Hook (sync): intercept agent loop at session:start, user:input, llm:*, tool:*
+# Event (async): subscribe to notifications via webhook or JSONL log
+# Place script plugins in ~/.dolphin/plugins/ to register handlers
 plugins:
   enabled: true
   dir: "~/.dolphin/plugins/"
-  webhook_url: ""
-  webhook_events: ["*"]
-  heartbeat_turns: 0
+  webhook_url: ""                 # POST events as JSON to HTTP endpoint
+  webhook_events: ["*"]           # event types: session:*, user:*, llm:*, tool:*, agent:*, error
+  heartbeat_turns: 0              # emit heartbeat every N turns (0 = off)
 
 pprof:
   enabled: false

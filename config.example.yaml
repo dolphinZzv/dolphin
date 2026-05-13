@@ -121,6 +121,71 @@ diary:
   max_year_months: 12         # months per year before pruning oldest
   max_total_mb: 500           # total diary size limit, deletes oldest year
 
+# ── Plugins (hooks + events) ────────────────────────────────
+# dolphin has two extension systems:
+#
+#   Hook  (sync)  — intercept agent loop at specific points.
+#                   Return error to abort the flow at abortable points.
+#   Event (async) — subscribe to notifications dispatched in background.
+#                   Built-in delivery: webhook (HTTP POST), JSONL log.
+#
+# Both can be driven by script plugins placed in the plugins directory.
+
+plugins:
+  enabled: true
+  dir: ~/.dolphin/plugins/       # directory for script plugins
+
+  # ── Event webhook ──────────────────────────────────────────
+  # POST selected events as JSON to an HTTP endpoint.
+  webhook_url: ""                 # e.g. "https://hooks.example.com/dolphin"
+  webhook_events: ["*"]           # event types to deliver, ["*"] = all
+
+  # Available events:
+  #   session:created    session:ended
+  #   user:message       llm:response
+  #   tool:called        tool:completed
+  #   compression        error
+  #   heartbeat          agent:dispatched   agent:completed
+  #   skill:loaded
+  #
+  # Example: filter to only tool and agent events:
+  # webhook_events: ["tool:called", "tool:completed", "agent:dispatched", "agent:completed"]
+
+  # ── Heartbeat ──────────────────────────────────────────────
+  # Emit a heartbeat event every N turns (0 = off).
+  heartbeat_turns: 0              # e.g. 5 = heartbeat every 5 turns
+
+# ── Hook plugins (script examples) ─────────────────────────
+# Place executable scripts or .md files in ~/.dolphin/plugins/.
+# Each script receives the hook context as JSON on stdin and
+# may return a modified JSON object on stdout.
+#
+# Available hook points († = abortable):
+#   session:start    session:end      user:input†
+#   llm:before†      llm:after        tool:before†
+#   tool:after       response:before  error
+#
+# ── Example hook scripts ────────────────────────────────────
+#
+# --- ~/.dolphin/plugins/audit-input.sh ---
+# #!/bin/bash
+# # Log every user input before it reaches the LLM.
+# # Hook point: user:input
+# read -r json
+# echo "$json" | jq '.user_input' >> /var/log/dolphin-input.log
+# echo "$json"    # pass through unmodified
+#
+# --- ~/.dolphin/plugins/session-start.sh ---
+# #!/bin/bash
+# # Notify external system when a session starts.
+# # Hook point: session:start
+# read -r json
+# session_id=$(echo "$json" | jq -r '.session_id')
+# curl -sf -X POST "https://hooks.example.com/session/start" \
+#   -H "Content-Type: application/json" \
+#   -d "{\"session_id\": \"$session_id\"}" &>/dev/null
+# echo "$json"
+
 # ── Observability ─────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log
