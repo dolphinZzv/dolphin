@@ -130,6 +130,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		toolRegistry.Register(cdpTool)
 		zap.S().Infow("cdp tool registered")
 	}
+	if cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" {
+		toolRegistry.Register(mcp.NewEmailTool(cfg))
+		zap.S().Infow("email tool registered")
+	}
 
 	// Load external MCP servers
 	if len(cfg.MCP.Servers) > 0 {

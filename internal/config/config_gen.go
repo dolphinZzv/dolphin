@@ -60,6 +60,9 @@ mcp:
     headless: true
     priority: 1000
     idle_timeout: 300     # seconds before auto-closing idle browser
+  email:
+    enabled: true         # email send/search/fetch MCP tool (uses transport.email config)
+    priority: 500
   servers: {}             # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
   #                       #   or remote: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
   #                       #   or remote: {type: http-stream, url: "https://..."}

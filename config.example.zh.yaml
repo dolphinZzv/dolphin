@@ -65,6 +65,9 @@ mcp:
     headless: true
     priority: 1000
     idle_timeout: 300         # 空闲多少秒后自动关闭浏览器
+  email:
+    enabled: true             # 邮件发送/搜索/读取 MCP 工具（使用 transport.email 配置）
+    priority: 500
   servers: {}                 # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
   repos: []                   # 清单仓库，如 ["dolphinv/mcp"]
 

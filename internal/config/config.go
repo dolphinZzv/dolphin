@@ -136,6 +136,7 @@ type EmailConfig struct {
 type MCPConfig struct {
 	Shell   ShellConfig                `mapstructure:"shell"`
 	CDP     CDPConfig                  `mapstructure:"cdp"`
+	Email   EmailMCPConfig             `mapstructure:"email"`
 	Servers map[string]MCPServerConfig `mapstructure:"servers"`
 	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
 }
@@ -171,6 +172,12 @@ type CDPConfig struct {
 	WsURL       string `mapstructure:"ws_url"`
 	Priority    int    `mapstructure:"priority"`     // tool listing priority (lower = preferred)
 	IdleTimeout int    `mapstructure:"idle_timeout"` // seconds, 0 = disabled
+}
+
+// EmailMCPConfig controls the built-in email MCP tool.
+type EmailMCPConfig struct {
+	Enabled  bool `mapstructure:"enabled"`
+	Priority int  `mapstructure:"priority"` // tool listing priority (lower = preferred)
 }
 
 type PoolConfig struct {
@@ -565,6 +572,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.cdp.headless", true)
 	v.SetDefault("mcp.cdp.priority", 1000)
 	v.SetDefault("mcp.cdp.idle_timeout", 300)
+	v.SetDefault("mcp.email.enabled", true)
+	v.SetDefault("mcp.email.priority", 500)
 
 	v.SetDefault("agent_pool.max_concurrency", 5)
 	v.SetDefault("agent_pool.default_timeout", 300)
