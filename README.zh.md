@@ -3,20 +3,10 @@
 [English](README.md) | [中文](README.zh.md)
 
 <p align="center">
-  <a href="https://github.com/dolphinZzv/dolphin" target="_blank">
-    <img src="https://img.shields.io/badge/GitHub-dolphinZzv/dolphin-181717?style=flat&logo=github" alt="GitHub">
-  </a>
-  <a href="https://gitee.com/dolphinzzv/dolphindolphin" target="_blank">
-    <img src="https://img.shields.io/badge/Gitee-dolphinzzv/dolphindolphin-C71D23?style=flat&logo=gitee" alt="Gitee">
-  </a>
+  <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
+  ·
+  <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
 </p>
-
-| 平台 | 仓库地址 |
-|------|----------|
-| GitHub | [github.com/dolphinZzv/dolphin](https://github.com/dolphinZzv/dolphin) |
-| Gitee  | [gitee.com/dolphinzzv/dolphindolphin](https://gitee.com/dolphinzzv/dolphindolphin) |
-
-> GitHub 为主要镜像，Gitee 为中国大陆用户镜像。两者通过 `make distribute` 保持同步。
 
 一个在你工作的地方随时待命的 AI agent —— 终端、邮件、聊天、SSH。它执行 shell 命令、操控浏览器、调度子 agent 并行工作、按你定义的计划自动运行任务。就像一个能干的队友，无论通过什么渠道都能对接。
 
