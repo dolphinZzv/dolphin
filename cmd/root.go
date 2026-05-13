@@ -61,6 +61,7 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.AddCommand(NewNewCmd())
 	cmd.AddCommand(NewUpdateCmd())
 	cmd.AddCommand(NewInitCmd())
+	cmd.AddCommand(NewVersionCmd())
 
 	return cmd
 }
