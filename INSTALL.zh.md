@@ -102,17 +102,11 @@ dolphin dev
 dolphin 运行至少需要一个 API 密钥。通过环境变量设置：
 
 ```bash
-# DeepSeek（中国地区推荐）
+# DeepSeek
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_TYPE="openai"
-
-# 或 OpenAI
-# export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="gpt-4o"
-# export DZ_LLM_BASE_URL="https://api.openai.com/v1"
-# export DZ_LLM_TYPE="openai"
 
 ./dolphin
 ```

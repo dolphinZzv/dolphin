@@ -103,7 +103,7 @@ dolphin needs at least an API key to run. Set it via environment variable:
 
 ```bash
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="gpt-4o"
+export DZ_LLM_MODEL="claude-opus-4-7"
 ./dolphin
 ```
 
