@@ -69,20 +69,93 @@ go install github.com/dolphinZzv/dolphin@v1.0.0
 
 ## Option 3: Build from source
 
+Requires Go 1.26+ and `git`.
+
+Clone the repo:
+
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
 cd dolphin
-make build   # produces ./dolphin
-# or manually:
-# go build -ldflags="-X 'dolphin/cmd.Version=$(version)'" -o dolphin .
 ```
 
-For development builds (version set to `dev`):
+Then follow the instructions for your platform.
+
+### Linux
+
+`make` is available out of the box:
 
 ```bash
-make build
-# or
-go build -o dolphin .
+make build   # produces ./dolphin (version = dev)
+```
+
+Or build manually:
+
+```bash
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+```
+
+For a release build, set VERSION:
+
+```bash
+make build VERSION=v1.0.0
+```
+
+### macOS
+
+`make` is included with Xcode Command Line Tools. Install them if you haven't already:
+
+```bash
+xcode-select --install
+```
+
+Then:
+
+```bash
+make build   # produces ./dolphin (version = dev)
+```
+
+Or build manually:
+
+```bash
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+```
+
+### Windows
+
+**Option A — Go build (PowerShell / cmd):**
+
+```powershell
+# Development build (version = dev)
+go build -o dolphin.exe .
+
+# Release build with version
+$env:VERSION = "v1.0.0"
+go build -ldflags="-X 'dolphin/cmd.Version=$env:VERSION'" -o dolphin.exe .
+```
+
+**Option B — Make (native Windows):**
+
+Install `make` via one of:
+
+```powershell
+# Chocolatey
+choco install make
+
+# winget
+winget install GnuWin32.Make
+```
+
+Then build:
+
+```powershell
+make build   # produces ./dolphin.exe (version = dev)
+make build VERSION=v1.0.0
+```
+
+**Option C — Git Bash / WSL:**
+
+```bash
+make build   # produces ./dolphin.exe (version = dev)
 ```
 
 ## Verify the installation
