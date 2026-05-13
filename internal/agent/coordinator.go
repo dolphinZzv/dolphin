@@ -531,7 +531,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 
 // ---- Tool handlers ----
 
-func (c *Coordinator) handleDispatchTask(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
 		Agent   string `json:"agent"`
 		Task    string `json:"task"`
@@ -552,7 +552,7 @@ func (c *Coordinator) handleDispatchTask(_ context.Context, input json.RawMessag
 	}
 
 	if c.events != nil {
-		c.events.Emit(context.Background(), event.Event{
+		c.events.Emit(ctx, event.Event{
 			Type:      event.TypeAgentDispatched,
 			SessionID: string(c.pool.ParentSessionID()),
 			Data: map[string]any{
@@ -614,7 +614,9 @@ func (c *Coordinator) handleGetAgentStatus(_ context.Context, input json.RawMess
 	var params struct {
 		Agent string `json:"agent,omitempty"`
 	}
-	json.Unmarshal(input, &params)
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
 
 	agents := c.pool.List()
 	if params.Agent != "" {
@@ -734,7 +736,7 @@ func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessag
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
 
-func (c *Coordinator) handleLoadSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+func (c *Coordinator) handleLoadSkill(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	if c.skills == nil {
 		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
 	}
@@ -754,7 +756,7 @@ func (c *Coordinator) handleLoadSkill(_ context.Context, input json.RawMessage) 
 	c.skills.RecordUsage(params.Name)
 
 	if c.events != nil {
-		c.events.Emit(context.Background(), event.Event{
+		c.events.Emit(ctx, event.Event{
 			Type:      event.TypeSkillLoaded,
 			SessionID: string(c.pool.ParentSessionID()),
 			Data:      map[string]any{"skill": params.Name},

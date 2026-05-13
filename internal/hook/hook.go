@@ -96,7 +96,8 @@ func (r *Registry) Register(point Point, priority int, h Handler) {
 func (r *Registry) Fire(ctx context.Context, point Point, hc *Context) error {
 	hc.Point = point
 	r.mu.RLock()
-	regs := r.hooks[point]
+	regs := make([]Registration, len(r.hooks[point]))
+	copy(regs, r.hooks[point])
 	r.mu.RUnlock()
 
 	for _, reg := range regs {
