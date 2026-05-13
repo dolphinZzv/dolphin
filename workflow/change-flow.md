@@ -1,5 +1,7 @@
 # Change Flow
 
+**原则：设计先行，代码随设计走。** 必须先完成设计变更并获评审通过，才能进入代码实现阶段。
+
 每个变更依次通过以下关卡：
 
 ```mermaid
@@ -42,5 +44,6 @@ flowchart TD
 
 - No direct commits to `main` or `develop`
 - No skipping code review
+- **No code changes before corresponding design changes are reviewed and approved**
 - No breaking changes without updating design docs
 - No code commits without tests
