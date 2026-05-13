@@ -3,10 +3,17 @@
 # 所有设置都有默认值 — 只需取消注释需要修改的部分。
 
 # ── LLM 提供商 ────────────────────────────────────────────
+# 中国地区推荐 DeepSeek / 通义千问 / 智谱 GLM 等兼容 OpenAI 接口的服务商。
 llm:
   type: openai                # "openai" 或 "anthropic"
-  base_url: https://api.openai.com/v1
-  model: gpt-4o               # 模型名称，也可通过环境变量 DZ_LLM_MODEL 设置
+  base_url: https://api.deepseek.com/v1
+                              # DeepSeek:   https://api.deepseek.com/v1
+                              # MiniMax:    https://api.minimax.chat/v1
+                              # 智谱 GLM:   https://open.bigmodel.cn/api/paas/v4
+                              # 通义千问:   https://dashscope.aliyuncs.com/compatible-mode/v1
+                              # Kimi:      https://api.moonshot.cn/v1
+  model: deepseek-chat        # 模型名称，也可通过环境变量 DZ_LLM_MODEL 设置
+                              # 中国推荐: deepseek-chat、minimax-text-01、glm-4-plus、qwen-max
   api_key: ""                 # 建议通过环境变量 DZ_LLM_API_KEY 设置
   max_tokens: 4096
   max_context_tokens: 1048576 # 超过 70% 时触发上下文压缩

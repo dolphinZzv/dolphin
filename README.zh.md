@@ -41,9 +41,31 @@ dolphin 支持四种传输协议，可以同时启用：
 
 ```bash
 go build -o dolphin ./main.go
+
+# DeepSeek 示例（中国地区可直接访问）
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="gpt-4o"          # 模型名称
-export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # 可选，自定义端点
+export DZ_LLM_MODEL="deepseek-chat"
+export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_TYPE="openai"
+
+# MiniMax 示例
+# export DZ_LLM_API_KEY="sk-..."
+# export DZ_LLM_MODEL="minimax-text-01"
+# export DZ_LLM_BASE_URL="https://api.minimax.chat/v1"
+# export DZ_LLM_TYPE="openai"
+
+# 智谱 GLM 示例
+# export DZ_LLM_API_KEY="sk-..."
+# export DZ_LLM_MODEL="glm-4-plus"
+# export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+# export DZ_LLM_TYPE="openai"
+
+# 通义千问示例
+# export DZ_LLM_API_KEY="sk-..."
+# export DZ_LLM_MODEL="qwen-max"
+# export DZ_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+# export DZ_LLM_TYPE="openai"
+
 ./dolphin
 ```
 
@@ -52,11 +74,23 @@ export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # 可选，自定义端点
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **是** | — | LLM API 密钥 |
-| `DZ_LLM_MODEL` | 否 | `gpt-4o` | 模型名称（如 `gpt-4o`、`claude-opus-4-7`） |
-| `DZ_LLM_BASE_URL` | 否 | `https://api.openai.com/v1` | API 基础地址（自定义端点、代理） |
-| `DZ_LLM_TYPE` | 否 | `openai` | 提供商类型：`openai` 或 `anthropic` |
+| `DZ_LLM_MODEL` | 否 | `deepseek-chat` | 模型名称（如 `deepseek-chat`、`minimax-text-01`、`glm-4-plus`、`qwen-max`） |
+| `DZ_LLM_BASE_URL` | 否 | `https://api.deepseek.com/v1` | API 基础地址（自定义端点、代理） |
+| `DZ_LLM_TYPE` | 否 | `openai` | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
 | `DZ_LLM_MAX_TOKENS` | 否 | `4096` | 每次回复最大 token 数 |
 | `DZ_LOG_LEVEL` | 否 | `info` | 日志级别：`debug`、`info`、`warn`、`error` |
+
+### 中国地区推荐模型
+
+| 服务商 | 模型 | 接口地址 | 接入方式 |
+|--------|------|----------|----------|
+| **DeepSeek** | `deepseek-chat` | `https://api.deepseek.com/v1` | OpenAI 兼容 |
+| **MiniMax** | `minimax-text-01` | `https://api.minimax.chat/v1` | OpenAI 兼容 |
+| **智谱 GLM** | `glm-4-plus` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
+| **通义千问** | `qwen-max`、`qwen-plus` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
+| **Kimi** | `moonshot-v1-8k` | `https://api.moonshot.cn/v1` | OpenAI 兼容 |
+
+以上服务商均兼容 OpenAI 接口格式，设置 `DZ_LLM_TYPE=openai` 即可使用。
 
 ### 首次运行
 
@@ -75,17 +109,18 @@ export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # 可选，自定义端点
 配置文件位于 `.dolphin/config.yaml`（项目级）或 `~/.dolphin/config.yaml`（用户级）。项目配置覆盖用户配置。所有设置都有合理默认值 —— 只需 API 密钥即可运行。
 
 ```bash
-# 最简：仅环境变量，无需配置文件
+# DeepSeek（中国推荐）
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="gpt-4o"
+export DZ_LLM_MODEL="deepseek-chat"
+export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 ./dolphin
 ```
 
 手动初始化：
 
 ```bash
-cp config.example.yaml .dolphin/config.yaml      # 英文
-cp config.example.zh.yaml .dolphin/config.yaml    # 中文
+cp config.example.yaml .dolphin/config.yaml        # 英文
+cp config.example.zh.yaml .dolphin/config.yaml      # 中文
 ```
 
 ## 项目结构
