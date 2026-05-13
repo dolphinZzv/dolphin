@@ -952,9 +952,6 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 			"turn", state.Turn,
 			"arguments", string(tc.Arguments),
 		)
-		if a.cfg.LogLevel == "debug" && caps.Streaming {
-			io.WriteLine(fmt.Sprintf("\n[Calling tool: %s]", tc.Name))
-		}
 
 		effectiveArgs := tc.Arguments
 		if a.hooks != nil {
@@ -1025,6 +1022,9 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 			"is_error", err != nil || (result != nil && result.IsError),
 			"result_len", len(resultContent),
 		)
+		if a.cfg.LogLevel == "debug" && caps.Streaming && resultContent != "" {
+			io.WriteLine(fmt.Sprintf("[Calling tool: %s]", tc.Name))
+		}
 
 		innerContent, _ := json.Marshal([]map[string]any{
 			{"type": "text", "text": llmResultContent},
