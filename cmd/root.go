@@ -60,6 +60,7 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.AddCommand(NewResetCmd())
 	cmd.AddCommand(NewNewCmd())
 	cmd.AddCommand(NewUpdateCmd())
+	cmd.AddCommand(NewInitCmd())
 
 	return cmd
 }
@@ -74,6 +75,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Setup logging
 	setupLogging(cfg)
 	zap.S().Infow("config loaded", "session_dir", cfg.Session.Dir)
+
+	// Check LLM configuration — warn if no API key is set
+	if !cfg.LLMConfigured() {
+		warnNoLLM(cfg)
+	}
 
 	// First-run career-guided tool loading (only when stdio is the transport)
 	if config.IsFirstRun() && cfg.Transport.Stdio.Enabled {
@@ -133,6 +139,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" {
 		toolRegistry.Register(mcp.NewEmailTool(cfg))
 		zap.S().Infow("email tool registered")
+	}
+	if cfg.MCP.Webhook.Enabled {
+		toolRegistry.Register(mcp.NewWebhookTool(cfg))
+		zap.S().Infow("webhook tool registered")
 	}
 
 	// Load external MCP servers
@@ -497,6 +507,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	return g.Run()
+}
+
+func warnNoLLM(cfg *config.Config) {
+	defaultModel := cfg.LLM.Model
+	if defaultModel == "" {
+		defaultModel = "gpt-4o"
+	}
+	fmt.Fprintf(os.Stderr, "\n⚠  LLM not configured — no API key found.\n")
+	fmt.Fprintf(os.Stderr, "   Default model: %s (base_url: %s)\n", defaultModel, cfg.LLM.BaseURL)
+	fmt.Fprintf(os.Stderr, "   Set DZ_LLM_API_KEY environment variable or add api_key to config.\n")
+	fmt.Fprintf(os.Stderr, "   Run:  dolphin setup\n\n")
 }
 
 func setupLogging(cfg *config.Config) {
