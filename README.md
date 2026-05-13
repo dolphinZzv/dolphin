@@ -6,6 +6,8 @@
   <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
   ·
   <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  ·
+  <a href="mailto:dolphin@siciv.space">dolphin@siciv.space</a>
 </p>
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
