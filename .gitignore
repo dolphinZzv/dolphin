@@ -35,6 +35,12 @@ app/dolphin/
 # Workflow
 WORKFLOW.md
 
+# OpenCode config
+opencode.json
+
+# Assets (credentials, secrets)
+ASSETS.md
+
 # Roadmap
 ROADMAP.md
 
