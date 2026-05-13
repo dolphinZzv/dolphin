@@ -32,6 +32,9 @@ app/dolphin/
 
 .sisyphus
 
+# Workflow
+WORKFLOW.md
+
 # Roadmap
 ROADMAP.md
 

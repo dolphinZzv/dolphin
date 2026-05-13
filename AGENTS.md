@@ -1,5 +1,7 @@
 # AGENTS.md — dolphin Development Guidelines
 
+> **重要：所有项目变更必须严格遵循 `WORKFLOW.md` 中定义的工作流程。**
+
 ## Project Scope
 
 dolphin is an AI agent that connects to terminal, email, chat, and SSH — providing a unified agent experience across all transport layers. The agent runs shell commands, controls browsers, delegates to sub-agents, and follows user-defined schedules.
