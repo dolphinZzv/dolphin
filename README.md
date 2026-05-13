@@ -1,11 +1,11 @@
 # dolphin
 
-[English](README.md) | [中文](README.zh.md)
-
 <p align="center">
-  <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
-  ·
-  <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <strong>Docs:</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+  <br>
+  <strong>Distribution:</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <br>
+  <strong>Install:</strong> <a href="INSTALL.md">Install Guide</a>
 </p>
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.

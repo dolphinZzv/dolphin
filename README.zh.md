@@ -1,11 +1,11 @@
 # dolphin
 
-[English](README.md) | [中文](README.zh.md)
-
 <p align="center">
-  <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
-  ·
-  <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <strong>文档：</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+  <br>
+  <strong>分发：</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <br>
+  <strong>安装：</strong> <a href="INSTALL.zh.md">安装指南</a>
 </p>
 
 一个在你工作的地方随时待命的 AI agent —— 终端、邮件、聊天、SSH。它执行 shell 命令、操控浏览器、调度子 agent 并行工作、按你定义的计划自动运行任务。就像一个能干的队友，无论通过什么渠道都能对接。
