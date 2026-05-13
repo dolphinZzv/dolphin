@@ -26,7 +26,6 @@
 │    ├─ 通过                                      │
 │    ↓                                            │
 │ 5. 严格按设计写代码                              │
-│    ├─ 按依赖方向：models → repository → service → handler
 │    ├─ 用户反馈 → 同步更新设计文档                │
 │    ↓                                            │
 │ 6. 单元测试 — 所有新代码必须有测试               │
@@ -63,7 +62,7 @@
 | 1 | Bug → `todo/` 归档，Feature → `feature/` 归档 |
 | 2 | 需求须经两轮 Agent 自审，不清晰则追问 |
 | 3 | 设计必须输出文档到 `design/`，通过两轮自审后方可编码 |
-| 4 | 代码严格按设计实现，依赖方向：`models → repository → service → handler` |
+| 4 | 代码严格按设计实现 |
 | 5 | 用户反馈须同步更新设计文档 |
 | 6 | 单元测试 `go test ./internal/... -count=1` 100% 通过 |
 | 7 | 端到端/集成验证写入 `verif/` 目录，`go test ./verif/ -v` 通过 |
