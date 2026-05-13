@@ -11,10 +11,8 @@ func NewNewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "new",
 		Short: "Start a fresh dolphin session from a clean state",
-		Long: `Cleans all dolphin runtime data, configs, and state, then starts a brand new
-dolphin agent session — as if running dolphin for the very first time.
-
-This is equivalent to "dolphin reset --all" followed by "dolphin".
+		Long: `Cleans all dolphin runtime data and state, then starts a brand new
+dolphin agent session.
 
 Removed:
   - All runtime data (sessions, diary, logs, workspaces, crontab)
@@ -22,9 +20,10 @@ Removed:
   - Cached tool manifests
   - Downloaded skills and commands
   - SYSTEM.md (system prompt)
-  - /etc/dolphin/ system-level config and data
-  - User and project config files
-  - First-run marker`,
+  - /etc/dolphin/ system-level data
+  - First-run marker
+
+Config files (config.yaml) are preserved.`,
 		RunE: runNew,
 	}
 
@@ -36,7 +35,7 @@ Removed:
 func runNew(cmd *cobra.Command, args []string) error {
 	force, _ := cmd.Flags().GetBool("force")
 
-	targets := cleanupTargets(true) // always remove configs for a fresh start
+	targets := cleanupTargets() // never removes config files
 
 	// Show what will be removed
 	fmt.Fprintln(os.Stderr, "Starting a fresh dolphin session. The following will be removed:")

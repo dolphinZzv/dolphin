@@ -28,22 +28,19 @@ Runtime data removed:
   - /etc/dolphin/ system-level config and data
   - First-run marker (setup wizard will show on next start)
 
-Config files are preserved by default. Use --all to also remove user and project configs.`,
+Config files (config.yaml) are preserved.`,
 		RunE: runReset,
 	}
 
-	cmd.Flags().Bool("all", false, "also remove user and project config files")
 	cmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
-	cmd.Flags().StringP("config", "c", "", "path to config file")
 
 	return cmd
 }
 
 func runReset(cmd *cobra.Command, args []string) error {
-	removeAll, _ := cmd.Flags().GetBool("all")
 	force, _ := cmd.Flags().GetBool("force")
 
-	targets := cleanupTargets(removeAll)
+	targets := cleanupTargets()
 
 	// Show what will be removed
 	fmt.Fprintln(os.Stderr, "The following will be removed:")
@@ -71,7 +68,8 @@ func runReset(cmd *cobra.Command, args []string) error {
 }
 
 // cleanupTargets builds the list of paths to remove for a dolphin reset.
-func cleanupTargets(removeConfigs bool) []string {
+// Config files (config.yaml) are never removed.
+func cleanupTargets() []string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil
@@ -80,7 +78,7 @@ func cleanupTargets(removeConfigs bool) []string {
 	userDolphinDir := filepath.Join(homeDir, config.UserConfigDir)
 	projectDolphinDir := config.ProjectConfigDir
 
-	targets := []string{
+	return []string{
 		config.FirstRunMarker(),
 		filepath.Join(userDolphinDir, "ssh_password"),
 		filepath.Join(userDolphinDir, "SYSTEM.md"),
@@ -97,15 +95,6 @@ func cleanupTargets(removeConfigs bool) []string {
 		filepath.Join(projectDolphinDir, "commands"),
 		config.SystemConfigDir,
 	}
-
-	if removeConfigs {
-		targets = append(targets,
-			filepath.Join(userDolphinDir, "config.yaml"),
-			filepath.Join(projectDolphinDir, "config.yaml"),
-		)
-	}
-
-	return targets
 }
 
 // listTargets prints each target with its type (directory or file).
