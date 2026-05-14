@@ -44,6 +44,61 @@ archives:
       - README.md
       - LICENSE*
 
+nfpms:
+  - id: default
+    package_name: dolphin
+    file_name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    vendor: dolphinZzv
+    homepage: https://github.com/dolphinZzv/dolphin
+    maintainer: dolphinZzv <dolphin@dolphinzzv.com>
+    description: |
+      dolphin is an AI agent platform with multi-agent coordination,
+      MCP tool integration, skills, cron tasks, and multi-provider LLM support.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    section: devel
+    recommends:
+      - git
+    overrides:
+      deb:
+        suggests:
+          - chromium-browser
+      rpm:
+        suggests:
+          - chromium
+      apk:
+        recommends:
+          - chromium
+
+brews:
+  - name: dolphin
+    repository:
+      owner: dolphinZzv
+      name: homebrew-dolphin
+    commit_author:
+      name: dolphinZzv
+      email: dolphin@dolphinzzv.com
+    homepage: https://github.com/dolphinZzv/dolphin
+    description: |
+      dolphin is an AI agent platform with multi-agent coordination,
+      MCP tool integration, skills, cron tasks, and multi-provider LLM support.
+    license: MIT
+    skip_upload: auto
+    dependencies:
+      - name: git
+    caveats: |
+      dolphin is installed. Run `dolphin setup` to get started.
+
+      For CDP browser automation, install chromium or google-chrome.
+      See https://github.com/dolphinZzv/dolphin for documentation.
+
 checksum:
   name_template: "checksums.txt"
 
