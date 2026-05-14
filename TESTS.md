@@ -4,23 +4,23 @@
 
 Run: `make test` (`go test -race -count=1 ./...`)
 
-| Package | Tests | Time | File |
-|---------|-------|------|------|
-| agent | AgentDef, AgentPool, ChannelIO, Compressor, Config, Coordinator, Loop, OpenAI, E2E, Summary, Turn | 4.047s | [agent/](internal/agent/) |
-| command | Parse, Manager, Load, MultiDir, Usage, Reload | 0.029s | [command/](internal/command/) |
-| config | ConfigGen, Career, EnvOverrides, ProjectDetect, RepoFetcher, SSH, Merge | 0.091s | [config/](internal/config/) |
-| context | Builder, LoadFiles, Cache | 0.025s | [context/](internal/context/) |
-| diary | Sync, Prune, Lock, AtomicWrite, Summary | 1.061s | [diary/](internal/diary/) |
-| event | Emit, Subscribe, Webhook, LogWriter | 1.438s | [event/](internal/event/) |
-| hook | Registry, Priority, Abort, Rewrite | 0.008s | [hook/](internal/hook/) |
-| mcp | Shell, CDP, Email, Webhook, Registry, SSE, Client | 5.314s | [mcp/](internal/mcp/) |
-| metrics | Counter, Gauge, Histogram, Timer, Render | 0.010s | [metrics/](internal/metrics/) |
-| plugin | Manager, LoadScripts, HookScript | 0.083s | [plugin/](internal/plugin/) |
-| scheduler | Parse, AddTask, RemoveTask, Cron, Due, Persist | 0.428s | [scheduler/](internal/scheduler/) |
-| session | Manager, LogMessage, Summary, ReadEvents | 0.038s | [session/](internal/session/) |
-| skill | Parse, Manager, Search, TopSkills | 0.023s | [skill/](internal/skill/) |
-| transport | Stdio, SSH, MQTT, Email, EmbeddedBroker | 0.556s | [transport/](internal/transport/) |
-| **Total** | **~270 tests** | **~13s** | |
+| Package | Tests | Time | Coverage | File |
+|---------|-------|------|----------|------|
+| agent | AgentDef, AgentPool, ChannelIO, Compressor, Config, Coordinator, Loop, OpenAI, E2E, Summary, Turn | 5.244s | 52.2% | [agent/](internal/agent/) |
+| command | Parse, Manager, Load, MultiDir, Usage, Reload | 1.101s | 96.9% | [command/](internal/command/) |
+| config | ConfigGen, Career, EnvOverrides, ProjectDetect, RepoFetcher, SSH, Merge | 1.513s | 46.4% | [config/](internal/config/) |
+| context | Builder, LoadFiles, Cache | 1.060s | 81.5% | [context/](internal/context/) |
+| diary | Sync, Prune, Lock, AtomicWrite, Summary | 2.291s | 78.2% | [diary/](internal/diary/) |
+| event | Emit, Subscribe, Webhook, LogWriter | 2.463s | 84.9% | [event/](internal/event/) |
+| hook | Registry, Priority, Abort, Rewrite | 1.088s | 100.0% | [hook/](internal/hook/) |
+| mcp | Shell, CDP, Email, Webhook, Registry, SSE, Client | 6.613s | 51.1% | [mcp/](internal/mcp/) |
+| metrics | Counter, Gauge, Histogram, Timer, Render | 1.051s | 81.6% | [metrics/](internal/metrics/) |
+| plugin | Manager, LoadScripts, HookScript | 1.070s | 75.3% | [plugin/](internal/plugin/) |
+| scheduler | Parse, AddTask, RemoveTask, Cron, Due, Persist | 1.474s | 88.2% | [scheduler/](internal/scheduler/) |
+| session | Manager, LogMessage, Summary, ReadEvents | 1.166s | 68.1% | [session/](internal/session/) |
+| skill | Parse, Manager, Search, TopSkills | 1.050s | 67.2% | [skill/](internal/skill/) |
+| transport | Stdio, SSH, MQTT, Email, EmbeddedBroker | 1.681s | 45.6% | [transport/](internal/transport/) |
+| **Total** | **~270 tests** | **~29s** | **52.2%** | |
 
 ## Smoke Tests
 
