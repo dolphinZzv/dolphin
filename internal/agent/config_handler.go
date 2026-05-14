@@ -38,105 +38,238 @@ var configurablePaths = []configEntry{
 	{
 		path: "llm.temperature", description: "LLM temperature (0.0–2.0)",
 		get: func(c *config.Config) any { return c.LLM.Temperature },
-		set: func(c *config.Config, v any) error { f, err := toFloat(v); if err != nil { return err }; c.LLM.Temperature = f; return nil },
+		set: func(c *config.Config, v any) error {
+			f, err := toFloat(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.Temperature = f
+			return nil
+		},
 	},
 	{
 		path: "llm.max_tokens", description: "Max tokens per LLM response",
 		get: func(c *config.Config) any { return c.LLM.MaxTokens },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.LLM.MaxTokens = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.MaxTokens = n
+			return nil
+		},
 	},
 	{
 		path: "llm.max_context_tokens", description: "Max context window before compression",
 		get: func(c *config.Config) any { return c.LLM.MaxContextTokens },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.LLM.MaxContextTokens = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.MaxContextTokens = n
+			return nil
+		},
 	},
 	{
 		path: "llm.max_sub_turns", description: "Max tool-call feedback loops per turn",
 		get: func(c *config.Config) any { return c.LLM.MaxSubTurns },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.LLM.MaxSubTurns = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.MaxSubTurns = n
+			return nil
+		},
 	},
 	{
 		path: "llm.compress_mode", description: "Context compression mode (e.g. drop, summarize)",
 		get: func(c *config.Config) any { return c.LLM.CompressMode },
-		set: func(c *config.Config, v any) error { s, err := toString(v); if err != nil { return err }; c.LLM.CompressMode = s; return nil },
+		set: func(c *config.Config, v any) error {
+			s, err := toString(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.CompressMode = s
+			return nil
+		},
 		needsSync: true,
 	},
 	{
 		path: "llm.segment_merge_limit", description: "Max segments before merge",
 		get: func(c *config.Config) any { return c.LLM.SegmentMergeLimit },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.LLM.SegmentMergeLimit = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.LLM.SegmentMergeLimit = n
+			return nil
+		},
 		needsSync: true,
 	},
 	// MCP Shell
 	{
 		path: "mcp.shell.timeout_seconds", description: "Shell command timeout in seconds",
 		get: func(c *config.Config) any { return c.MCP.Shell.TimeoutSeconds },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.MCP.Shell.TimeoutSeconds = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Shell.TimeoutSeconds = n
+			return nil
+		},
 	},
 	{
 		path: "mcp.shell.max_command_length", description: "Max shell command length",
 		get: func(c *config.Config) any { return c.MCP.Shell.MaxCommandLength },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.MCP.Shell.MaxCommandLength = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Shell.MaxCommandLength = n
+			return nil
+		},
 	},
 	{
 		path: "mcp.shell.allowed_commands", description: "Allowed shell commands (empty = allow all)",
 		get: func(c *config.Config) any { return c.MCP.Shell.AllowedCommands },
-		set: func(c *config.Config, v any) error { ss, err := toStrings(v); if err != nil { return err }; c.MCP.Shell.AllowedCommands = ss; return nil },
+		set: func(c *config.Config, v any) error {
+			ss, err := toStrings(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Shell.AllowedCommands = ss
+			return nil
+		},
 	},
 	{
 		path: "mcp.shell.enabled", description: "Enable shell tool",
 		get: func(c *config.Config) any { return c.MCP.Shell.Enabled },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.MCP.Shell.Enabled = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Shell.Enabled = b
+			return nil
+		},
 	},
 	// MCP CDP
 	{
 		path: "mcp.cdp.headless", description: "Run browser in headless mode",
 		get: func(c *config.Config) any { return c.MCP.CDP.Headless },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.MCP.CDP.Headless = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.CDP.Headless = b
+			return nil
+		},
 	},
 	{
 		path: "mcp.cdp.idle_timeout", description: "Browser idle timeout in seconds",
 		get: func(c *config.Config) any { return c.MCP.CDP.IdleTimeout },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.MCP.CDP.IdleTimeout = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.CDP.IdleTimeout = n
+			return nil
+		},
 	},
 	{
 		path: "mcp.cdp.enabled", description: "Enable CDP browser tool",
 		get: func(c *config.Config) any { return c.MCP.CDP.Enabled },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.MCP.CDP.Enabled = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.CDP.Enabled = b
+			return nil
+		},
 	},
 	// MCP Email
 	{
 		path: "mcp.email.enabled", description: "Enable email MCP tool",
 		get: func(c *config.Config) any { return c.MCP.Email.Enabled },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.MCP.Email.Enabled = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Email.Enabled = b
+			return nil
+		},
 	},
 	// MCP Webhook
 	{
 		path: "mcp.webhook.enabled", description: "Enable webhook MCP tool",
 		get: func(c *config.Config) any { return c.MCP.Webhook.Enabled },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.MCP.Webhook.Enabled = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Webhook.Enabled = b
+			return nil
+		},
 	},
 	// Session
 	{
 		path: "session.max_loop", description: "Max turns per session before checkpoint",
 		get: func(c *config.Config) any { return c.Session.MaxLoop },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.Session.MaxLoop = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.Session.MaxLoop = n
+			return nil
+		},
 	},
 	{
 		path: "session.summary", description: "Auto-generate session summary",
 		get: func(c *config.Config) any { return c.Session.Summary },
-		set: func(c *config.Config, v any) error { b, err := toBool(v); if err != nil { return err }; c.Session.Summary = b; return nil },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.Session.Summary = b
+			return nil
+		},
 	},
 	// Agent Pool
 	{
 		path: "agent_pool.max_pending_results", description: "Max pending sub-agent results in context",
 		get: func(c *config.Config) any { return c.Pool.MaxPendingResults },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.Pool.MaxPendingResults = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.Pool.MaxPendingResults = n
+			return nil
+		},
 	},
 	{
 		path: "agent_pool.max_pending_result_len", description: "Max chars per pending result in prompt (0 = no truncation)",
 		get: func(c *config.Config) any { return c.Pool.MaxPendingResultLen },
-		set: func(c *config.Config, v any) error { n, err := toInt(v); if err != nil { return err }; c.Pool.MaxPendingResultLen = n; return nil },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.Pool.MaxPendingResultLen = n
+			return nil
+		},
 	},
 }
 
@@ -166,7 +299,7 @@ func (c *Coordinator) handleConfig(ctx context.Context, input json.RawMessage) (
 		return c.handleConfigSave(params.File)
 	default:
 		return &mcp.ToolResult{
-			Content:  fmt.Sprintf("unknown action %q — use list, get, set, or save", params.Action),
+			Content: fmt.Sprintf("unknown action %q — use list, get, set, or save", params.Action),
 			IsError: true,
 		}, nil
 	}
@@ -266,7 +399,7 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("create config dir: %v", err), IsError: true}, nil
 	}
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("write config: %v", err), IsError: true}, nil
 	}
 

@@ -2,7 +2,7 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt init-hooks app app-clean
+.PHONY: build run clean test fmt check-fmt init-hooks llm-smoke app app-clean distribute
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
@@ -34,6 +34,9 @@ init-hooks:
 	chmod +x "$$hooks/pre-commit"; \
 	echo "pre-commit hook installed (runs gofmt on staged .go files)"
 
+llm-smoke:
+	@scripts/llm-smoke.sh
+
 app:
 	$(MAKE) -C $(PANDA_DIR) build VERSION=$(VERSION)
 	cp -r $(PANDA_DIR)/$(APP_BUNDLE) .
@@ -48,3 +51,12 @@ release:
 
 release-snapshot:
 	goreleaser release --snapshot --clean
+
+distribute:
+	@branch=$$(git symbolic-ref --short HEAD); \
+	echo "Pushing $$branch to github, gitee..."; \
+	git push github "$$branch" && echo "  ✓ github" \
+		|| echo "  ✗ github"; \
+	git push gitee "$$branch" && echo "  ✓ gitee" \
+		|| echo "  ✗ gitee"; \
+	echo "Done."

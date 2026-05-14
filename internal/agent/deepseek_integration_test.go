@@ -62,10 +62,10 @@ func readDeepSeekConfig(t *testing.T) (apiKey, baseURL, model string) {
 			APIKey  string `yaml:"api_key"`
 		} `yaml:"llm"`
 		Providers []struct {
-			Type   string `yaml:"type"`
-			APIKey string `yaml:"api_key"`
+			Type    string `yaml:"type"`
+			APIKey  string `yaml:"api_key"`
 			BaseURL string `yaml:"base_url"`
-			Model  string `yaml:"model"`
+			Model   string `yaml:"model"`
 		} `yaml:"providers"`
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
@@ -219,4 +219,3 @@ func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
 		t.Logf("turn 2: %s", final)
 	}
 }
-

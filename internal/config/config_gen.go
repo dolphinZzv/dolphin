@@ -110,6 +110,13 @@ transport:
     topic: dolphinnzZ/agent/command
     response_topic: dolphinnzZ/agent/response
     client_id: dolphinnzZ-agent
+    embedded: true
+    embedded_addr: :1883
+    embedded_accounts:
+      - username: dolphinnzZ
+        password: ""          # auto-generated if empty; set manually to override
+    username: ""              # client credentials for broker connection
+    password: ""              # auto-populated from first embedded account if empty
   email:
     enabled: false
     smtp_host: ""
@@ -158,6 +165,7 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+
 // restrictiveNotes is appended to the standard template to document security
 // hardening applied in restrictive mode. This approach reuses the standard
 // template comments but overrides specific values via yaml overlay below.
@@ -270,6 +278,13 @@ transport:
     topic: dolphinnzZ/agent/command
     response_topic: dolphinnzZ/agent/response
     client_id: dolphinnzZ-agent
+    embedded: true
+    embedded_addr: :1883
+    embedded_accounts:
+      - username: dolphinnzZ
+        password: ""          # 为空则自动生成随机密码；手动设置则覆盖
+    username: ""              # 客户端连接 broker 的凭据
+    password: ""              # 为空则自动取第一个 embedded 账号
   email:
     enabled: false
     smtp_host: ""
@@ -318,6 +333,7 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+
 func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
 	tmplEN := restrictiveTemplateEN + configTemplateEN
 	tmplZH := restrictiveTemplateZH + configTemplateZH
@@ -369,7 +385,7 @@ func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
 	}
 	output := append([]byte(header), data...)
 
-	if err := os.WriteFile(path, output, 0644); err != nil {
+	if err := os.WriteFile(path, output, 0600); err != nil {
 		return "", fmt.Errorf("write config: %w", err)
 	}
 	return path, nil
@@ -388,7 +404,7 @@ func GenerateConfigFile(lang i18n.Lang) (string, error) {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
 
-	if err := os.WriteFile(path, []byte(tmpl), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(tmpl), 0600); err != nil {
 		return "", fmt.Errorf("write config: %w", err)
 	}
 	return path, nil

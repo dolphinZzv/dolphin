@@ -289,6 +289,24 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 			}
 
 			switch evt.Type {
+			case "message_start":
+				// message_start carries input_tokens inside message.usage
+				var msgStart struct {
+					Message *struct {
+						Usage *struct {
+							InputTokens  int `json:"input_tokens"`
+							OutputTokens int `json:"output_tokens"`
+						} `json:"usage"`
+					} `json:"message"`
+				}
+				if err := json.Unmarshal([]byte(data), &msgStart); err == nil && msgStart.Message != nil && msgStart.Message.Usage != nil {
+					ch <- StreamChunk{
+						Usage: &Usage{
+							InputTokens:  msgStart.Message.Usage.InputTokens,
+							OutputTokens: msgStart.Message.Usage.OutputTokens,
+						},
+					}
+				}
 			case "content_block_start":
 				if evt.ContentBlock != nil {
 					blockTypes[evt.Index] = evt.ContentBlock.Type

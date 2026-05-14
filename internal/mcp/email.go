@@ -536,7 +536,7 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 
 	// STAT to get message count
 	statLine, err := p.cmd("STAT")
-		if err != nil {
+	if err != nil {
 		p.quit()
 		return nil, fmt.Errorf("pop3 stat: %w", err)
 	}
@@ -550,22 +550,22 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 }
 
 func (p *pop3Conn) cmd(format string, args ...any) (string, error) {
-		msg := fmt.Sprintf(format, args...)
-		if _, err := p.rw.WriteString(msg + "\r\n"); err != nil {
-			return "", err
-		}
-		if err := p.rw.Flush(); err != nil {
-			return "", err
-		}
-		line, err := p.readLine()
-		if err != nil {
-			return "", err
-		}
-		if !strings.HasPrefix(line, "+OK") {
-			return "", fmt.Errorf("POP3 error: %s", line)
-		}
-		return line, nil
+	msg := fmt.Sprintf(format, args...)
+	if _, err := p.rw.WriteString(msg + "\r\n"); err != nil {
+		return "", err
 	}
+	if err := p.rw.Flush(); err != nil {
+		return "", err
+	}
+	line, err := p.readLine()
+	if err != nil {
+		return "", err
+	}
+	if !strings.HasPrefix(line, "+OK") {
+		return "", fmt.Errorf("POP3 error: %s", line)
+	}
+	return line, nil
+}
 
 func (p *pop3Conn) readLine() (string, error) {
 	line, err := p.rw.ReadString('\n')

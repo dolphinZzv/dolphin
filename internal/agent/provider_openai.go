@@ -31,8 +31,8 @@ type OpenAIProvider struct {
 	httpDoer interface {
 		Do(req *http.Request) (*http.Response, error)
 	}
-	baseURL    string
-	apiKey     string
+	baseURL string
+	apiKey  string
 }
 
 func NewOpenAIProvider(cfg *config.ProviderConfig) *OpenAIProvider {
@@ -48,13 +48,13 @@ func NewOpenAIProvider(cfg *config.ProviderConfig) *OpenAIProvider {
 	)
 
 	return &OpenAIProvider{
-		client:     openai.NewClientWithConfig(conf),
-		model:      cfg.Model,
-		maxTok:     cfg.MaxTokens,
-		name:       cfg.Name,
+		client:   openai.NewClientWithConfig(conf),
+		model:    cfg.Model,
+		maxTok:   cfg.MaxTokens,
+		name:     cfg.Name,
 		httpDoer: conf.HTTPClient,
-		baseURL:    conf.BaseURL,
-		apiKey:     cfg.APIKey,
+		baseURL:  conf.BaseURL,
+		apiKey:   cfg.APIKey,
 	}
 }
 

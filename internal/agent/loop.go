@@ -48,6 +48,7 @@ type LoopState struct {
 	ErrorCount       int
 	CompressionCount int
 	SummaryGenerated bool
+	SummaryTexts     []string
 }
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
@@ -126,8 +127,8 @@ func (a *Agent) switchToProvider(name string) bool {
 	return false
 }
 
-func (a *Agent) SetVersion(v string)     { a.version = v }
-func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
+func (a *Agent) SetVersion(v string)   { a.version = v }
+func (a *Agent) SetBuildTime(t string) { a.buildTime = t }
 
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
@@ -278,11 +279,11 @@ func printProviderHelp(providers []config.ProviderConfig) {
 
 func providerLink(name string) string {
 	links := map[string]string{
-		"deepseek":   "https://platform.deepseek.com/api_keys",
-		"minimax":    "https://platform.minimaxi.com/",
-		"glm":        "https://open.bigmodel.cn/usercenter/apikeys",
-		"qwen":       "https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen",
-		"kimi":       "https://kimi.moonshot.cn/",
+		"deepseek": "https://platform.deepseek.com/api_keys",
+		"minimax":  "https://platform.minimaxi.com/",
+		"glm":      "https://open.bigmodel.cn/usercenter/apikeys",
+		"qwen":     "https://help.aliyun.com/zh/model-studio/getting-started/first-api-call-to-qwen",
+		"kimi":     "https://kimi.moonshot.cn/",
 	}
 	lower := strings.ToLower(name)
 	for key, link := range links {
@@ -409,7 +410,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			return
 		}
 
-		if line == "/exit" {
+		if line == "/exit" || line == "exit" || line == "quit" {
 			if io.Capabilities().ConfirmExit {
 				io.WriteLine("Are you sure you want to exit? [y/N] ")
 				confirm, err := io.ReadLine()
@@ -708,6 +709,7 @@ func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
 			TokensSaved:  report.TokensSaved,
 		})
 		state.CompressionCount++
+		state.SummaryTexts = append(state.SummaryTexts, fmt.Sprintf("[L%d] %s", seg.Level, seg.Content))
 	}
 	zap.S().Debugw("context compressed",
 		"dropped", report.DroppedCount,
@@ -1166,7 +1168,8 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 		stateStr = "transport_error"
 	}
 
-	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr)
+	summaryText := strings.Join(state.SummaryTexts, "\n")
+	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,

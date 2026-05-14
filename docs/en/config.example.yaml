@@ -98,6 +98,13 @@ transport:
     topic: dolphin/agent/command
     response_topic: dolphin/agent/response
     client_id: dolphin-agent
+    embedded: true
+    embedded_addr: :1883
+    embedded_accounts:
+      - username: dolphin
+        password: ""          # auto-generated if empty; set manually to override
+    username: ""              # client credentials for broker connection
+    password: ""              # auto-populated from first embedded account if empty
   email:
     enabled: false
     smtp_host: ""

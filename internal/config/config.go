@@ -51,10 +51,10 @@ type ProviderConfig struct {
 
 type LLMConfig struct {
 	// Legacy single-provider fields (populated by env vars for backward compat).
-	Type     string `mapstructure:"type"`
-	BaseURL  string `mapstructure:"base_url"`
-	APIKey   string `mapstructure:"api_key"`
-	Model    string `mapstructure:"model"`
+	Type      string `mapstructure:"type"`
+	BaseURL   string `mapstructure:"base_url"`
+	APIKey    string `mapstructure:"api_key"`
+	Model     string `mapstructure:"model"`
 	MaxTokens int    `mapstructure:"max_tokens"`
 
 	// Agent-level settings (shared regardless of which provider is active).
@@ -112,29 +112,39 @@ type SSHConfig struct {
 	Password string `mapstructure:"password"`
 }
 
+type MQTTAccount struct {
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
 type MQTTConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	Broker        string `mapstructure:"broker"`
-	Topic         string `mapstructure:"topic"`
-	ResponseTopic string `mapstructure:"response_topic"`
-	ClientID      string `mapstructure:"client_id"`
+	Enabled          bool          `mapstructure:"enabled"`
+	Broker           string        `mapstructure:"broker"`
+	Topic            string        `mapstructure:"topic"`
+	ResponseTopic    string        `mapstructure:"response_topic"`
+	ClientID         string        `mapstructure:"client_id"`
+	Embedded         bool          `mapstructure:"embedded"`
+	EmbeddedAddr     string        `mapstructure:"embedded_addr"`
+	EmbeddedAccounts []MQTTAccount `mapstructure:"embedded_accounts"`
+	Username         string        `mapstructure:"username"`
+	Password         string        `mapstructure:"password"`
 }
 
 type EmailConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	Protocol     string `mapstructure:"protocol"`      // "imap" (default) or "pop3"
-	SMTPHost     string `mapstructure:"smtp_host"`
-	SMTPPort     int    `mapstructure:"smtp_port"`
-	IMAPHost     string `mapstructure:"imap_host"`
-	IMAPPort     int    `mapstructure:"imap_port"`
-	POP3Host     string `mapstructure:"pop3_host"`     // defaults to IMAPHost / SMTPHost
-	POP3Port     int    `mapstructure:"pop3_port"`     // default 995 (TLS)
-	Username     string `mapstructure:"username"`
-	Password     string `mapstructure:"password"`
-	From         string `mapstructure:"from"`
-	UseTLS       bool   `mapstructure:"use_tls"`
-	SkipTLSVerify bool `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
-	PollInterval string `mapstructure:"poll_interval"` // IMAP poll interval, e.g. "10s"
+	Enabled       bool   `mapstructure:"enabled"`
+	Protocol      string `mapstructure:"protocol"` // "imap" (default) or "pop3"
+	SMTPHost      string `mapstructure:"smtp_host"`
+	SMTPPort      int    `mapstructure:"smtp_port"`
+	IMAPHost      string `mapstructure:"imap_host"`
+	IMAPPort      int    `mapstructure:"imap_port"`
+	POP3Host      string `mapstructure:"pop3_host"` // defaults to IMAPHost / SMTPHost
+	POP3Port      int    `mapstructure:"pop3_port"` // default 995 (TLS)
+	Username      string `mapstructure:"username"`
+	Password      string `mapstructure:"password"`
+	From          string `mapstructure:"from"`
+	UseTLS        bool   `mapstructure:"use_tls"`
+	SkipTLSVerify bool   `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
+	PollInterval  string `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
 }
 
 type MCPConfig struct {
@@ -363,6 +373,37 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_TRANSPORT_MQTT_ENABLED"); v != "" {
 		cfg.Transport.MQTT.Enabled = v == "true" || v == "1"
 	}
+	if v := os.Getenv("DZ_MQTT_EMBEDDED"); v != "" {
+		cfg.Transport.MQTT.Embedded = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_MQTT_EMBEDDED_ADDR"); v != "" {
+		cfg.Transport.MQTT.EmbeddedAddr = v
+	}
+	if v := os.Getenv("DZ_MQTT_USER"); v != "" {
+		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Username: v})
+		} else {
+			cfg.Transport.MQTT.EmbeddedAccounts[0].Username = v
+		}
+	}
+	if v := os.Getenv("DZ_MQTT_PASSWORD"); v != "" {
+		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Password: v})
+		} else {
+			cfg.Transport.MQTT.EmbeddedAccounts[0].Password = v
+		}
+	}
+
+	// Auto-generate MQTT broker account if embedded broker is enabled and no accounts configured.
+	if cfg.Transport.MQTT.Enabled && cfg.Transport.MQTT.Embedded && len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+		buf := make([]byte, 12)
+		if _, err := rand.Read(buf); err == nil {
+			cfg.Transport.MQTT.EmbeddedAccounts = []MQTTAccount{{
+				Username: "dolphin",
+				Password: hex.EncodeToString(buf),
+			}}
+		}
+	}
 
 	// Auto-generate SSH password if empty. Fails closed — if generation fails,
 	// the SSH transport will refuse to start (checked in NewSSHTransport).
@@ -487,9 +528,22 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	if existingData, err := os.ReadFile(configPath); err == nil {
 		yaml.Unmarshal(existingData, &full)
 	}
-	// Merge the merged loaded-tools into the full config
-	full["skills"] = existing.Skills
-	full["mcp"] = existing.MCP
+	// Merge the merged loaded-tools into the full config.
+	// Deep-merge into existing section maps to avoid overwriting other settings
+	// like mcp.shell or skills.dir.
+	fullSkills, ok := full["skills"].(map[string]any)
+	if !ok {
+		fullSkills = make(map[string]any)
+		full["skills"] = fullSkills
+	}
+	fullSkills["loaded"] = existing.Skills.Loaded
+
+	fullMCP, ok := full["mcp"].(map[string]any)
+	if !ok {
+		fullMCP = make(map[string]any)
+		full["mcp"] = fullMCP
+	}
+	fullMCP["loaded"] = existing.MCP.Loaded
 	out, err := yaml.Marshal(full)
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
@@ -601,6 +655,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.mqtt.topic", "dolphin/agent/command")
 	v.SetDefault("transport.mqtt.response_topic", "dolphin/agent/response")
 	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
+	v.SetDefault("transport.mqtt.embedded", true)
+	v.SetDefault("transport.mqtt.embedded_addr", ":1883")
 
 	v.SetDefault("transport.email.enabled", false)
 	v.SetDefault("transport.email.smtp_port", 587)

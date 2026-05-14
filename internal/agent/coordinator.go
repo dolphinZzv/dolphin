@@ -781,7 +781,6 @@ func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessag
 
 // ---- Skill handlers ----
 
-
 func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	if c.skills == nil {
 		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil

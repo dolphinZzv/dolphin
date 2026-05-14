@@ -2,9 +2,9 @@ package mcp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"

@@ -1,6 +1,12 @@
 # dolphin
 
-[English](README.md) | [中文](README.zh.md)
+<p align="center">
+  <strong>文档：</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+  <br>
+  <strong>分发：</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <br>
+  <strong>安装：</strong> <a href="docs/zh/INSTALL.zh.md">安装指南</a>
+</p>
 
 一个在你工作的地方随时待命的 AI agent —— 终端、邮件、聊天、SSH。它执行 shell 命令、操控浏览器、调度子 agent 并行工作、按你定义的计划自动运行任务。就像一个能干的队友，无论通过什么渠道都能对接。
 
@@ -119,8 +125,29 @@ export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 手动初始化：
 
 ```bash
-cp config.example.yaml .dolphin/config.yaml        # 英文
-cp config.example.zh.yaml .dolphin/config.yaml      # 中文
+cp docs/en/config.example.yaml .dolphin/config.yaml      # 英文
+cp docs/zh/config.example.zh.yaml .dolphin/config.yaml   # 中文
+```
+
+## 源码编译
+
+dolphin 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。完整安装方式（预编译二进制、go install 等）见 [INSTALL.zh.md](docs/zh/INSTALL.zh.md)。
+
+快速参考：
+
+```bash
+git clone https://github.com/dolphinZzv/dolphin.git
+cd dolphin
+
+# Linux / macOS
+make build                  # 开发版本（版本号 = dev）
+make build VERSION=v1.0.0   # 发布版本
+
+# Windows（PowerShell）
+go build -o dolphin.exe .   # 开发版本
+
+# Windows（通过 Chocolatey/winget 安装 make 后）
+make build                  # 开发版本
 ```
 
 ## 项目结构
@@ -151,3 +178,7 @@ dolphin 基于以下信念构建：
 - **本地优先，尊重隐私。** 职业画像、SYSTEM.md、会话文件 —— 全部本地存储。除了你配置的 LLM API 调用，没有任何数据外发。
 - **可恢复设计。** 会话持久化到磁盘。agent 崩溃或关机后可以接着上次继续。日志轮转但不会消失。
 - **可测试、可观测。** 结构化日志、Prometheus 指标、pprof 端点，以及在 CI 中强制执行竞态检测和覆盖率门槛的测试套件。
+
+---
+
+**联系方式：** [dolphin@siciv.space](mailto:dolphin@siciv.space)

@@ -306,7 +306,6 @@ func TestWebhook_NoContentTypeWithoutBody(t *testing.T) {
 	}
 }
 
-
 func TestBlockPrivateTarget(t *testing.T) {
 	private := []string{
 		"http://127.0.0.1:8080/test",

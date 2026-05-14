@@ -1,6 +1,6 @@
 # 安装 dolphin
 
-[English](INSTALL.md) | [中文](INSTALL.zh.md)
+[English](../en/INSTALL.md) | [中文](INSTALL.zh.md)
 
 dolphin 支持 **Linux**、**macOS** 和 **Windows** 系统。选择最适合你的安装方式。
 
@@ -69,20 +69,93 @@ go install github.com/dolphinZzv/dolphin@v1.0.0
 
 ## 方式三：源码编译
 
+需要 Go 1.26+ 和 `git`。
+
+克隆仓库：
+
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
 cd dolphin
-make build   # 生成 ./dolphin
-# 或手动编译：
-# go build -ldflags="-X 'dolphin/cmd.Version=$(version)'" -o dolphin .
 ```
 
-开发版本（Version 为 `dev`）：
+然后根据你的系统选择对应方式。
+
+### Linux
+
+`make` 直接可用：
 
 ```bash
-make build
-# 或
-go build -o dolphin .
+make build   # 生成 ./dolphin（版本号 = dev）
+```
+
+或手动编译：
+
+```bash
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+```
+
+发布版本可指定 VERSION：
+
+```bash
+make build VERSION=v1.0.0
+```
+
+### macOS
+
+`make` 包含在 Xcode Command Line Tools 中。如未安装：
+
+```bash
+xcode-select --install
+```
+
+然后：
+
+```bash
+make build   # 生成 ./dolphin（版本号 = dev）
+```
+
+或手动编译：
+
+```bash
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+```
+
+### Windows
+
+**方式 A — Go build（PowerShell / cmd）：**
+
+```powershell
+# 开发版本（版本号 = dev）
+go build -o dolphin.exe .
+
+# 发布版本
+$env:VERSION = "v1.0.0"
+go build -ldflags="-X 'dolphin/cmd.Version=$env:VERSION'" -o dolphin.exe .
+```
+
+**方式 B — Make（Windows 原生）：**
+
+通过以下方式安装 `make`：
+
+```powershell
+# Chocolatey
+choco install make
+
+# winget
+winget install GnuWin32.Make
+```
+
+然后编译：
+
+```powershell
+make build   # 生成 ./dolphin.exe（版本号 = dev）
+make build VERSION=v1.0.0
+```
+
+**方式 C — Git Bash / WSL：**
+
+```bash
+make build   # 生成 ./dolphin.exe（版本号 = dev）
 ```
 
 ## 验证安装

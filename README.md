@@ -1,6 +1,12 @@
 # dolphin
 
-[English](README.md) | [中文](README.zh.md)
+<p align="center">
+  <strong>Docs:</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
+  <br>
+  <strong>Distribution:</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
+  <br>
+  <strong>Install:</strong> <a href="docs/en/INSTALL.md">Install Guide</a>
+</p>
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
 
@@ -81,6 +87,27 @@ export DZ_LLM_MODEL="gpt-4o"
 ./dolphin
 ```
 
+## Build from source
+
+dolphin supports **Linux**, **macOS**, and **Windows** (arm64 and x86_64). See [INSTALL.md](docs/en/INSTALL.md) for all options (pre-built binaries, go install, etc.).
+
+Quick reference:
+
+```bash
+git clone https://github.com/dolphinZzv/dolphin.git
+cd dolphin
+
+# Linux / macOS
+make build              # development build (version = dev)
+make build VERSION=v1.0.0   # release build
+
+# Windows (PowerShell)
+go build -o dolphin.exe .   # development build
+
+# Windows (with make, via Chocolatey/winget)
+make build                  # development build
+```
+
 ## Project structure
 
 ```
@@ -108,3 +135,7 @@ dolphin is built around a few beliefs about how AI agents should work:
 - **Local first, privacy respecting.** Career profile, SYSTEM.md, session files — all stored locally. Nothing gets sent anywhere except the LLM API calls you configure.
 - **Recoverable by design.** Sessions persist to disk. If the agent crashes or you shut down, you can resume where you left off. Logs rotate but don't disappear.
 - **Testable and observable.** Structured logging, Prometheus metrics, pprof endpoints, and a test suite that enforces race detection and coverage gates.
+
+---
+
+**Contact:** [dolphin@siciv.space](mailto:dolphin@siciv.space)
