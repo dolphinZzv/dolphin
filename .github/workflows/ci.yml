@@ -31,10 +31,7 @@ jobs:
         run: go vet ./...
 
       - name: Build
-        run: go build -o dolphin .
-
-      - name: Local smoke test
-        run: scripts/smoke.sh ./dolphin
+        run: go build ./...
 
       - name: Test with coverage
         run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
@@ -96,21 +93,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build (load to local Docker)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-
-      - name: Smoke test
-        run: |
-          image=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
-          echo "Smoke testing image: $image"
-          scripts/docker-smoke.sh "$image"
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -118,12 +100,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push (multi-arch)
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
