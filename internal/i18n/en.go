@@ -29,7 +29,7 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin Coordinator Ready\n  /exit           Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
+	KeyCoordReady:          "dolphin Coordinator Ready\n  /exit           Quit coordinator\n  /help           Show help\n  /status         Show status\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /sessions       List past sessions\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
 	KeyHelpHeader:          "Commands:",
 	KeyHelpExit:            "  /exit          - Exit",
 	KeyHelpHelp:            "  /help         - This help",
@@ -39,6 +39,8 @@ var enMessages = map[string]string{
 	KeyHelpCancel:          "  /cancel       - Cancel all running tasks",
 	KeyHelpCancelID:        "  /cancel <id>  - Cancel a specific task by ID",
 	KeyHelpMCP:             "  /mcp          - List all MCP tools",
+	KeyHelpStatus:          "  /status       - Show current status",
+	KeyHelpSessions:        "  /sessions     - List past sessions",
 	KeyHelpTopMCP:          "Top MCP tools (by usage, use search_mcp_tools to find more):",
 	KeyHelpSkillsAvail:     "\nSkills: %d available (use /skills to list, search_skills to find)",
 	KeyNoAgents:            "No agents configured.",
@@ -82,4 +84,22 @@ var enMessages = map[string]string{
 	KeyLLMProviderOK:      "  ✓ %s (%s) — %dms\n",
 	KeyLLMProviderFail:    "  ✗ %s (%s) — %dms %s\n",
 	KeyLLMUsing:           "→ Using: %s\n",
+
+	// /status command
+	KeyStatusHeader:   "Status:",
+	KeyStatusProvider: "  Provider:    %s",
+	KeyStatusModel:    "  Model:       %s",
+	KeyStatusSession:  "  Session:     %s (%d turns)",
+	KeyStatusAgents:   "  Agents:      %d (%d busy)",
+	KeyStatusMCPTools: "  MCP tools:   %d",
+	KeyStatusSkills:   "  Skills:      %d",
+	KeyStatusCommands: "  Commands:    %d",
+	KeyStatusCron:     "  Cron tasks:  %d",
+	KeyStatusMemory:   "  Memory:      %d MB",
+	KeyNoSession:      "  Session:     none",
+
+	// /sessions command
+	KeySessionsHeader: "Sessions (%d):",
+	KeyNoSessions:     "No past sessions found.",
+	KeySessionRow:     "  %s  %4d turns  %s",
 }

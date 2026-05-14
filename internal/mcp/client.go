@@ -91,14 +91,14 @@ func (c *ServerClient) initialize(ctx context.Context) error {
 }
 
 // ListTools discovers tools from the server.
-func (c *ServerClient) ListTools() ([]ToolDefinition, error) {
+func (c *ServerClient) ListTools(ctx context.Context) ([]ToolDefinition, error) {
 	req := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      c.nextID.Add(1),
 		"method":  "tools/list",
 		"params":  map[string]any{},
 	}
-	raw, err := c.transport.sendRequest(context.Background(), req)
+	raw, err := c.transport.sendRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}

@@ -133,11 +133,21 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 			}
 		}
 
-		// Drain the body until context is cancelled
-		select {
-		case <-ctx.Done():
+		// Drain the body until context is cancelled, then close it.
+		// Without this, the goroutine blocks forever on ctx.Done() and
+		// resp.Body is never closed — a goroutine + connection leak.
+		go func() {
+			<-ctx.Done()
 			resp.Body.Close()
-			return
+		}()
+		// Block read from body to keep the SSE connection alive.
+		buf := make([]byte, 4096)
+		for {
+			_, err := resp.Body.Read(buf)
+			if err != nil {
+				resp.Body.Close()
+				return
+			}
 		}
 	}
 }

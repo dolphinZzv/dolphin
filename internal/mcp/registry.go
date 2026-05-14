@@ -119,7 +119,9 @@ func (r *Registry) LoadServers() error {
 			continue
 		}
 
-		defs, err := client.ListTools()
+		listCtx, cancel := context.WithTimeout(context.Background(), config.TimeoutDuration(cfg.Timeout))
+		defs, err := client.ListTools(listCtx)
+		cancel()
 		if err != nil {
 			failed++
 			client.Close()

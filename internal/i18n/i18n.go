@@ -56,6 +56,8 @@ const (
 	KeyHelpCancel          = "help_cancel"
 	KeyHelpCancelID        = "help_cancel_id"
 	KeyHelpMCP             = "help_mcp"
+	KeyHelpStatus          = "help_status"
+	KeyHelpSessions        = "help_sessions"
 	KeyHelpTopMCP          = "help_top_mcp"
 	KeyHelpSkillsAvail     = "help_skills_avail"
 	KeyNoAgents            = "no_agents"
@@ -99,6 +101,24 @@ const (
 	KeyLLMProviderOK      = "llm_provider_ok"
 	KeyLLMProviderFail    = "llm_provider_fail"
 	KeyLLMUsing           = "llm_using"
+
+	// /status command
+	KeyStatusHeader   = "status_header"
+	KeyStatusProvider = "status_provider"
+	KeyStatusModel    = "status_model"
+	KeyStatusSession  = "status_session"
+	KeyStatusAgents   = "status_agents"
+	KeyStatusMCPTools = "status_mcp_tools"
+	KeyStatusSkills   = "status_skills"
+	KeyStatusCommands = "status_commands"
+	KeyStatusCron     = "status_cron"
+	KeyStatusMemory   = "status_memory"
+	KeyNoSession      = "no_session"
+
+	// /sessions command
+	KeySessionsHeader = "sessions_header"
+	KeyNoSessions     = "no_sessions"
+	KeySessionRow     = "session_row"
 )
 
 var (

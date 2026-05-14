@@ -80,7 +80,7 @@ func TestChickServerListTools(t *testing.T) {
 	}
 	defer client.Close()
 
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestChickServerCallSearchIssues(t *testing.T) {
 	defer client.Close()
 
 	// Verify search_issues is available
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestChickServerCallCreateComment(t *testing.T) {
 	defer client.Close()
 
 	// Verify add_comment is available
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestChickAllToolsInputSchema(t *testing.T) {
 	}
 	defer client.Close()
 
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestChickServerToolSchemaRoundTrip(t *testing.T) {
 	}
 	defer client.Close()
 
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}

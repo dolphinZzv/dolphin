@@ -1464,6 +1464,303 @@ func TestConfigToolUnknownAction(t *testing.T) {
 	}
 }
 
+func TestCoordinatorHandleSkillNewNilManager(t *testing.T) {
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.handleSkillNew("/skills new my-skill", io)
+	output := io.writes.String()
+	if !strings.Contains(output, i18n.T(i18n.KeySkillsNotAvail, i18n.EN)) {
+		t.Error("expected not available message, got:", output)
+	}
+}
+
+func TestCoordinatorHandleSkillNewNoName(t *testing.T) {
+	skillDir := t.TempDir()
+	skillMgr := skill.NewManager(skillDir)
+	c := &Coordinator{}
+	c.SetSkillManager(skillMgr)
+
+	io := &mockIO{}
+	c.handleSkillNew("/skills new", io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Usage:") {
+		t.Error("expected usage message, got:", output)
+	}
+}
+
+func TestCoordinatorHandleSkillNewCreatesFile(t *testing.T) {
+	skillDir := t.TempDir()
+	skillMgr := skill.NewManager(skillDir)
+	c := &Coordinator{}
+	c.SetSkillManager(skillMgr)
+
+	io := &mockIO{}
+	c.handleSkillNew("/skills new custom-review", io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Created") {
+		t.Error("expected Created message, got:", output)
+	}
+	if !strings.Contains(output, skillDir) {
+		t.Error("expected skill dir path in output, got:", output)
+	}
+
+	content, err := os.ReadFile(filepath.Join(skillDir, "custom-review.md"))
+	if err != nil {
+		t.Fatalf("file was not created: %v", err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "name: custom-review") {
+		t.Error("frontmatter missing name")
+	}
+	if !strings.Contains(s, "## Overview") {
+		t.Error("missing template sections")
+	}
+}
+
+func TestCoordinatorSkillNewViaRun(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 50
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	skillDir := t.TempDir()
+	skillMgr := skill.NewManager(skillDir)
+	skillMgr.Load()
+	coord.SetSkillManager(skillMgr)
+
+	io := &mockIO{lines: []string{"/skills new my-test-skill", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Created") {
+		t.Error("expected Created in output, got:", output)
+	}
+	if !strings.Contains(output, "my-test-skill") {
+		t.Error("expected skill name in output, got:", output)
+	}
+
+	if _, err := os.Stat(filepath.Join(skillDir, "my-test-skill.md")); os.IsNotExist(err) {
+		t.Error("skill file was not created")
+	}
+}
+
+func TestCoordinatorStatusCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.Model = "test-model"
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	skillDir := t.TempDir()
+	skillMgr := skill.NewManager(skillDir)
+	skillMgr.Register("test-skill", "test", "# Test")
+	coord.SetSkillManager(skillMgr)
+
+	coord.SetCommandManager(command.NewManager(t.TempDir()))
+
+	io := &mockIO{lines: []string{"/status", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Status:") {
+		t.Error("expected Status header, got:", output)
+	}
+	if !strings.Contains(output, "mock") {
+		t.Error("expected provider name, got:", output)
+	}
+	if !strings.Contains(output, "test-model") {
+		t.Error("expected model name, got:", output)
+	}
+	if !strings.Contains(output, "Skills:") {
+		t.Error("expected skills count, got:", output)
+	}
+	if !strings.Contains(output, "Commands:") {
+		t.Error("expected commands count, got:", output)
+	}
+	if !strings.Contains(output, "Memory:") {
+		t.Error("expected memory, got:", output)
+	}
+}
+
+func TestCoordinatorStatusCommandMinimal(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.LLM.Model = "minimal-model"
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	io := &mockIO{lines: []string{"/status", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Status:") {
+		t.Error("expected Status header, got:", output)
+	}
+	if !strings.Contains(output, "Agents:") {
+		t.Error("expected agents count, got:", output)
+	}
+	if !strings.Contains(output, "MCP tools:") {
+		t.Error("expected MCP tools count, got:", output)
+	}
+}
+
+func TestCoordinatorSessionsCommandNoSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	io := &mockIO{lines: []string{"/sessions", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	// Run() creates a session, so there's always at least 1. The "no sessions"
+	// path requires an empty directory before the run — here we verify the
+	// sessions command works and shows the self-created session.
+	if !strings.Contains(output, "Sessions") {
+		t.Error("expected Sessions header, got:", output)
+	}
+}
+
+func TestCoordinatorSessionsCommandWithSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	// Create a couple of session files
+	for i := 0; i < 2; i++ {
+		sess, err := sessMgr.NewSession(50)
+		if err != nil {
+			t.Fatalf("create session: %v", err)
+		}
+		sess.LogMessage("user", json.RawMessage(`"hello"`))
+		sess.LogMessage("assistant", json.RawMessage(`"hi"`))
+		sess.Close()
+	}
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	io := &mockIO{lines: []string{"/sessions", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "Sessions") {
+		t.Error("expected Sessions header, got:", output)
+	}
+	if !strings.Contains(output, "turns") {
+		t.Error("expected turns in output, got:", output)
+	}
+}
+
+func TestCoordinatorHelpIncludesStatusAndSessions(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	prov := &mockProvider{}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	pool := NewAgentPool(context.Background(), PoolConfig{})
+	coord := NewCoordinator(agt, pool)
+
+	io := &mockIO{lines: []string{"/help", "/exit"}}
+	coord.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "/status") {
+		t.Error("expected /status in help, got:", output)
+	}
+	if !strings.Contains(output, "/sessions") {
+		t.Error("expected /sessions in help, got:", output)
+	}
+}
+
 func TestConfigToolListShowsAllRegisteredPaths(t *testing.T) {
 	cfg := config.DefaultConfig()
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}

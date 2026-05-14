@@ -3,6 +3,7 @@ package skill
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -262,5 +263,127 @@ description: "A skill with quoted values"
 	}
 	if skill.Description != "A skill with quoted values" {
 		t.Errorf("description = %q", skill.Description)
+	}
+}
+
+func TestManager_NewTemplate(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.NewTemplate("my-skill", "My custom skill"); err != nil {
+		t.Fatalf("NewTemplate: %v", err)
+	}
+
+	// Verify file was created on disk
+	content, err := os.ReadFile(filepath.Join(dir, "my-skill.md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "name: my-skill") {
+		t.Error("missing name in frontmatter")
+	}
+	if !strings.Contains(s, "My custom skill") {
+		t.Error("missing description in frontmatter")
+	}
+	if !strings.Contains(s, "# My custom skill") {
+		t.Error("missing heading")
+	}
+	if !strings.Contains(s, "## Overview") || !strings.Contains(s, "## Guidelines") || !strings.Contains(s, "## Examples") {
+		t.Error("missing template sections")
+	}
+}
+
+func TestManager_NewTemplateEmptyDescription(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.NewTemplate("my-skill", ""); err != nil {
+		t.Fatalf("NewTemplate: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(dir, "my-skill.md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "description: my-skill") {
+		t.Error("empty description should default to name, got:", s)
+	}
+	if !strings.Contains(s, "# my-skill") {
+		t.Error("heading should be name when description empty")
+	}
+}
+
+func TestManager_NewTemplateLoadsAfterCreation(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Before creation, skill shouldn't exist
+	m.Load()
+	if _, ok := m.Get("my-skill"); ok {
+		t.Fatal("skill should not exist before NewTemplate")
+	}
+
+	// Create template
+	if err := m.NewTemplate("my-skill", "Test skill"); err != nil {
+		t.Fatalf("NewTemplate: %v", err)
+	}
+
+	// After creation, it should be loaded
+	m.Load()
+	s, ok := m.Get("my-skill")
+	if !ok {
+		t.Fatal("expected skill to be available after NewTemplate + Load")
+	}
+	if s.Description != "Test skill" {
+		t.Errorf("description = %q, want 'Test skill'", s.Description)
+	}
+	if s.Source != dir {
+		t.Errorf("source = %q, want %q", s.Source, dir)
+	}
+	if !strings.Contains(s.Content, "## Guidelines") {
+		t.Error("content should contain template sections")
+	}
+}
+
+func TestManager_Register(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.Register("test-skill", "A test", "Custom content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	m.Load()
+	s, ok := m.Get("test-skill")
+	if !ok {
+		t.Fatal("expected skill after Register")
+	}
+	if s.Content != "Custom content" {
+		t.Errorf("content = %q, want 'Custom content'", s.Content)
+	}
+}
+
+func TestManager_Unregister(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.Register("test-skill", "A test", "Content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// File should exist
+	if _, err := os.Stat(filepath.Join(dir, "test-skill.md")); os.IsNotExist(err) {
+		t.Fatal("file should exist after Register")
+	}
+
+	if err := m.Unregister("test-skill"); err != nil {
+		t.Fatalf("Unregister: %v", err)
+	}
+
+	// File should be removed
+	if _, err := os.Stat(filepath.Join(dir, "test-skill.md")); !os.IsNotExist(err) {
+		t.Error("file should be removed after Unregister")
 	}
 }

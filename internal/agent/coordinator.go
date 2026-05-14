@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -187,6 +189,12 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			return
 		case line == "/help":
 			c.printHelp(io)
+			continue
+		case line == "/status":
+			c.handleStatus(sess, state, io)
+			continue
+		case line == "/sessions":
+			c.handleSessions(io)
 			continue
 		case line == "/mcp":
 			c.printMCP(io)
@@ -960,6 +968,8 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
 	io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
+	io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
+	io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
 	io.WriteLine("")
@@ -1182,6 +1192,96 @@ func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 		c.pool.CancelAll()
 		io.WriteLine(i18n.TL(i18n.KeyCancelAll))
 	}
+}
+
+func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io transport.UserIO) {
+	io.WriteLine(i18n.TL(i18n.KeyStatusHeader))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusProvider), c.provider.Name()))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusModel), c.cfg.LLM.Model))
+
+	if sess != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusSession), sess.ID, state.Turn))
+	} else {
+		io.WriteLine(i18n.TL(i18n.KeyNoSession))
+	}
+
+	agents := c.pool.List()
+	busy := 0
+	for _, a := range agents {
+		if a.Status == "busy" {
+			busy++
+		}
+	}
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusAgents), len(agents), busy))
+
+	tools := c.toolReg.List()
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMCPTools), len(tools)))
+
+	if c.skills != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusSkills), len(c.skills.List())))
+	}
+	if c.commands != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusCommands), len(c.commands.List())))
+	}
+	if c.cronMgr != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusCron), len(c.cronMgr.List())))
+	}
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMemory), m.Alloc/1024/1024))
+	io.WriteLine("")
+}
+
+func (c *Coordinator) handleSessions(io transport.UserIO) {
+	dir := c.sessMgr.Dir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Cannot read sessions dir: %v", err))
+		return
+	}
+
+	type sessInfo struct {
+		id    string
+		turns int
+		mod   time.Time
+	}
+	var sessions []sessInfo
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, "-summary.json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".jsonl")
+		turns, _ := session.CountTurns(filepath.Join(dir, name))
+		sessions = append(sessions, sessInfo{id: id, turns: turns, mod: info.ModTime()})
+	}
+
+	if len(sessions) == 0 {
+		io.WriteLine(i18n.TL(i18n.KeyNoSessions))
+		io.WriteLine("")
+		return
+	}
+
+	// Sort by modification time, most recent first
+	sort.Slice(sessions, func(i, j int) bool {
+		return sessions[i].mod.After(sessions[j].mod)
+	})
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionsHeader), len(sessions)))
+	for _, s := range sessions {
+		shortID := s.id
+		if len(shortID) > 12 {
+			shortID = shortID[:12]
+		}
+		ago := time.Since(s.mod).Truncate(time.Second).String()
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago"))
+	}
+	io.WriteLine("")
 }
 
 // parseCommandName extracts the command name from a /command line.

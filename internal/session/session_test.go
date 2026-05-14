@@ -436,7 +436,7 @@ func TestSessionCountTurns(t *testing.T) {
 	path := filepath.Join(dir, string(sess.ID)+".jsonl")
 	sess.Close()
 
-	turns, err := countTurns(path)
+	turns, err := CountTurns(path)
 	if err != nil {
 		t.Fatalf("countTurns: %v", err)
 	}

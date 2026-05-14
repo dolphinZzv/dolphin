@@ -67,6 +67,9 @@ func NewManager(dir string) *Manager {
 	}
 }
 
+// Dir returns the directory path for session files.
+func (m *Manager) Dir() string { return m.dir }
+
 func (m *Manager) EnsureDir() error {
 	return os.MkdirAll(m.dir, 0700)
 }
@@ -227,15 +230,15 @@ func (m *Manager) LatestSession() (SessionID, string, int, error) {
 	}
 
 	// Count turns from the session file
-	turns, err := countTurns(latestPath)
+	turns, err := CountTurns(latestPath)
 	if err != nil {
 		return latestID, latestPath, 0, nil
 	}
 	return latestID, latestPath, turns, nil
 }
 
-// countTurns counts the number of turns in a session file by counting unique turn values.
-func countTurns(path string) (int, error) {
+// CountTurns counts the number of turns in a session file by finding the max turn value.
+func CountTurns(path string) (int, error) {
 	// Limit file size to 10MB to prevent OOM on large session files
 	const maxSize = 10 * 1024 * 1024
 	info, err := os.Stat(path)

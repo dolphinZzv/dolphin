@@ -125,7 +125,7 @@ func TestSSETransportListTools(t *testing.T) {
 	}
 	defer client.Close()
 
-	tools, err := client.ListTools()
+	tools, err := client.ListTools(context.Background())
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}

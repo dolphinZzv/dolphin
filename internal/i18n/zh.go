@@ -29,7 +29,7 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin 协调器已就绪\n  /exit            退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
+	KeyCoordReady:          "dolphin 协调器已就绪\n  /exit            退出协调器\n  /help           显示帮助\n  /status         显示当前状态\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /sessions       查看历史会话\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
 	KeyHelpHeader:          "命令：",
 	KeyHelpExit:            "  /exit          - 退出",
 	KeyHelpHelp:            "  /help         - 显示帮助",
@@ -39,6 +39,8 @@ var zhMessages = map[string]string{
 	KeyHelpCancel:          "  /cancel       - 取消所有运行中的任务",
 	KeyHelpCancelID:        "  /cancel <id>  - 取消指定 ID 的任务",
 	KeyHelpMCP:             "  /mcp          - 列出所有 MCP 工具",
+	KeyHelpStatus:          "  /status       - 显示当前状态",
+	KeyHelpSessions:        "  /sessions     - 查看历史会话",
 	KeyHelpTopMCP:          "常用 MCP 工具（按使用次数，使用 search_mcp_tools 查找更多）：",
 	KeyHelpSkillsAvail:     "\n技能：%d 个可用（使用 /skills 列出，search_skills 查找）",
 	KeyNoAgents:            "未配置代理。",
@@ -82,4 +84,22 @@ var zhMessages = map[string]string{
 	KeyLLMProviderOK:      "  ✓ %s（%s）— %dms\n",
 	KeyLLMProviderFail:    "  ✗ %s（%s）— %dms %s\n",
 	KeyLLMUsing:           "→ 使用：%s\n",
+
+	// /status 命令
+	KeyStatusHeader:   "状态：",
+	KeyStatusProvider: "  提供商：     %s",
+	KeyStatusModel:    "  模型：       %s",
+	KeyStatusSession:  "  会话：       %s（%d 轮）",
+	KeyStatusAgents:   "  代理：       %d（%d 忙碌）",
+	KeyStatusMCPTools: "  MCP 工具：   %d",
+	KeyStatusSkills:   "  技能：       %d",
+	KeyStatusCommands: "  命令：       %d",
+	KeyStatusCron:     "  定时任务：   %d",
+	KeyStatusMemory:   "  内存：       %d MB",
+	KeyNoSession:      "  会话：       无",
+
+	// /sessions 命令
+	KeySessionsHeader: "会话（%d）：",
+	KeyNoSessions:     "未找到历史会话。",
+	KeySessionRow:     "  %s  %4d 轮  %s",
 }
