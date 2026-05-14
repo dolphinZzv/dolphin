@@ -28,6 +28,7 @@ type CDPTool struct {
 	browserCancel context.CancelFunc
 	initialized   bool
 	lastUsedAt    time.Time
+	idleStop      chan struct{} // closed in Shutdown to stop the idle watcher
 }
 
 func NewCDPTool(cfg *config.Config) *CDPTool {
@@ -55,8 +56,9 @@ func NewCDPTool(cfg *config.Config) *CDPTool {
 	})
 
 	t := &CDPTool{
-		cfg:    &cfg.MCP.CDP,
-		schema: schema,
+		cfg:      &cfg.MCP.CDP,
+		schema:   schema,
+		idleStop: make(chan struct{}),
 	}
 	if t.cfg.IdleTimeout > 0 {
 		t.startIdleWatcher(time.Duration(t.cfg.IdleTimeout) * time.Second)
@@ -184,25 +186,41 @@ func (c *CDPTool) shutdownBrowser() {
 	c.initialized = false
 }
 
-// Shutdown cleans up browser resources. Safe to call from multiple goroutines.
+// Shutdown cleans up browser resources and stops the idle watcher.
+// Safe to call from multiple goroutines.
 func (c *CDPTool) Shutdown() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	if c.idleStop != nil {
+		select {
+		case <-c.idleStop:
+			// already closed
+		default:
+			close(c.idleStop)
+		}
+	}
 	c.shutdownBrowser()
+	c.mu.Unlock()
 }
 
 // startIdleWatcher runs a background goroutine that shuts down the browser
 // if no Execute call has been made within the given timeout.
+// The goroutine exits when c.idleStop is closed (via Shutdown).
 func (c *CDPTool) startIdleWatcher(timeout time.Duration) {
 	go func() {
+		ticker := time.NewTicker(timeout / 2)
+		defer ticker.Stop()
 		for {
-			time.Sleep(timeout / 2)
-			c.mu.Lock()
-			if c.initialized && time.Since(c.lastUsedAt) > timeout {
-				zap.S().Warnw("cdp: idle timeout, shutting down browser", "idle", time.Since(c.lastUsedAt).Round(time.Second))
-				c.shutdownBrowser()
+			select {
+			case <-c.idleStop:
+				return
+			case <-ticker.C:
+				c.mu.Lock()
+				if c.initialized && time.Since(c.lastUsedAt) > timeout {
+					zap.S().Warnw("cdp: idle timeout, shutting down browser", "idle", time.Since(c.lastUsedAt).Round(time.Second))
+					c.shutdownBrowser()
+				}
+				c.mu.Unlock()
 			}
-			c.mu.Unlock()
 		}
 	}()
 }

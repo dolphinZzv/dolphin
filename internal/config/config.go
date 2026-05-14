@@ -42,19 +42,20 @@ type Config struct {
 
 // Clone deep-copies the Config using JSON round-trip.
 // The returned Config is safe to mutate independently.
+// Falls back to DefaultConfig on marshal/unmarshal errors to avoid nil panics.
 func (c *Config) Clone() *Config {
 	if c == nil {
 		return nil
 	}
 	data, err := json.Marshal(c)
 	if err != nil {
-		zap.S().Errorw("config clone marshal failed", "error", err)
-		return nil
+		zap.S().Errorw("config clone marshal failed, falling back to default", "error", err)
+		return DefaultConfig()
 	}
 	var cloned Config
 	if err := json.Unmarshal(data, &cloned); err != nil {
-		zap.S().Errorw("config clone unmarshal failed", "error", err)
-		return nil
+		zap.S().Errorw("config clone unmarshal failed, falling back to default", "error", err)
+		return DefaultConfig()
 	}
 	return &cloned
 }
@@ -206,12 +207,12 @@ func TimeoutDuration(sec int) time.Duration {
 }
 
 type ShellConfig struct {
-	Enabled          bool     `mapstructure:"enabled"`
-	AllowedCommands  []string `mapstructure:"allowed_commands"` // empty = allow all when allow_unrestricted is true
-	AllowUnrestricted bool    `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
-	MaxCommandLength int      `mapstructure:"max_command_length"` // 0 = use default
-	TimeoutSeconds   int      `mapstructure:"timeout_seconds"`
-	Priority         int      `mapstructure:"priority"`
+	Enabled           bool     `mapstructure:"enabled"`
+	AllowedCommands   []string `mapstructure:"allowed_commands"`   // empty = allow all when allow_unrestricted is true
+	AllowUnrestricted bool     `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
+	MaxCommandLength  int      `mapstructure:"max_command_length"` // 0 = use default
+	TimeoutSeconds    int      `mapstructure:"timeout_seconds"`
+	Priority          int      `mapstructure:"priority"`
 }
 
 type CDPConfig struct {
