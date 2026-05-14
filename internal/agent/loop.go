@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1032,7 +1033,8 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 			"result_len", len(resultContent),
 		)
 		if a.cfg.LogLevel == "debug" && caps.Streaming && resultContent != "" {
-			io.WriteLine(fmt.Sprintf("[Calling tool: %s]", tc.Name))
+			argsCompact := compactJSON(tc.Arguments, 200)
+			io.WriteLine(fmt.Sprintf("[Calling tool: %s] %s", tc.Name, argsCompact))
 		}
 
 		innerContent, _ := json.Marshal([]map[string]any{
@@ -1071,6 +1073,27 @@ func extractText(content json.RawMessage) string {
 		}
 	}
 	return buf.String()
+}
+
+// compactJSON returns a compact single-line representation of JSON data,
+// truncated to maxLen characters if longer.
+func compactJSON(raw json.RawMessage, maxLen int) string {
+	if len(raw) == 0 {
+		return "{}"
+	}
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, raw); err != nil {
+		s := string(raw)
+		if len(s) > maxLen {
+			s = s[:maxLen] + "..."
+		}
+		return s
+	}
+	s := buf.String()
+	if len(s) > maxLen {
+		s = s[:maxLen] + "..."
+	}
+	return s
 }
 
 func isPlaceholderKey(key string) bool {

@@ -149,6 +149,86 @@ func TestAnthropicBuildReqEmptyMessages(t *testing.T) {
 	}
 }
 
+func TestAnthropicBuildReqMultipleToolResultsMerged(t *testing.T) {
+	// Simulates an assistant making multiple tool calls in one turn.
+	// All tool results must be merged into a single user message — consecutive
+	// user messages violate the Anthropic API spec and cause a 400 error.
+	p := &AnthropicProvider{model: "test", maxTok: 100}
+	toolResult1, _ := json.Marshal([]map[string]any{
+		{"type": "tool_result", "tool_use_id": "call_1", "content": []map[string]any{
+			{"type": "text", "text": "file1.txt\nfile2.txt"},
+		}},
+	})
+	toolResult2, _ := json.Marshal([]map[string]any{
+		{"type": "tool_result", "tool_use_id": "call_2", "content": []map[string]any{
+			{"type": "text", "text": "hello world"},
+		}},
+	})
+	req := ProviderRequest{
+		Messages: []Message{
+			{Role: "user", Content: TextContent("list files and read hello.txt")},
+			{Role: "assistant", Content: TextContent("")},
+			{Role: "tool", Content: toolResult1},
+			{Role: "tool", Content: toolResult2},
+			{Role: "user", Content: TextContent("thanks")},
+		},
+	}
+
+	ar := p.buildReq(req, false)
+	if len(ar.Messages) != 4 {
+		t.Fatalf("got %d messages, want 4 (user, assistant, user[merged tools], user)", len(ar.Messages))
+	}
+	// The merged tool message (index 2) should be a single user message containing both tool_results
+	merged := ar.Messages[2]
+	if merged.Role != "user" {
+		t.Errorf("merged tool message role = %q, want user", merged.Role)
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(merged.Content, &blocks); err != nil {
+		t.Fatalf("failed to unmarshal merged content: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("merged content has %d blocks, want 2 (both tool_results)", len(blocks))
+	}
+	if blocks[0]["type"] != "tool_result" || blocks[0]["tool_use_id"] != "call_1" {
+		t.Errorf("first block = %v, want tool_result call_1", blocks[0])
+	}
+	if blocks[1]["type"] != "tool_result" || blocks[1]["tool_use_id"] != "call_2" {
+		t.Errorf("second block = %v, want tool_result call_2", blocks[1])
+	}
+}
+
+func TestAnthropicBuildReqSingleToolResult(t *testing.T) {
+	// A single tool result should still be wrapped in a user message correctly.
+	p := &AnthropicProvider{model: "test", maxTok: 100}
+	toolResult, _ := json.Marshal([]map[string]any{
+		{"type": "tool_result", "tool_use_id": "call_1", "content": []map[string]any{
+			{"type": "text", "text": "output"},
+		}},
+	})
+	req := ProviderRequest{
+		Messages: []Message{
+			{Role: "user", Content: TextContent("list files")},
+			{Role: "assistant", Content: TextContent("")},
+			{Role: "tool", Content: toolResult},
+		},
+	}
+
+	ar := p.buildReq(req, false)
+	if len(ar.Messages) != 3 {
+		t.Fatalf("got %d messages, want 3", len(ar.Messages))
+	}
+	last := ar.Messages[2]
+	if last.Role != "user" {
+		t.Errorf("role = %q, want user", last.Role)
+	}
+	var blocks []map[string]any
+	json.Unmarshal(last.Content, &blocks)
+	if len(blocks) != 1 {
+		t.Errorf("got %d blocks, want 1", len(blocks))
+	}
+}
+
 func TestAnthropicBuildReqMultipleTools(t *testing.T) {
 	p := &AnthropicProvider{model: "test", maxTok: 100}
 	req := ProviderRequest{

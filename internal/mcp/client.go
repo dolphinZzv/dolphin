@@ -148,7 +148,7 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	raw, err := c.transport.sendRequest(ctx, req)
 	if err != nil {
 		zap.S().Warnw("mcp server tool call failed", "server", c.name, "tool", name, "error", err)
-		return &ToolResult{Content: fmt.Sprintf("MCP server %q is unavailable", c.name), IsError: true}, nil
+		return &ToolResult{Content: fmt.Sprintf("MCP server %q unavailable: %v", c.name, err), IsError: true}, nil
 	}
 
 	var result struct {

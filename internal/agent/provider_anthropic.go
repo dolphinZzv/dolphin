@@ -377,15 +377,29 @@ func (p *AnthropicProvider) buildReq(req ProviderRequest, stream bool) anthroReq
 		Stream:    stream,
 	}
 
-	for _, msg := range req.Messages {
+	for i := 0; i < len(req.Messages); i++ {
+		msg := req.Messages[i]
 		switch msg.Role {
 		case "user":
 			ar.Messages = append(ar.Messages, anthroMsg{Role: "user", Content: msg.Content})
 		case "assistant":
 			ar.Messages = append(ar.Messages, anthroMsg{Role: "assistant", Content: msg.Content})
 		case "tool":
-			// Convert tool role to user with tool_result blocks
-			ar.Messages = append(ar.Messages, anthroMsg{Role: "user", Content: msg.Content})
+			// Collect all consecutive tool results into a single user message.
+			// The Anthropic API requires each tool_use to have a corresponding
+			// tool_result in the very next message, and all tool_results for a
+			// turn must be in one user message — consecutive user messages are invalid.
+			var blocks []json.RawMessage
+			for i < len(req.Messages) && req.Messages[i].Role == "tool" {
+				var toolBlocks []json.RawMessage
+				if err := json.Unmarshal(req.Messages[i].Content, &toolBlocks); err == nil {
+					blocks = append(blocks, toolBlocks...)
+				}
+				i++
+			}
+			i-- // outer loop will advance past last tool message
+			merged, _ := json.Marshal(blocks)
+			ar.Messages = append(ar.Messages, anthroMsg{Role: "user", Content: merged})
 		}
 	}
 
