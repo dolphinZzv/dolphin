@@ -414,6 +414,183 @@ session:
 	}
 }
 
+func TestConfigClone(t *testing.T) {
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	clone := cfg.Clone()
+	if clone == cfg {
+		t.Error("Clone() should return a different pointer")
+	}
+	if clone.LLM.Type != cfg.LLM.Type {
+		t.Errorf("clone llm.type = %q, want %q", clone.LLM.Type, cfg.LLM.Type)
+	}
+	if clone.Session.MaxLoop != cfg.Session.MaxLoop {
+		t.Errorf("clone session.max_loop = %d, want %d", clone.Session.MaxLoop, cfg.Session.MaxLoop)
+	}
+
+	clone.LLM.Type = "modified"
+	if cfg.LLM.Type == "modified" {
+		t.Error("Clone() should be independent (mutation not reflected in original)")
+	}
+}
+
+func TestConfigCloneNil(t *testing.T) {
+	var cfg *Config
+	clone := cfg.Clone()
+	if clone != nil {
+		t.Errorf("Clone() on nil should return nil, got %v", clone)
+	}
+}
+
+func TestDefaultConfig(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.LLM.MaxTokens != 4096 {
+		t.Errorf("default llm.max_tokens = %d, want 4096", cfg.LLM.MaxTokens)
+	}
+	if cfg.Session.MaxLoop != 50 {
+		t.Errorf("default session.max_loop = %d, want 50", cfg.Session.MaxLoop)
+	}
+	if cfg.Pool.MaxConcurrency != 5 {
+		t.Errorf("default pool.max_concurrency = %d, want 5", cfg.Pool.MaxConcurrency)
+	}
+}
+
+func TestValidateProviders(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.Providers = []ProviderConfig{
+		{Type: "openai", APIKey: "key", Model: "gpt-4o"},
+	}
+	err := cfg.Validate()
+	if err != nil {
+		t.Fatalf("valid providers should pass: %v", err)
+	}
+}
+
+func TestValidateInvalidProviderType(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.Providers = []ProviderConfig{
+		{Type: "invalid", APIKey: "key", Model: "gpt-4o"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for invalid provider type")
+	}
+}
+
+func TestValidateMissingProviderAPIKey(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.Providers = []ProviderConfig{
+		{Type: "openai", APIKey: "", Model: "gpt-4o"},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for missing provider api_key")
+	}
+}
+
+func TestValidateInvalidLLMType(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.Providers = nil
+	cfg.LLM.Type = "invalid"
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for invalid llm.type")
+	}
+}
+
+func TestValidateMaxTokens(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.MaxTokens = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for max_tokens <= 0")
+	}
+}
+
+func TestValidateMaxContextTokens(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.MaxContextTokens = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for max_context_tokens <= 0")
+	}
+}
+
+func TestValidateTemperature(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.Temperature = -0.1
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for temperature < 0")
+	}
+
+	cfg.LLM.Temperature = 2.1
+	err = cfg.Validate()
+	if err == nil {
+		t.Error("expected error for temperature > 2")
+	}
+}
+
+func TestValidateSessionMaxLoop(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Session.MaxLoop = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for session.max_loop <= 0")
+	}
+}
+
+func TestValidatePoolMaxConcurrency(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Pool.MaxConcurrency = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for pool.max_concurrency <= 0")
+	}
+}
+
+func TestValidatePoolDefaultTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Pool.DefaultTimeout = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for pool.default_timeout <= 0")
+	}
+}
+
+func TestValidateMCPShellTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.MCP.Shell.TimeoutSeconds = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for mcp.shell.timeout_seconds <= 0")
+	}
+}
+
+func TestValidateMaxSubTurns(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.LLM.MaxSubTurns = 0
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected error for max_sub_turns <= 0")
+	}
+}
+
+func TestValidatePoolMaxPendingResultLenDefault(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Pool.MaxPendingResultLen = 0
+	err := cfg.Validate()
+	if err != nil {
+		t.Fatalf("Validate() error: %v", err)
+	}
+	if cfg.Pool.MaxPendingResultLen != 500 {
+		t.Errorf("max_pending_result_len should default to 500, got %d", cfg.Pool.MaxPendingResultLen)
+	}
+}
+
 func TestMCPServersDeepMerge(t *testing.T) {
 	userHome := t.TempDir()
 	projectDir := t.TempDir()

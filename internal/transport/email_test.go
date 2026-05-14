@@ -100,14 +100,68 @@ func TestEmailTransportName(t *testing.T) {
 	}
 }
 
-func TestEmailTransportClose(t *testing.T) {
-	tp := NewEmailTransport(&config.EmailConfig{})
-	if err := tp.Close(); err != nil {
-		t.Errorf("Close() error: %v", err)
+func TestEmailTransportCapabilities(t *testing.T) {
+	tp := &EmailTransport{}
+	caps := tp.Capabilities()
+	if caps.Streaming {
+		t.Errorf("expected Streaming=false for email")
 	}
-	// Second close should be safe (idempotent)
-	if err := tp.Close(); err != nil {
-		t.Errorf("second Close() error: %v", err)
+	if !caps.Flushable {
+		t.Errorf("expected Flushable=true for email")
+	}
+	if caps.ConfirmExit {
+		t.Errorf("expected ConfirmExit=false for email")
+	}
+}
+
+func TestEmailTransportSendMailWithPort(t *testing.T) {
+	addr, gotMsg := startTestSMTPServer(t)
+
+	cfg := &config.EmailConfig{
+		SMTPHost: "localhost",
+		SMTPPort: portFromAddr(addr),
+		Username: "test@example.com",
+		Password: "pass",
+		From:     "test@example.com",
+		UseTLS:   false,
+	}
+	tp := NewEmailTransport(cfg)
+	err := tp.WriteLine("test with explicit port")
+	if err != nil {
+		t.Fatalf("WriteLine() error: %v", err)
+	}
+
+	select {
+	case msg := <-gotMsg:
+		if !strings.Contains(msg, "test with explicit port") {
+			t.Errorf("expected body to contain message, got: %q", msg)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SMTP server")
+	}
+}
+
+func TestEmailTransportFromFallback(t *testing.T) {
+	addr, gotMsg := startTestSMTPServer(t)
+
+	cfg := &config.EmailConfig{
+		SMTPHost: "localhost",
+		SMTPPort: portFromAddr(addr),
+		Username: "user@example.com",
+		Password: "pass",
+		From:     "",
+		UseTLS:   false,
+	}
+	tp := NewEmailTransport(cfg)
+	err := tp.WriteLine("test from fallback")
+	if err != nil {
+		t.Fatalf("WriteLine() error: %v", err)
+	}
+
+	select {
+	case <-gotMsg:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SMTP server")
 	}
 }
 

@@ -82,6 +82,7 @@ brews:
     repository:
       owner: dolphinZzv
       name: homebrew-dolphin
+      token: "{{ .Env.TAP_TOKEN }}"
     commit_author:
       name: dolphinZzv
       email: dolphin@dolphinzzv.com
