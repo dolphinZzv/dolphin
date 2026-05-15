@@ -38,7 +38,7 @@ func runNew(cmd *cobra.Command, args []string) error {
 	targets := cleanupTargets() // never removes config files
 
 	// Show what will be removed
-	fmt.Fprintln(os.Stderr, "Starting a fresh dolphin session. The following will be removed:")
+	fmt.Fprintln(os.Stderr, "Starting a fresh dolphin session:")
 	listTargets(targets)
 
 	// Confirm
@@ -48,6 +48,7 @@ func runNew(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Fprintln(os.Stderr)
 	removed, errors := doRemove(targets)
 
 	fmt.Fprintln(os.Stderr)
