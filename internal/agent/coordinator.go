@@ -60,7 +60,9 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		hooks:      agent.hooks,
 		events:     agent.events,
 		version:    agent.version,
-		buildTime:  agent.buildTime,
+		buildTime:          agent.buildTime,
+		availableProviders: agent.availableProviders,
+		providerIndex:      agent.providerIndex,
 	}
 	// Core coordinator tools always available; MCP tools loaded on demand.
 	coreTools := []string{"dispatch_task", "create_agent", "get_agent_status",
@@ -320,6 +322,94 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
 		}
+
+		// Post-turn: collect sub-agent results and synthesize.
+		// In non-interactive transports (MQTT, Email) there is no "next user
+		// input" to trigger the normal collection at the top of the loop, so
+		// we must actively wait for and process results here. Interactive
+		// transports are not affected because Collect() is non-blocking and
+		// returns immediately when no agents are busy.
+		c.collectAgentResults(ctx, state, io)
+	}
+}
+
+// collectAgentResults polls for completed sub-agent results and runs follow-up
+// turns to synthesize them. Critical for non-interactive transports where
+// there is no subsequent user input to trigger normal result collection.
+func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState, io transport.UserIO) {
+	if c.pool == nil {
+		return
+	}
+
+	timeout := time.Duration(c.cfg.Pool.DefaultTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Non-blocking collect
+		collected := c.pool.Collect()
+		if len(collected) > 0 {
+			c.pending = append(c.pending, collected...)
+
+			// Run a follow-up turn to synthesize the results
+			dynamicPrompt := c.buildDynamicPrompt()
+			state.Messages = append(state.Messages, Message{
+				Role:    "user",
+				Content: TextContent("[Agent task results are now available. Synthesize them into your response.]"),
+			})
+
+			if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
+				zap.S().Debugw("agent result follow-up turn", "error", err)
+				return
+			}
+
+			// Reset deadline after processing — more results may follow
+			deadline = time.Now().Add(timeout)
+		}
+
+		// Check if any agents are still busy
+		agents := c.pool.List()
+		if len(agents) == 0 {
+			return
+		}
+		hasBusy := false
+		for _, a := range agents {
+			if a.Status == "busy" {
+				hasBusy = true
+				break
+			}
+		}
+		if !hasBusy {
+			return
+		}
+
+		// Poll interval
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-ctx.Done():
+			return
+		}
+	}
+
+	// Timeout reached — drain whatever is available
+	zap.S().Debugw("agent result collection timed out", "timeout", timeout.Seconds())
+	collected := c.pool.Collect()
+	if len(collected) > 0 {
+		c.pending = append(c.pending, collected...)
+		dynamicPrompt := c.buildDynamicPrompt()
+		state.Messages = append(state.Messages, Message{
+			Role:    "user",
+			Content: TextContent("[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"),
+		})
+		c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools)
 	}
 }
 

@@ -54,9 +54,6 @@ func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]
 			ic.turnsSinceUpdate = 0
 		}
 	}
-	ic.mu.Unlock()
-
-	ic.mu.Lock()
 	summary := ic.runningSummary
 	covered := ic.coveredCount
 	ic.mu.Unlock()

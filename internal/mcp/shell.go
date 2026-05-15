@@ -31,9 +31,8 @@ type ShellTool struct {
 
 func NewShellTool(cfg *config.Config) *ShellTool {
 	if len(cfg.MCP.Shell.AllowedCommands) == 0 && !cfg.MCP.Shell.AllowUnrestricted {
-		zap.S().Warnw("shell tool: no command whitelist set — full shell access enabled. " +
-			"Set mcp.shell.allowed_commands to restrict to specific commands, " +
-			"or set mcp.shell.allow_unrestricted=false explicitly.")
+		zap.S().Warnw("shell tool: allow_unrestricted=false has no effect when allowed_commands is empty. " +
+			"Set allowed_commands to restrict commands, or remove allow_unrestricted=false to suppress this warning.")
 	}
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",

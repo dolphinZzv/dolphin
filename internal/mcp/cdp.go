@@ -92,7 +92,7 @@ func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResu
 	// Get or create browser context (persistent across calls)
 	browserCtx, err := c.getBrowser(ctx)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("browser init failed: %v", err), IsError: true}, nil
+		return &ToolResult{Content: err.Error(), IsError: true}, nil
 	}
 
 	c.mu.Lock()

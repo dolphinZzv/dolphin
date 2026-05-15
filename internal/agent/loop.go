@@ -1222,6 +1222,13 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	state := &LoopState{Sess: sess}
 	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent(task)})
 
+	// Ensure cleanup even on panic (recovered by pool.workerLoop).
+	defer func() {
+		a.generateSummary(sess, state)
+		sess.Close()
+		a.sessMgr.Remove(sess.ID)
+	}()
+
 	start := time.Now()
 	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task), tools, nil)
 
@@ -1247,11 +1254,6 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 		result.Success = true
 		result.Status = "completed"
 	}
-
-	// Cleanup session
-	a.generateSummary(sess, state)
-	sess.Close()
-	a.sessMgr.Remove(sess.ID)
 
 	return result, nil
 }

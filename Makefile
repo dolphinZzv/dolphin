@@ -47,6 +47,16 @@ app:
 app-clean:
 	rm -rf $(APP_BUNDLE)
 
+# Install to systemd (Linux)
+install-systemd: build
+	mkdir -p /usr/local/bin /etc/dolphin /var/lib/dolphin/.dolphin/logs
+	cp dolphin /usr/local/bin/dolphin
+	cp deploy/dolphin.service /etc/systemd/system/dolphin.service
+	systemctl daemon-reload
+	@echo "dolphin installed. Edit /etc/dolphin/config.yaml, then:"
+	@echo "  sudo systemctl enable --now dolphin"
+	@echo "  journalctl -u dolphin -f"
+
 release:
 	@if [ -z "$(TAG)" ]; then echo "Usage: make release TAG=v0.1.0"; exit 1; fi
 	git tag -a "$(TAG)" -m "release $(TAG)"
