@@ -675,14 +675,6 @@ func (c *Config) Validate() error {
 	if c.MCP.Shell.TimeoutSeconds <= 0 {
 		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0, got %d", c.MCP.Shell.TimeoutSeconds)
 	}
-	if c.Update.Channel != "" && c.Update.Channel != "stable" && c.Update.Channel != "pre-release" {
-		return fmt.Errorf("update.channel must be \"stable\" or \"pre-release\", got %q", c.Update.Channel)
-	}
-	if c.Update.Enabled && c.Update.CheckInterval != "" {
-		if _, err := time.ParseDuration(c.Update.CheckInterval); err != nil {
-			return fmt.Errorf("update.check_interval: invalid duration %q: %w", c.Update.CheckInterval, err)
-		}
-	}
 	return nil
 }
 

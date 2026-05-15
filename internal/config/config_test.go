@@ -337,8 +337,10 @@ mcp:
 	})
 
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", userHome)
-	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+	os.Setenv("USERPROFILE", userHome)
+	t.Cleanup(func() { os.Setenv("HOME", origHome); os.Setenv("USERPROFILE", origUserProfile) })
 
 	cfg, err := Load("")
 	if err != nil {
@@ -623,8 +625,10 @@ mcp:
 	t.Cleanup(func() { ProjectConfigDir = origProject })
 
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", userHome)
-	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+	os.Setenv("USERPROFILE", userHome)
+	t.Cleanup(func() { os.Setenv("HOME", origHome); os.Setenv("USERPROFILE", origUserProfile) })
 
 	cfg, err := Load("")
 	if err != nil {
