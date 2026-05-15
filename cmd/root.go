@@ -67,6 +67,8 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.AddCommand(NewVersionCmd())
 	cmd.AddCommand(NewStatusCmd())
 	cmd.AddCommand(NewSessionsCmd())
+	cmd.AddCommand(NewConfigCmd())
+	cmd.AddCommand(NewDoctorCmd())
 
 	return cmd
 }
@@ -431,7 +433,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 		if addr == "" {
 			addr = ":2222"
 		}
-		fmt.Fprintf(os.Stderr, "\n=== SSH server listening on %s ===\n", addr)
+		fmt.Fprintf(os.Stderr, "\n=== SSH server configured on %s ===\n", addr)
 		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
 
 		ctx, cancel := context.WithCancel(context.Background())

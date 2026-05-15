@@ -84,6 +84,13 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 func (t *SSHTransport) Name() string { return "ssh" }
 
 func (t *SSHTransport) Start(ctx context.Context) error {
+	// Early exit if context is already cancelled
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
 	activeConnections.Add(1)
 	addr := t.cfg.Addr
 	if addr == "" {
@@ -171,11 +178,13 @@ func handleChannelRequests(reqs <-chan *gossh.Request) {
 }
 
 func (t *SSHTransport) Close() error {
-	activeConnections.Add(-1)
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.listener != nil {
-		return t.listener.Close()
+	ln := t.listener
+	t.listener = nil
+	t.mu.Unlock()
+	if ln != nil {
+		activeConnections.Add(-1)
+		return ln.Close()
 	}
 	return nil
 }
@@ -208,7 +217,7 @@ var sshCompletions = []string{"/exit", "/quit", "/help"}
 // redraw writes the line buffer to the channel starting from column 0,
 // then moves the cursor to the current position.
 func (s *SSHSession) redraw(line []byte, pos int) {
-	fmt.Fprint(s.ch, "\r> ", string(line), "\x1b[K")
+	fmt.Fprint(s.ch, "Dolphin > ", string(line), "[K")
 	// If cursor isn't at end, move it back
 	back := len(line) - pos
 	for i := 0; i < back; i++ {
@@ -221,7 +230,7 @@ func (s *SSHSession) ReadLine() (string, error) {
 	if s.conn != nil {
 		s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 	}
-	fmt.Fprint(s.ch, "> ")
+	fmt.Fprint(s.ch, "Dolphin > ")
 	line := make([]byte, 0, 256)
 	pos := 0
 	s.histIdx = -1

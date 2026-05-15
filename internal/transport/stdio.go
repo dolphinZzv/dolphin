@@ -11,6 +11,8 @@ import (
 	"github.com/chzyer/readline"
 )
 
+const defaultPrompt = "Dolphin > "
+
 // StdioTransport provides stdio-based interactive I/O using readline.
 type StdioTransport struct {
 	rl *readline.Instance
@@ -24,7 +26,7 @@ func NewStdioTransport() *StdioTransport {
 	os.MkdirAll(historyDir, 0700)
 
 	rl, err := readline.NewEx(&readline.Config{
-		Prompt:              "> ",
+		Prompt:              defaultPrompt,
 		HistoryFile:         historyFile,
 		AutoComplete:        completer,
 		InterruptPrompt:     "^C",
@@ -34,7 +36,7 @@ func NewStdioTransport() *StdioTransport {
 	})
 	if err != nil {
 		// Fallback: create readline without history/complete
-		rl, _ = readline.New("> ")
+		rl, _ = readline.New(defaultPrompt)
 	}
 
 	return &StdioTransport{rl: rl}

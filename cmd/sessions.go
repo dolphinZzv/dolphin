@@ -23,9 +23,16 @@ func NewSessionsCmd() *cobra.Command {
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show <id>",
-		Short: "Show session details",
+		Short: "Show session details as a readable conversation",
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSessionsShow,
+	})
+
+	cmd.AddCommand(&cobra.Command{
+		Use:   "log <id>",
+		Short: "Show raw session event log",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runSessionsLog,
 	})
 
 	cmd.AddCommand(&cobra.Command{
@@ -123,6 +130,110 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 }
 
 func runSessionsShow(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	sid := args[0]
+	sessionDir := cfg.Session.Dir
+
+	eventsPath := filepath.Join(sessionDir, sid+".jsonl")
+	events, err := session.ReadEvents(eventsPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("session %q not found", sid)
+		}
+		return fmt.Errorf("read session: %w", err)
+	}
+
+	if len(events) == 0 {
+		fmt.Println("No events in session.")
+		return nil
+	}
+
+	fmt.Printf("Session: %s\n", sid)
+	fmt.Printf("Duration: %s — %s (%d events)\n",
+		events[0].Timestamp.Format("2006-01-02 15:04:05"),
+		events[len(events)-1].Timestamp.Format("15:04:05"),
+		len(events),
+	)
+	fmt.Println()
+
+	// Group events by turn
+	type turnEvents struct {
+		turn   int
+		events []session.SessionEvent
+	}
+	turnMap := make(map[int]*turnEvents)
+	var turnOrder []int
+	for _, evt := range events {
+		t := evt.Turn
+		if _, ok := turnMap[t]; !ok {
+			turnMap[t] = &turnEvents{turn: t}
+			turnOrder = append(turnOrder, t)
+		}
+		turnMap[t].events = append(turnMap[t].events, evt)
+	}
+
+	for _, t := range turnOrder {
+		te := turnMap[t]
+		fmt.Printf("--- Turn %d ---\n", t)
+		for _, evt := range te.events {
+			switch evt.Type {
+			case session.EventMessage:
+				role := evt.Role
+				if role == "" {
+					role = "unknown"
+				}
+				content := strings.TrimSpace(string(evt.Content))
+				if content != "" {
+					fmt.Printf("  [%s] %s\n", role, content)
+				}
+			case session.EventToolCall:
+				if evt.ToolName != "" {
+					input := strings.TrimSpace(string(evt.ToolInput))
+					if len(input) > 200 {
+						input = input[:200] + "..."
+					}
+					fmt.Printf("  [tool] %s(%s)\n", evt.ToolName, input)
+				}
+			case session.EventToolResult:
+				result := strings.TrimSpace(string(evt.ToolResult))
+				if result == "" {
+					result = "(empty)"
+				}
+				if len(result) > 300 {
+					result = result[:300] + "..."
+				}
+				isErr := ""
+				if evt.IsError {
+					isErr = " ERROR"
+				}
+				fmt.Printf("  [result%s] %s\n", isErr, result)
+			case session.EventSystem:
+				content := strings.TrimSpace(string(evt.Content))
+				if content != "" {
+					fmt.Printf("  [system] %s\n", content)
+				}
+			case session.EventSummary:
+				content := strings.TrimSpace(string(evt.Content))
+				if content != "" {
+					fmt.Printf("  [summary] %s\n", content)
+				}
+			case session.EventCompression:
+				content := strings.TrimSpace(string(evt.Content))
+				if content != "" {
+					fmt.Printf("  [compress] %s\n", content)
+				}
+			}
+		}
+		fmt.Println()
+	}
+	return nil
+}
+
+func runSessionsLog(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
