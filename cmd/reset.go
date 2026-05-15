@@ -53,6 +53,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	fmt.Fprintln(os.Stderr)
 	removed, errors := doRemove(targets)
 
 	fmt.Fprintln(os.Stderr)
@@ -61,7 +62,8 @@ func runReset(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, ", %d errors", errors)
 	}
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "\nThe first-run marker has been reset.")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "The first-run marker has been reset.")
 	fmt.Fprintln(os.Stderr, "Run 'dolphin' to go through the initial setup wizard again.")
 
 	return nil
@@ -131,12 +133,18 @@ func confirmRemoval(action string) bool {
 }
 
 // doRemove removes all given targets and returns counts.
+// Prints each item with its status (removed, skipped).
 func doRemove(targets []string) (removed, errors int) {
 	for _, t := range targets {
+		if _, err := os.Stat(t); os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "  - %s (skipped, not found)\n", t)
+			continue
+		}
 		if err := os.RemoveAll(t); err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: failed to remove %s: %v\n", t, err)
+			fmt.Fprintf(os.Stderr, "  ✗ %s (error: %v)\n", t, err)
 			errors++
 		} else {
+			fmt.Fprintf(os.Stderr, "  ✓ %s\n", t)
 			removed++
 		}
 	}

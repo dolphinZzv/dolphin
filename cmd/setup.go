@@ -86,7 +86,6 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("save to project config: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "\nTools saved to .dolphin/config.yaml\n")
-		fmt.Fprintf(os.Stderr, "Restart dolphin for changes to take effect.\n\n")
 
 	case choice == "a":
 		sel := &config.ToolSelection{
@@ -97,12 +96,26 @@ func runSetup(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("save to user config: %w", err)
 		}
 		fmt.Fprintf(os.Stderr, "\nTools saved to ~/.dolphin/config.yaml\n")
-		fmt.Fprintf(os.Stderr, "Restart dolphin for changes to take effect.\n\n")
 
 	default:
 		fmt.Fprintf(os.Stderr, "\nSkipped. No changes made.\n")
-		fmt.Fprintf(os.Stderr, "You can add tools manually in your config or skill/MCP repos.\n\n")
+		fmt.Fprintf(os.Stderr, "You can add tools manually in your config or skill/MCP repos.\n")
 	}
+
+	// Summary
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "=== Setup Complete ===")
+	fmt.Fprintf(os.Stderr, "  Profile: %s\n", profile.Description)
+	fmt.Fprintf(os.Stderr, "  Skills:  %d\n", len(allSkills))
+	fmt.Fprintf(os.Stderr, "  MCP:     %d\n", len(allMCP))
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Next steps:")
+	fmt.Fprintln(os.Stderr, "  1. Set your LLM API key: export DZ_LLM_API_KEY=sk-...")
+	fmt.Fprintln(os.Stderr, "  2. Restart dolphin for changes to take effect")
+	if choice == "p" || choice == "a" {
+		fmt.Fprintln(os.Stderr, "  3. Run 'dolphin doctor' to verify your setup")
+	}
+	fmt.Fprintln(os.Stderr)
 
 	return nil
 }
