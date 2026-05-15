@@ -66,6 +66,7 @@ func (t *MQTTTransport) Capabilities() Capabilities {
 }
 
 func (t *MQTTTransport) Start(ctx context.Context) error {
+	activeConnections.Add(1)
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(t.cfg.Broker)
 	opts.SetClientID(t.cfg.ClientID)
@@ -167,6 +168,7 @@ func (t *MQTTTransport) publish(payload string) error {
 
 func (t *MQTTTransport) Close() error {
 	t.closeOnce.Do(func() {
+		activeConnections.Add(-1)
 		t.closeMu.Lock()
 		defer t.closeMu.Unlock()
 		if t.client != nil && t.connected.Load() {

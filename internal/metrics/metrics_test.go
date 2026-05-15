@@ -387,3 +387,47 @@ func TestRenderLabeledMetricsEmpty(t *testing.T) {
 		t.Errorf("expected empty output for unpopulated labeled metrics, got: %s", output)
 	}
 }
+
+func TestRenderMixedLabeledAndUnlabeled(t *testing.T) {
+	r := NewRegistry()
+	// Unlabeled counter
+	r.NewCounter("plain_requests", "Plain requests", nil).Inc()
+	// Labeled counter with two values
+	lc := r.NewLabeledCounter("labeled_requests", "Labeled requests", "status", nil)
+	lc.With("200").Inc()
+	lc.With("500").Inc()
+	lc.With("500").Inc()
+	// Unlabeled histogram
+	h := r.NewHistogram("latency", "Latency", nil, []float64{0.5, 1.0})
+	h.Observe(0.3)
+
+	output := r.Render()
+
+	if !strings.Contains(output, "plain_requests") {
+		t.Errorf("expected unlabeled counter in output")
+	}
+	if !strings.Contains(output, "labeled_requests") {
+		t.Errorf("expected labeled counter in output")
+	}
+	if !strings.Contains(output, `status="200"`) {
+		t.Errorf("expected label value 200 in output")
+	}
+	if !strings.Contains(output, `status="500"`) {
+		t.Errorf("expected label value 500 in output")
+	}
+	if !strings.Contains(output, "latency_bucket") {
+		t.Errorf("expected histogram buckets in output")
+	}
+
+	lines := strings.Split(output, "\n")
+	helpLines := 0
+	for _, line := range lines {
+		if strings.HasPrefix(line, "# HELP") {
+			helpLines++
+		}
+	}
+	// 3 metric families = 3 HELP lines (plain_requests, labeled_requests, latency)
+	if helpLines != 3 {
+		t.Errorf("expected 3 HELP lines, got %d. Output:\n%s", helpLines, output)
+	}
+}

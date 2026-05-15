@@ -3,10 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/metrics"
 )
 
 func TestRegistryRegisterAndGet(t *testing.T) {
@@ -280,5 +282,25 @@ func TestAverageDurationMs(t *testing.T) {
 	}
 	if avg := s.AverageDurationMs(); avg != 50 {
 		t.Errorf("expected 50, got %f", avg)
+	}
+}
+
+func TestRegistryExecuteMetricsLabeled(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+	r.Register(&testTool{name: "test_tool"})
+
+	before := metrics.Render()
+	r.Execute(context.Background(), "test_tool", json.RawMessage(`{}`))
+	after := metrics.Render()
+
+	if !strings.Contains(after, `mcp_tool_calls_total{tool="test_tool"}`) {
+		t.Errorf("expected labeled counter in output, got: %s", after)
+	}
+	if !strings.Contains(after, `tool="test_tool"`) {
+		t.Errorf("expected labeled histogram buckets in output, got: %s", after)
+	}
+	// Verify the metric appears (count increased)
+	if after == before && !strings.Contains(before, `mcp_tool_calls_total`) {
+		t.Errorf("expected metric to appear in render output after execute")
 	}
 }

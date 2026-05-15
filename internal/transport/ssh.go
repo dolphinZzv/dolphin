@@ -84,6 +84,7 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 func (t *SSHTransport) Name() string { return "ssh" }
 
 func (t *SSHTransport) Start(ctx context.Context) error {
+	activeConnections.Add(1)
 	addr := t.cfg.Addr
 	if addr == "" {
 		addr = ":2222"
@@ -170,6 +171,7 @@ func handleChannelRequests(reqs <-chan *gossh.Request) {
 }
 
 func (t *SSHTransport) Close() error {
+	activeConnections.Add(-1)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.listener != nil {

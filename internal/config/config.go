@@ -34,6 +34,7 @@ type Config struct {
 	Crontab   CrontabConfig   `mapstructure:"crontab"`
 	Pprof     PprofConfig     `mapstructure:"pprof"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
+	Health    HealthConfig    `mapstructure:"health"`
 	Diary     DiaryConfig     `mapstructure:"diary"`
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
@@ -266,6 +267,11 @@ type DiaryConfig struct {
 type MetricsConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9090"
+}
+
+type HealthConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
 }
 
 type PluginsConfig struct {
@@ -728,6 +734,9 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("metrics.enabled", false)
 	v.SetDefault("metrics.addr", "127.0.0.1:9090")
+
+	v.SetDefault("health.enabled", false)
+	v.SetDefault("health.addr", "127.0.0.1:9091")
 
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_file", ".dolphin/logs/agent.log")

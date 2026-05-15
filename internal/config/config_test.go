@@ -32,6 +32,12 @@ func TestDefaults(t *testing.T) {
 	if !cfg.MCP.Shell.Enabled {
 		t.Error("default mcp.shell.enabled = false, want true")
 	}
+	if cfg.Health.Enabled {
+		t.Error("default health.enabled = true, want false")
+	}
+	if cfg.Health.Addr != "127.0.0.1:9091" {
+		t.Errorf("default health.addr = %q, want 127.0.0.1:9091", cfg.Health.Addr)
+	}
 }
 
 func TestLoadConfigFile(t *testing.T) {

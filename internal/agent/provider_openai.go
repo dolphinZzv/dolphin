@@ -67,8 +67,8 @@ func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 }
 
 func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error) {
-	llmRequests.Inc()
-	timer := metrics.StartTimer(llmDuration)
+	llmRequests.With("openai").Inc()
+	timer := metrics.StartTimer(llmDuration.With("openai"))
 	defer timer.Stop()
 
 	openAIReq := openai.ChatCompletionRequest{
@@ -81,17 +81,17 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 
 	resp, err := p.client.CreateChatCompletion(ctx, openAIReq)
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		return nil, fmt.Errorf("openai completion: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		return nil, fmt.Errorf("no choices in response")
 	}
 
-	llmInputTokens.Add(int64(resp.Usage.PromptTokens))
-	llmOutputTokens.Add(int64(resp.Usage.CompletionTokens))
+	llmInputTokens.With("openai").Add(int64(resp.Usage.PromptTokens))
+	llmOutputTokens.With("openai").Add(int64(resp.Usage.CompletionTokens))
 
 	choice := resp.Choices[0]
 	msg := choice.Message
@@ -125,8 +125,8 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 }
 
 func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
-	llmRequests.Inc()
-	timer := metrics.StartTimer(llmDuration)
+	llmRequests.With("openai").Inc()
+	timer := metrics.StartTimer(llmDuration.With("openai"))
 
 	reqBody := map[string]any{
 		"model":       p.model,
@@ -142,14 +142,14 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		timer.Stop()
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		timer.Stop()
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -161,14 +161,14 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 	resp, err := p.httpDoer.Do(httpReq)
 	if err != nil {
 		timer.Stop()
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		return nil, fmt.Errorf("openai stream request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		timer.Stop()
-		llmErrors.Inc()
+		llmErrors.With("openai").Inc()
 		errMsg := string(bodyBytes)
 		if len(errMsg) > 500 {
 			errMsg = errMsg[:500]

@@ -13,9 +13,19 @@ func TestStdioTransportName(t *testing.T) {
 }
 
 func TestStdioTransportStart(t *testing.T) {
+	before := activeConnections.Value()
 	tp := &StdioTransport{}
 	if err := tp.Start(context.Background()); err != nil {
 		t.Errorf("Start() error: %v", err)
+	}
+	if got := activeConnections.Value(); got != before+1 {
+		t.Errorf("after Start, activeConnections = %d, want %d", got, before+1)
+	}
+	if err := tp.Close(); err != nil {
+		t.Errorf("Close() error: %v", err)
+	}
+	if got := activeConnections.Value(); got != before {
+		t.Errorf("after Close, activeConnections = %d, want %d", got, before)
 	}
 }
 

@@ -50,6 +50,7 @@ func (t *EmailTransport) Capabilities() Capabilities {
 
 // Start begins IMAP polling and blocks until context is cancelled.
 func (t *EmailTransport) Start(ctx context.Context) error {
+	activeConnections.Add(1)
 	interval, _ := time.ParseDuration(t.cfg.PollInterval)
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -244,6 +245,7 @@ func (t *EmailTransport) poll() {
 
 func (t *EmailTransport) Close() error {
 	t.closeOnce.Do(func() {
+		activeConnections.Add(-1)
 		t.closeMu.Lock()
 		if t.pollTicker != nil {
 			t.pollTicker.Stop()

@@ -71,10 +71,10 @@ type Registry struct {
 	filter  map[string]bool // nil = no filter; non-nil = only allow listed tools
 	stats   map[string]*ToolStats
 
-	// metrics collectors (lazily initialized)
-	toolCalls    *metrics.Counter
-	toolErrors   *metrics.Counter
-	toolDuration *metrics.Histogram
+	// metrics collectors (labeled by tool name)
+	toolCalls    *metrics.LabeledCounter
+	toolErrors   *metrics.LabeledCounter
+	toolDuration *metrics.LabeledHistogram
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
@@ -83,9 +83,9 @@ func NewRegistry(cfg *config.Config) *Registry {
 		servers:      make([]*ServerClient, 0),
 		cfg:          &cfg.MCP,
 		stats:        make(map[string]*ToolStats),
-		toolCalls:    metrics.NewCounter("mcp_tool_calls_total", "Total MCP tool calls", map[string]string{}),
-		toolErrors:   metrics.NewCounter("mcp_tool_errors_total", "Total MCP tool errors", map[string]string{}),
-		toolDuration: metrics.NewHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", map[string]string{}, nil),
+		toolCalls:    metrics.NewLabeledCounter("mcp_tool_calls_total", "Total MCP tool calls", "tool", nil),
+		toolErrors:   metrics.NewLabeledCounter("mcp_tool_errors_total", "Total MCP tool errors", "tool", nil),
+		toolDuration: metrics.NewLabeledHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", "tool", nil, nil),
 	}
 }
 
@@ -390,11 +390,11 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
 
-	r.toolCalls.Inc()
+	r.toolCalls.With(name).Inc()
 	start := time.Now()
 	result, err := tool.Execute(ctx, input)
 	duration := time.Since(start)
-	r.toolDuration.Observe(duration.Seconds())
+	r.toolDuration.With(name).Observe(duration.Seconds())
 
 	r.mu.Lock()
 	s := r.stats[name]
@@ -406,7 +406,7 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 	s.LastCalledAt = time.Now()
 	s.TotalDuration += duration
 	if err != nil || (result != nil && result.IsError) {
-		r.toolErrors.Inc()
+		r.toolErrors.With(name).Inc()
 		s.ErrorCount++
 	}
 	r.mu.Unlock()

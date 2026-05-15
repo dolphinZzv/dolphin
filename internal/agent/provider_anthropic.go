@@ -124,33 +124,33 @@ type anthroResp struct {
 // ---- Provider interface ----
 
 func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error) {
-	llmRequests.Inc()
-	timer := metrics.StartTimer(llmDuration)
+	llmRequests.With("anthropic").Inc()
+	timer := metrics.StartTimer(llmDuration.With("anthropic"))
 	defer timer.Stop()
 
 	body, err := json.Marshal(p.buildReq(req, false))
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		return nil, fmt.Errorf("http req: %w", err)
 	}
 	p.setHeaders(httpReq)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		return nil, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	rawBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		return nil, fmt.Errorf("anthropic error status=%d body=%s", resp.StatusCode, string(rawBody))
 	}
 
@@ -167,8 +167,8 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 			InputTokens:  anthResp.Usage.InputTokens,
 			OutputTokens: anthResp.Usage.OutputTokens,
 		}
-		llmInputTokens.Add(int64(anthResp.Usage.InputTokens))
-		llmOutputTokens.Add(int64(anthResp.Usage.OutputTokens))
+		llmInputTokens.With("anthropic").Add(int64(anthResp.Usage.InputTokens))
+		llmOutputTokens.With("anthropic").Add(int64(anthResp.Usage.OutputTokens))
 	}
 
 	// Preserve all content blocks (text, tool_use, thinking, etc.)
@@ -215,19 +215,19 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 }
 
 func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
-	llmRequests.Inc()
-	timer := metrics.StartTimer(llmDuration)
+	llmRequests.With("anthropic").Inc()
+	timer := metrics.StartTimer(llmDuration.With("anthropic"))
 
 	body, err := json.Marshal(p.buildReq(req, true))
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		timer.Stop()
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		timer.Stop()
 		return nil, fmt.Errorf("http req: %w", err)
 	}
@@ -235,14 +235,14 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		timer.Stop()
 		return nil, fmt.Errorf("http: %w", err)
 	}
 
 	// Check HTTP status before starting the streaming goroutine so errors propagate to caller
 	if resp.StatusCode != 200 {
-		llmErrors.Inc()
+		llmErrors.With("anthropic").Inc()
 		timer.Stop()
 		rawBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()

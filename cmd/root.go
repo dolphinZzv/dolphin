@@ -16,6 +16,7 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/diary"
 	"dolphin/internal/event"
+	"dolphin/internal/health"
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/logger"
@@ -544,6 +545,38 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 		g.Add(func() error {
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("metrics server: %w", err)
+			}
+			return nil
+		}, func(err error) {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			srv.Shutdown(shutdownCtx)
+		})
+		actorCount++
+	}
+
+	// Health check HTTP server
+	if cfg.Health.Enabled {
+		checkers := []health.Checker{
+			health.NewChecker("mcp_servers", func(ctx context.Context) error {
+				return nil
+			}),
+			health.NewChecker("plugins", func(ctx context.Context) error {
+				return nil
+			}),
+			health.NewChecker("cron", func(ctx context.Context) error {
+				return nil
+			}),
+		}
+		mux := http.NewServeMux()
+		mux.Handle("/health", health.Handler(checkers...))
+		srv := &http.Server{
+			Addr:    cfg.Health.Addr,
+			Handler: mux,
+		}
+		g.Add(func() error {
+			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+				return fmt.Errorf("health server: %w", err)
 			}
 			return nil
 		}, func(err error) {

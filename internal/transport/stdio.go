@@ -74,6 +74,7 @@ func (t *StdioTransport) Capabilities() Capabilities {
 }
 
 func (t *StdioTransport) Start(ctx context.Context) error {
+	activeConnections.Add(1)
 	return nil
 }
 
@@ -98,5 +99,9 @@ func (t *StdioTransport) WriteLine(s string) error {
 }
 
 func (t *StdioTransport) Close() error {
-	return t.rl.Close()
+	activeConnections.Add(-1)
+	if t.rl != nil {
+		return t.rl.Close()
+	}
+	return nil
 }
