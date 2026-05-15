@@ -111,7 +111,7 @@ func discoverHookScripts(dir string) map[hook.Point]string {
 		if entry.IsDir() {
 			continue
 		}
-		name := strings.TrimSuffix(entry.Name(), ".sh")
+		name := trimScriptExt(entry.Name())
 		point := hook.Point(name)
 		// Validate the point name
 		switch point {
@@ -136,7 +136,7 @@ func discoverEventScripts(dir string) map[event.Type]string {
 		if entry.IsDir() {
 			continue
 		}
-		name := strings.TrimSuffix(entry.Name(), ".sh")
+		name := trimScriptExt(entry.Name())
 		evtType := event.Type(name)
 		// Validate the event type name or wildcard
 		if evtType == "*" || isValidEventType(evtType) {
@@ -211,7 +211,7 @@ func runHookScript(ctx context.Context, scriptPath string, point hook.Point, hc 
 
 	stdin, _ := json.Marshal(input)
 
-	cmd := exec.CommandContext(ctx, "sh", scriptPath)
+	cmd := exec.CommandContext(ctx, shellInterpreter(), scriptPath)
 	cmd.Stdin = strings.NewReader(string(stdin))
 	cmd.Env = append(os.Environ(),
 		"DOLPHIN_SESSION_ID="+hc.SessionID,
@@ -249,7 +249,7 @@ func runEventScript(ctx context.Context, scriptPath string, evtType event.Type, 
 
 	data, _ := json.Marshal(evt)
 
-	cmd := exec.CommandContext(ctx, "sh", scriptPath)
+	cmd := exec.CommandContext(ctx, shellInterpreter(), scriptPath)
 	cmd.Stdin = strings.NewReader(string(data))
 	cmd.Env = append(os.Environ(),
 		"DOLPHIN_SESSION_ID="+evt.SessionID,

@@ -125,8 +125,8 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 			cmd = exec.CommandContext(ctx, fields[0])
 		}
 	} else if s.cfg.AllowUnrestricted {
-		// Opt-in unrestricted: sh -c
-		cmd = exec.CommandContext(ctx, "sh", "-c", params.Command)
+		// Opt-in unrestricted: use platform-native shell
+		cmd = shellCommand(ctx, params.Command)
 	} else {
 		// Default safe mode: direct execution without shell
 		if len(fields) > 1 {

@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	SystemConfigDir  = "/etc/dolphin"
+	SystemConfigDir  = defaultSystemConfigDir()
 	UserConfigDir    = ".dolphin"
 	ProjectConfigDir = ".dolphin"
 	ConfigFileName   = "config"
@@ -329,7 +329,7 @@ func Load(cfgFile string) (*Config, error) {
 
 	// Resolve session dir
 	if cfg.Session.Dir == "" {
-		cfg.Session.Dir = "/tmp/dolphin"
+		cfg.Session.Dir = defaultSessionDir()
 	}
 
 	// Manual env var overrides (Viper v1.18.2 env binding has issues)
@@ -432,7 +432,7 @@ func Load(cfgFile string) (*Config, error) {
 	if cfg.Transport.SSH.Enabled && cfg.Transport.SSH.Password == "" {
 		hd, err := os.UserHomeDir()
 		if err != nil {
-			hd = "/tmp"
+			hd = os.TempDir()
 		}
 		pwFile := filepath.Join(hd, UserConfigDir, "ssh_password")
 		if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 {
@@ -474,7 +474,7 @@ func DefaultConfig() *Config {
 	if err := v.Unmarshal(&cfg); err != nil {
 		zap.S().Errorw("unmarshal default config", "error", err)
 	}
-	cfg.Session.Dir = "/tmp/dolphin"
+	cfg.Session.Dir = defaultSessionDir()
 	return &cfg
 }
 
@@ -662,7 +662,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.compress_mode", "drop")
 	v.SetDefault("llm.segment_merge_limit", 100)
 
-	v.SetDefault("session.dir", "/tmp/dolphin")
+	v.SetDefault("session.dir", defaultSessionDir())
 	v.SetDefault("session.max_loop", 50)
 	v.SetDefault("session.summary", true)
 

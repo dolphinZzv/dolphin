@@ -283,6 +283,20 @@ func RunFirstRunPrompt() (*CareerProfile, error) {
 
 // GenerateSystemMD creates SYSTEM.md with system environment info.
 // Content adapts to the user's detected language.
+func shellName() string {
+	if s := os.Getenv("SHELL"); s != "" {
+		return s
+	}
+	if runtime.GOOS == "windows" {
+		for _, s := range []string{"pwsh.exe", "powershell.exe", "cmd.exe", "bash.exe"} {
+			if _, err := os.Stat(filepath.Join(os.Getenv("SystemRoot"), "System32", s)); err == nil {
+				return s
+			}
+		}
+	}
+	return "unknown"
+}
+
 func GenerateSystemMD(lang i18n.Lang) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -302,14 +316,14 @@ func GenerateSystemMD(lang i18n.Lang) (string, error) {
 	case i18n.ZH:
 		sb.WriteString(fmt.Sprintf("- 操作系统: %s/%s\n", runtime.GOOS, runtime.GOARCH))
 		sb.WriteString(fmt.Sprintf("- 主机名: %s\n", hostname))
-		sb.WriteString(fmt.Sprintf("- Shell: %s\n", os.Getenv("SHELL")))
+		sb.WriteString(fmt.Sprintf("- Shell: %s\n", shellName()))
 		sb.WriteString(fmt.Sprintf("- 用户目录: %s\n", home))
 		sb.WriteString(fmt.Sprintf("- 工作目录: %s\n", cwd))
 		sb.WriteString(fmt.Sprintf("- CPU 核心数: %d\n", runtime.NumCPU()))
 	default:
 		sb.WriteString(fmt.Sprintf("- OS: %s/%s\n", runtime.GOOS, runtime.GOARCH))
 		sb.WriteString(fmt.Sprintf("- Hostname: %s\n", hostname))
-		sb.WriteString(fmt.Sprintf("- Shell: %s\n", os.Getenv("SHELL")))
+		sb.WriteString(fmt.Sprintf("- Shell: %s\n", shellName()))
 		sb.WriteString(fmt.Sprintf("- Home: %s\n", home))
 		sb.WriteString(fmt.Sprintf("- Working Dir: %s\n", cwd))
 		sb.WriteString(fmt.Sprintf("- CPUs: %d\n", runtime.NumCPU()))

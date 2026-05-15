@@ -122,7 +122,7 @@ func (t *stdioTransport) close() error {
 	zap.S().Debugw("shutting down mcp server", "server", t.name)
 
 	if err := t.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		zap.S().Debugw("interrupt not supported, killing mcp server", "server", t.name)
+		zap.S().Debugw("signal not supported on this platform, killing mcp server", "server", t.name)
 		return t.cmd.Process.Kill()
 	}
 

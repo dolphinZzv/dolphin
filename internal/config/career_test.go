@@ -108,3 +108,20 @@ func TestMergeProfilesEmpty(t *testing.T) {
 		t.Error("expected nil for empty slice")
 	}
 }
+
+func TestShellName(t *testing.T) {
+	name := shellName()
+	if name == "" {
+		t.Error("shellName() should not return empty string")
+	}
+}
+
+func TestGenerateSystemMDContainsShell(t *testing.T) {
+	md, err := GenerateSystemMD("en")
+	if err != nil {
+		t.Fatalf("GenerateSystemMD() error: %v", err)
+	}
+	if md == "" {
+		t.Fatal("GenerateSystemMD() returned empty")
+	}
+}

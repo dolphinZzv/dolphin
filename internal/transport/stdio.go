@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -48,10 +49,24 @@ var completer = readline.NewPrefixCompleter(
 
 func (t *StdioTransport) Name() string { return "stdio" }
 
+func shellName() string {
+	if s := os.Getenv("SHELL"); s != "" {
+		return s
+	}
+	if runtime.GOOS == "windows" {
+		for _, s := range []string{"pwsh.exe", "powershell.exe", "cmd.exe", "bash.exe"} {
+			if _, err := exec.LookPath(s); err == nil {
+				return s
+			}
+		}
+	}
+	return "unknown"
+}
+
 func (t *StdioTransport) Context() string {
 	home, _ := os.UserHomeDir()
 	return fmt.Sprintf("Connected via terminal. OS: %s/%s, Shell: %s, Home: %s",
-		runtime.GOOS, runtime.GOARCH, os.Getenv("SHELL"), home)
+		runtime.GOOS, runtime.GOARCH, shellName(), home)
 }
 
 func (t *StdioTransport) Capabilities() Capabilities {
