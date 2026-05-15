@@ -106,20 +106,20 @@ func (r *Registry) Register(t Tool) {
 // Failures for individual servers are logged as warnings and do not prevent other
 // servers from loading. The caller should still defer CloseServers() to clean up
 // any servers that did start successfully.
-func (r *Registry) LoadServers() error {
+func (r *Registry) LoadServers(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var loaded, failed int
 	for name, cfg := range r.cfg.Servers {
-		client, err := NewServerClient(name, cfg)
+		client, err := NewServerClient(ctx, name, cfg)
 		if err != nil {
 			failed++
 			zap.S().Warnw("mcp server skipped — failed to create client", "server", name, "error", err)
 			continue
 		}
 
-		listCtx, cancel := context.WithTimeout(context.Background(), config.TimeoutDuration(cfg.Timeout))
+		listCtx, cancel := context.WithTimeout(ctx, config.TimeoutDuration(cfg.Timeout))
 		defs, err := client.ListTools(listCtx)
 		cancel()
 		if err != nil {

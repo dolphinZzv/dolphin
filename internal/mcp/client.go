@@ -19,7 +19,7 @@ type ServerClient struct {
 }
 
 // NewServerClient creates a transport to an external MCP server and initializes it.
-func NewServerClient(name string, cfg config.MCPServerConfig) (*ServerClient, error) {
+func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfig) (*ServerClient, error) {
 	var transport mcpTransport
 	var err error
 
@@ -43,7 +43,7 @@ func NewServerClient(name string, cfg config.MCPServerConfig) (*ServerClient, er
 	}
 
 	timeout := config.TimeoutDuration(cfg.Timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	if err := transport.connect(ctx); err != nil {

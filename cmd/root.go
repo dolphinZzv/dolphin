@@ -124,7 +124,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Load external MCP servers — individual failures are non-fatal.
 	if len(cfg.MCP.Servers) > 0 {
-		toolRegistry.LoadServers()
+		toolRegistry.LoadServers(context.Background())
 		defer toolRegistry.CloseServers()
 	}
 
