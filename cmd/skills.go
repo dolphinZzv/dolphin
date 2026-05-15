@@ -1,16 +1,25 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"dolphin/internal/config"
 	"dolphin/internal/skill"
 
 	"github.com/spf13/cobra"
 )
+
+type skillResult struct {
+	Name        string
+	Description string
+	Source      string // "local" or repo name
+	Installed   bool
+}
 
 func NewSkillsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -96,28 +105,83 @@ func runSkillsList(cmd *cobra.Command, args []string) error {
 }
 
 func runSkillsSearch(cmd *cobra.Command, args []string) error {
-	_, mgr, err := loadSkillsCmdConfig()
+	cfg, mgr, err := loadSkillsCmdConfig()
 	if err != nil {
 		return err
 	}
 
-	query := args[0]
-	results := mgr.Search(query)
+	query := strings.ToLower(args[0])
+	installed := mgr.List()
+
+	// Build results, de-duplicating by name
+	seen := make(map[string]bool)
+	var results []skillResult
+
+	// Local skills first
+	for _, s := range installed {
+		if strings.Contains(strings.ToLower(s.Name), query) ||
+			strings.Contains(strings.ToLower(s.Description), query) {
+			results = append(results, skillResult{
+				Name:        s.Name,
+				Description: s.Description,
+				Source:      "local",
+				Installed:   true,
+			})
+			seen[s.Name] = true
+		}
+	}
+
+	// Fetch remote repos and search their manifests
+	if len(cfg.Skills.Repos) > 0 {
+		homeDir, err := os.UserHomeDir()
+		cacheDir := ""
+		if err == nil {
+			cacheDir = filepath.Join(homeDir, config.UserConfigDir, "cache")
+		}
+		fetcher := config.NewRepoFetcher(cacheDir)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		manifests := fetcher.FetchAll(ctx, cfg.Skills.Repos)
+		cancel()
+
+		for _, m := range manifests {
+			for _, t := range m.Tools {
+				if seen[t.Name] {
+					continue
+				}
+				haystack := strings.ToLower(t.Name + " " + t.Description)
+				if strings.Contains(haystack, query) {
+					results = append(results, skillResult{
+						Name:        t.Name,
+						Description: t.Description,
+						Source:      m.Name,
+						Installed:   false,
+					})
+					seen[t.Name] = true
+				}
+			}
+		}
+	}
+
 	if len(results) == 0 {
-		fmt.Printf("No skills found matching %q.\n", query)
+		fmt.Printf("No skills found matching %q.\n", args[0])
 		return nil
 	}
 
-	fmt.Printf("%-30s %s\n", "NAME", "DESCRIPTION")
+	fmt.Printf("%-30s %-18s %s\n", "NAME", "SOURCE", "DESCRIPTION")
 	fmt.Println(strings.Repeat("-", 80))
-	for _, s := range results {
-		desc := s.Description
-		if len(desc) > 45 {
-			desc = desc[:42] + "..."
+	for _, r := range results {
+		desc := r.Description
+		if len(desc) > 40 {
+			desc = desc[:37] + "..."
 		}
-		fmt.Printf("%-30s %s\n", s.Name, desc)
+		mark := " "
+		if r.Installed {
+			mark = "*"
+		}
+		fmt.Printf("%s%-29s %-18s %s\n", mark, r.Name, r.Source, desc)
 	}
-	fmt.Printf("\nFound %d skills matching %q.\n", len(results), query)
+	fmt.Printf("\nFound %d results matching %q (* = installed).\n", len(results), args[0])
 	return nil
 }
 
