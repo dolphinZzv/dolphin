@@ -323,14 +323,14 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		sid := string(sess.ID)
 		// Fire session:end hook + event
 		if a.hooks != nil {
-			a.hooks.Fire(context.Background(), hook.PointSessionEnd, &hook.Context{
+			a.hooks.Fire(ctx, hook.PointSessionEnd, &hook.Context{
 				SessionID: sid,
 				Turn:      state.Turn,
 				Values:    map[string]any{"stop_reason": state.StopReason},
 			})
 		}
 		if a.events != nil {
-			a.events.Emit(context.Background(), event.Event{
+			a.events.Emit(ctx, event.Event{
 				Type:      event.TypeSessionEnded,
 				SessionID: sid,
 				Turn:      state.Turn,
@@ -562,8 +562,8 @@ func (a *Agent) handleProviderCommand(line string, io transport.UserIO) {
 					return
 				}
 				p := NewProviderFromConfig(&pc)
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				err := p.HealthCheck(ctx)
+				checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				err := p.HealthCheck(checkCtx)
 				cancel()
 				if err != nil {
 					io.WriteLine(fmt.Sprintf("Provider %s is not available: %v", pc.Name, err))
@@ -599,7 +599,7 @@ func (a *Agent) handleStatusCommand(state *LoopState, io transport.UserIO) {
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
 // extraTools specifies MCP tool names that should be available to the LLM (beyond the always-available search_mcp_tools).
 func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry, extraTools map[string]bool) error {
-	a.emitHeartbeat(state)
+	a.emitHeartbeat(ctx, state)
 
 	maxSubTurns := a.cfg.LLM.MaxSubTurns
 	if maxSubTurns <= 0 {
@@ -683,9 +683,9 @@ type streamResult struct {
 	err               error
 }
 
-func (a *Agent) emitHeartbeat(state *LoopState) {
+func (a *Agent) emitHeartbeat(ctx context.Context, state *LoopState) {
 	if a.heartbeatInterval > 0 && state.Turn > 0 && state.Turn%a.heartbeatInterval == 0 && a.events != nil {
-		a.events.Emit(context.Background(), event.Event{
+		a.events.Emit(ctx, event.Event{
 			Type:      event.TypeHeartbeat,
 			SessionID: string(state.Sess.ID),
 			Turn:      state.Turn,
