@@ -266,6 +266,41 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP inbox poll interval (e.g. `"30s"`, `"5m"`). |
 | `transport.email.allowed_senders` | `[]string` | `[]` | Allowlist of sender addresses or domains. Entries starting with `@` match any address ending with that domain suffix (e.g. `"@siciv.space"` matches `user@siciv.space`). Empty = allow all senders. |
 
+**Email transport flow:**
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant IMAP as IMAP Server
+    participant Agent as dolphin Agent
+    participant SMTP as SMTP Server
+
+    U->>SMTP: Send email to bot
+    SMTP->>IMAP: Deliver to INBOX
+
+    loop every poll_interval (10s)
+        Agent->>IMAP: TLS connect + login
+        Agent->>IMAP: SEARCH UNSEEN
+        IMAP->>Agent: unseen seq numbers
+        Agent->>IMAP: STORE +Flags \Seen (mark read)
+        Agent->>IMAP: FETCH latest (Envelope + BODY[TEXT])
+        IMAP->>Agent: subject, body, Message-Id, from
+
+        alt self-sent or before startTime
+            Agent->>Agent: skip (isOwnAddress / startTime)
+        else allowed_senders check
+            Agent->>Agent: skip if sender not in whitelist
+        else valid message
+            Agent->>Agent: decode subject (RFC 2047)
+            Agent->>Agent: store lastSender, lastMsgID, lastSubject
+            Agent->>Agent: post body (or subject) to msgCh
+            Agent->>Agent: LLM processes command
+            Agent->>SMTP: sendMail with In-Reply-To / References
+            SMTP->>U: threaded reply (Re: original subject)
+        end
+    end
+```
+
 ### DingTalk (`transport.dingtalk`)
 
 DingTalk bot transport via Stream mode (WebSocket long connection). The bot actively connects to DingTalk servers — no public IP or callback URL needed.

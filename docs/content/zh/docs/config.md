@@ -271,6 +271,41 @@ MQTT 消息传输。
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP 收件箱轮询间隔（如 `"30s"`、`"5m"`）。 |
 | `transport.email.allowed_senders` | `[]string` | `[]` | 发件人白名单。以 `@` 开头的条目匹配以该域名后缀结尾的任意地址（如 `"@siciv.space"` 匹配 `user@siciv.space`）。空列表 = 允许所有发件人。 |
 
+**邮件传输流程：**
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant IMAP as IMAP 服务器
+    participant Agent as dolphin Agent
+    participant SMTP as SMTP 服务器
+
+    U->>SMTP: 发送邮件给机器人
+    SMTP->>IMAP: 投递到收件箱
+
+    loop 每 poll_interval (10s)
+        Agent->>IMAP: TLS 连接 + 登录
+        Agent->>IMAP: SEARCH UNSEEN
+        IMAP->>Agent: 未读邮件序号
+        Agent->>IMAP: STORE +Flags \Seen (标记已读)
+        Agent->>IMAP: FETCH 最新 (Envelope + BODY[TEXT])
+        IMAP->>Agent: 主题、正文、Message-Id、发件人
+
+        alt 自发送或早于启动时间
+            Agent->>Agent: 跳过 (isOwnAddress / startTime)
+        else 白名单校验
+            Agent->>Agent: 跳过非白名单发件人
+        else 有效消息
+            Agent->>Agent: 解码主题 (RFC 2047)
+            Agent->>Agent: 存储 lastSender、lastMsgID、lastSubject
+            Agent->>Agent: 正文(或主题)写入 msgCh
+            Agent->>Agent: LLM 处理指令
+            Agent->>SMTP: sendMail 带 In-Reply-To / References
+            SMTP->>U: 线索化回复 (Re: 原始主题)
+        end
+    end
+```
+
 ### 钉钉 (`transport.dingtalk`)
 
 钉钉机器人传输 — 基于 Stream 模式（WebSocket 长连接），机器人主动连接钉钉服务器，无需公网 IP 或回调地址。
