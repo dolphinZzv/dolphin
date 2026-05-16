@@ -264,6 +264,7 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 | `transport.email.use_tls` | `bool` | `true` | Enable TLS for SMTP and IMAP. |
 | `transport.email.skip_tls_verify` | `bool` | `false` | Skip TLS certificate verification (for self-signed certificates). |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP inbox poll interval (e.g. `"30s"`, `"5m"`). |
+| `transport.email.allowed_senders` | `[]string` | `[]` | Allowlist of sender addresses or domains. Entries starting with `@` match any address ending with that domain suffix (e.g. `"@siciv.space"` matches `user@siciv.space`). Empty = allow all senders. |
 
 ### DingTalk (`transport.dingtalk`)
 
@@ -277,10 +278,20 @@ DingTalk bot transport via Stream mode (WebSocket long connection). The bot acti
 
 **Quickstart:**
 
-1. Create a DingTalk Open Platform app at [open.dingtalk.com](https://open.dingtalk.com), select "Enterprise Internal App"
-2. Go to Robot Management → create a robot, set message receive mode to **Stream**
-3. Grant `qyapi_robot_sendmsg` permission
-4. Add the bot to a group chat and `@robot <command>`
+1. Create a DingTalk Open Platform app at [open.dingtalk.com](https://open.dingtalk.com), select **"Enterprise Internal App"**
+2. Go to **App Development → Robot → Application Robot** (not Bot), create a robot
+3. Set message receive mode to **Stream** (the robot actively connects to DingTalk servers — no public IP or callback URL needed)
+4. Under **Permission Management**, grant `qyapi_robot_sendmsg` permission
+5. Copy AppKey → `client_id`, AppSecret → `client_secret`
+6. Add the bot to a group chat and `@robot <command>`
+
+```yaml
+transport:
+  dingtalk:
+    enabled: true
+    client_id: "your-appkey"
+    client_secret: "your-appsecret"
+```
 
 ---
 

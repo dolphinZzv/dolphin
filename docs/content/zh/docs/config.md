@@ -269,26 +269,34 @@ MQTT 消息传输。
 | `transport.email.use_tls` | `bool` | `true` | 启用 SMTP 和 IMAP 的 TLS 加密。 |
 | `transport.email.skip_tls_verify` | `bool` | `false` | 跳过 TLS 证书验证（用于自签名证书场景）。 |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP 收件箱轮询间隔（如 `"30s"`、`"5m"`）。 |
+| `transport.email.allowed_senders` | `[]string` | `[]` | 发件人白名单。以 `@` 开头的条目匹配以该域名后缀结尾的任意地址（如 `"@siciv.space"` 匹配 `user@siciv.space`）。空列表 = 允许所有发件人。 |
 
 ### 钉钉 (`transport.dingtalk`)
 
-钉钉机器人传输 — 通过钉钉开放平台收发消息，支持手机端远程交互。
+钉钉机器人传输 — 基于 Stream 模式（WebSocket 长连接），机器人主动连接钉钉服务器，无需公网 IP 或回调地址。
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `transport.dingtalk.enabled` | `bool` | `false` | 启用钉钉传输。环境变量：`DZ_DINGTALK_ENABLED`。 |
 | `transport.dingtalk.client_id` | `string` | `""` | 钉钉应用 AppKey。环境变量：`DZ_DINGTALK_CLIENT_ID`。 |
 | `transport.dingtalk.client_secret` | `string` | `""` | 钉钉应用 AppSecret。环境变量：`DZ_DINGTALK_CLIENT_SECRET`。 |
-| `transport.dingtalk.listen_addr` | `string` | `":8090"` | HTTP 回调监听地址，用于接收钉钉事件推送。环境变量：`DZ_DINGTALK_LISTEN_ADDR`。 |
-| `transport.dingtalk.poll_interval` | `string` | `"5s"` | 轮询降级间隔，当回调不可用时主动拉取消息（如 `"10s"`）。 |
-| `transport.dingtalk.mode` | `string` | `"auto"` | 运行模式：`"callback"`（事件推送）、`"poll"`（主动轮询）、`"auto"`（自动选择）。 |
 
 **快速上手：**
 
-1. 在 [open.dingtalk.com](https://open.dingtalk.com) 创建钉钉应用
-2. 开通"企业机器人"权限
-3. 配置事件订阅回调地址为 `http://<你的服务器>:8090/dingtalk/callback`
-4. 将机器人添加到群聊，@机器人 发送指令
+1. 在 [open.dingtalk.com](https://open.dingtalk.com) 创建钉钉应用，选择 **"企业内部应用"**
+2. 进入 **应用开发 → 机器人 → 应用机器人**（非 Bot），创建机器人
+3. 消息接收模式设置为 **Stream**（机器人主动连接钉钉服务器，无需公网 IP 或回调 URL）
+4. 在 **权限管理** 中开通 `qyapi_robot_sendmsg` 权限
+5. 复制 AppKey → `client_id`，AppSecret → `client_secret`
+6. 将机器人添加到群聊，@机器人 发送指令
+
+```yaml
+transport:
+  dingtalk:
+    enabled: true
+    client_id: "your-appkey"
+    client_secret: "your-appsecret"
+```
 
 ---
 
