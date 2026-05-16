@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"mime"
 	"net"
 	"net/smtp"
 	"strings"
@@ -19,15 +21,17 @@ import (
 
 // EmailTransport provides email-based I/O via SMTP (send) and IMAP (receive).
 type EmailTransport struct {
-	cfg        *config.EmailConfig
-	msgCh      chan string
-	closeCh    chan struct{}
-	closeOnce  sync.Once
-	pollTicker *time.Ticker
-	closeMu    sync.Mutex
-	startTime  time.Time
-	lastSender string
-	senderMu   sync.RWMutex
+	cfg         *config.EmailConfig
+	msgCh       chan string
+	closeCh     chan struct{}
+	closeOnce   sync.Once
+	pollTicker  *time.Ticker
+	closeMu     sync.Mutex
+	startTime   time.Time
+	lastSender  string
+	lastMsgID   string
+	lastSubject string
+	senderMu    sync.RWMutex
 }
 
 func NewEmailTransport(cfg *config.EmailConfig) *EmailTransport {
@@ -110,16 +114,33 @@ func (t *EmailTransport) sendMail(body string) error {
 
 	t.senderMu.RLock()
 	to := t.lastSender
+	msgID := t.lastMsgID
+	subject := t.lastSubject
 	t.senderMu.RUnlock()
 	if to == "" {
 		return fmt.Errorf("email: no sender yet — wait for an incoming message")
 	}
 
+	// Decode RFC 2047 encoded subject if needed
+	if decoded, err := (&mime.WordDecoder{}).DecodeHeader(subject); err == nil {
+		subject = decoded
+	}
+	if subject == "" {
+		subject = "dolphin Agent"
+	}
+	if !strings.HasPrefix(strings.ToLower(subject), "re:") {
+		subject = "Re: " + subject
+	}
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	sb.WriteString(fmt.Sprintf("To: %s\r\n", to))
-	sb.WriteString(fmt.Sprintf("Subject: Re: dolphin Agent\r\n"))
+	sb.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	sb.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
+	if msgID != "" {
+		sb.WriteString(fmt.Sprintf("In-Reply-To: <%s>\r\n", msgID))
+		sb.WriteString(fmt.Sprintf("References: <%s>\r\n", msgID))
+	}
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
 	sb.WriteString("\r\n")
@@ -223,7 +244,10 @@ func (t *EmailTransport) poll() {
 	seqset.AddNum(latest)
 
 	messages := make(chan *goimap.Message, 1)
-	if err := c.Fetch(seqset, []goimap.FetchItem{goimap.FetchEnvelope}, messages); err != nil {
+	if err := c.Fetch(seqset, []goimap.FetchItem{
+		goimap.FetchEnvelope,
+		goimap.FetchItem("BODY[TEXT]"),
+	}, messages); err != nil {
 		zap.S().Debugw("email imap fetch failed", "error", err)
 		return
 	}
@@ -250,22 +274,43 @@ func (t *EmailTransport) poll() {
 		return
 	}
 
-	subject := msg.Envelope.Subject
-	if subject == "" {
+	// Decode RFC 2047 encoded subject
+	rawSubject := msg.Envelope.Subject
+	decSubject := rawSubject
+	if d, err := (&mime.WordDecoder{}).DecodeHeader(rawSubject); err == nil {
+		decSubject = d
+	}
+	if decSubject == "" {
 		return
 	}
 
-	// Store sender address for reply
+	// Read body text
+	var bodyText string
+	for _, lit := range msg.Body {
+		data, _ := io.ReadAll(lit)
+		bodyText = strings.TrimSpace(string(data))
+		break
+	}
+
+	// Build command: prefer body text, fall back to subject
+	cmd := bodyText
+	if cmd == "" {
+		cmd = decSubject
+	}
+
+	// Store reply metadata
 	if len(msg.Envelope.From) > 0 && msg.Envelope.From[0] != nil {
 		t.senderMu.Lock()
 		t.lastSender = msg.Envelope.From[0].Address()
+		t.lastMsgID = msg.Envelope.MessageId
+		t.lastSubject = rawSubject
 		t.senderMu.Unlock()
 	}
 
-	zap.S().Infow("email received", "from", t.lastSender, "subject", truncate(subject, 80))
+	zap.S().Infow("email received", "from", t.lastSender, "subject", truncate(decSubject, 80))
 
 	select {
-	case t.msgCh <- subject:
+	case t.msgCh <- cmd:
 	default:
 		zap.S().Warnw("email message dropped, channel full")
 	}
