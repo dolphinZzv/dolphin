@@ -384,7 +384,9 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 	// Load existing file if present (to preserve un-tracked settings)
 	existing := make(map[string]any)
 	if data, err := os.ReadFile(filePath); err == nil {
-		yaml.Unmarshal(data, &existing)
+		if err := yaml.Unmarshal(data, &existing); err != nil {
+			zap.S().Warnw("failed to parse existing config, starting fresh", "path", filePath, "error", err)
+		}
 	}
 
 	// Overlay all tracked config values onto the map

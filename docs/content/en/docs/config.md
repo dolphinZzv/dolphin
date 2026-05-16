@@ -267,22 +267,19 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 
 ### DingTalk (`transport.dingtalk`)
 
-DingTalk bot transport — receive commands and send responses via DingTalk Open Platform.
+DingTalk bot transport via Stream mode (WebSocket long connection). The bot actively connects to DingTalk servers — no public IP or callback URL needed.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `transport.dingtalk.enabled` | `bool` | `false` | Enable DingTalk transport. Env: `DZ_DINGTALK_ENABLED`. |
 | `transport.dingtalk.client_id` | `string` | `""` | DingTalk app AppKey. Env: `DZ_DINGTALK_CLIENT_ID`. |
 | `transport.dingtalk.client_secret` | `string` | `""` | DingTalk app AppSecret. Env: `DZ_DINGTALK_CLIENT_SECRET`. |
-| `transport.dingtalk.listen_addr` | `string` | `":8090"` | HTTP callback listen address for event push. Env: `DZ_DINGTALK_LISTEN_ADDR`. |
-| `transport.dingtalk.poll_interval` | `string` | `"5s"` | Message poll interval when callback is unavailable (e.g. `"10s"`). |
-| `transport.dingtalk.mode` | `string` | `"auto"` | Operation mode: `"callback"` (event push), `"poll"` (active polling), or `"auto"` (try callback, fallback to poll). |
 
 **Quickstart:**
 
-1. Create a DingTalk Open Platform app at [open.dingtalk.com](https://open.dingtalk.com)
-2. Grant "Enterprise Chat Robot" permissions
-3. Configure event subscription callback URL to `http://<your-server>:8090/dingtalk/callback`
+1. Create a DingTalk Open Platform app at [open.dingtalk.com](https://open.dingtalk.com), select "Enterprise Internal App"
+2. Go to Robot Management → create a robot, set message receive mode to **Stream**
+3. Grant `qyapi_robot_sendmsg` permission
 4. Add the bot to a group chat and `@robot <command>`
 
 ---

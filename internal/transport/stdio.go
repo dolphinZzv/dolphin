@@ -36,7 +36,11 @@ func NewStdioTransport() *StdioTransport {
 	})
 	if err != nil {
 		// Fallback: create readline without history/complete
-		rl, _ = readline.New(defaultPrompt)
+		var fallbackErr error
+		rl, fallbackErr = readline.New(defaultPrompt)
+		if fallbackErr != nil {
+			fmt.Fprintf(os.Stderr, "[stdio] readline fallback also failed: %v\n", fallbackErr)
+		}
 	}
 
 	return &StdioTransport{rl: rl}

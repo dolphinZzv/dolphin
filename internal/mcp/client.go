@@ -133,7 +133,9 @@ func (c *ServerClient) ListTools(ctx context.Context) ([]ToolDefinition, error) 
 func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json.RawMessage) (*ToolResult, error) {
 	var args map[string]any
 	if len(arguments) > 0 {
-		json.Unmarshal(arguments, &args)
+		if err := json.Unmarshal(arguments, &args); err != nil {
+			zap.S().Warnw("failed to unmarshal tool arguments", "error", err)
+		}
 	}
 
 	req := map[string]any{

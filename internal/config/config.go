@@ -157,31 +157,30 @@ type MQTTConfig struct {
 }
 
 type EmailConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	Protocol      string `mapstructure:"protocol"` // "imap" (default) or "pop3"
-	SMTPHost      string `mapstructure:"smtp_host"`
-	SMTPPort      int    `mapstructure:"smtp_port"`
-	IMAPHost      string `mapstructure:"imap_host"`
-	IMAPPort      int    `mapstructure:"imap_port"`
-	POP3Host      string `mapstructure:"pop3_host"` // defaults to IMAPHost / SMTPHost
-	POP3Port      int    `mapstructure:"pop3_port"` // default 995 (TLS)
-	Username      string `mapstructure:"username"`
-	Password      string `mapstructure:"password"`
-	From          string `mapstructure:"from"`
-	UseTLS        bool   `mapstructure:"use_tls"`
-	SkipTLSVerify bool   `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
-	PollInterval  string `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
+	Enabled        bool     `mapstructure:"enabled"`
+	Protocol       string   `mapstructure:"protocol"` // "imap" (default) or "pop3"
+	SMTPHost       string   `mapstructure:"smtp_host"`
+	SMTPPort       int      `mapstructure:"smtp_port"`
+	IMAPHost       string   `mapstructure:"imap_host"`
+	IMAPPort       int      `mapstructure:"imap_port"`
+	POP3Host       string   `mapstructure:"pop3_host"` // defaults to IMAPHost / SMTPHost
+	POP3Port       int      `mapstructure:"pop3_port"` // default 995 (TLS)
+	Username       string   `mapstructure:"username"`
+	Password       string   `mapstructure:"password"`
+	From           string   `mapstructure:"from"`
+	UseTLS         bool     `mapstructure:"use_tls"`
+	SkipTLSVerify  bool     `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
+	PollInterval   string   `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
+	AllowedSenders []string `mapstructure:"allowed_senders"` // only process emails from these addresses
 }
 
 // DingTalkConfig holds configuration for the DingTalk bot transport.
-// ClientID and ClientSecret are your DingTalk Open Platform application credentials.
+// Uses Stream mode (WebSocket long connection) — no public IP or callback URL needed.
+// The bot actively connects to DingTalk servers and receives messages via push.
 type DingTalkConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	ClientID     string `mapstructure:"client_id"`     // AppKey from DingTalk Open Platform
 	ClientSecret string `mapstructure:"client_secret"` // AppSecret from DingTalk Open Platform
-	ListenAddr   string `mapstructure:"listen_addr"`   // HTTP callback listen address, e.g. ":8090"
-	PollInterval string `mapstructure:"poll_interval"` // polling interval, e.g. "5s"
-	Mode         string `mapstructure:"mode"`          // "callback", "poll", or "auto" (default)
 }
 
 type MCPConfig struct {
@@ -419,9 +418,6 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_DINGTALK_CLIENT_SECRET"); v != "" {
 		cfg.Transport.DingTalk.ClientSecret = v
-	}
-	if v := os.Getenv("DZ_DINGTALK_LISTEN_ADDR"); v != "" {
-		cfg.Transport.DingTalk.ListenAddr = v
 	}
 	if v := os.Getenv("DZ_DINGTALK_ENABLED"); v != "" {
 		cfg.Transport.DingTalk.Enabled = v == "true" || v == "1"
@@ -743,11 +739,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.email.imap_port", 993)
 	v.SetDefault("transport.email.use_tls", true)
 	v.SetDefault("transport.email.poll_interval", "10s")
+	v.SetDefault("transport.email.allowed_senders", []string{})
 
 	v.SetDefault("transport.dingtalk.enabled", false)
-	v.SetDefault("transport.dingtalk.listen_addr", ":8090")
-	v.SetDefault("transport.dingtalk.poll_interval", "5s")
-	v.SetDefault("transport.dingtalk.mode", "auto")
 
 	v.SetDefault("session.max_age", "24h")
 	v.SetDefault("session.resume", false)

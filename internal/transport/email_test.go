@@ -10,6 +10,13 @@ import (
 	"dolphin/internal/config"
 )
 
+// newEmailTransportWithSender creates an EmailTransport and sets a default reply-to sender.
+func newEmailTransportWithSender(cfg *config.EmailConfig, sender string) *EmailTransport {
+	tp := NewEmailTransport(cfg)
+	tp.lastSender = sender
+	return tp
+}
+
 // startTestSMTPServer starts a minimal SMTP server that captures the message body.
 func startTestSMTPServer(t *testing.T) (addr string, gotMsg chan string) {
 	gotMsg = make(chan string, 1)
@@ -125,7 +132,7 @@ func TestEmailTransportSendMailWithPort(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.WriteLine("test with explicit port")
 	if err != nil {
 		t.Fatalf("WriteLine() error: %v", err)
@@ -152,7 +159,7 @@ func TestEmailTransportFromFallback(t *testing.T) {
 		From:     "",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.WriteLine("test from fallback")
 	if err != nil {
 		t.Fatalf("WriteLine() error: %v", err)
@@ -197,7 +204,7 @@ func TestEmailTransportWriteLine(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.WriteLine("hello response")
 	if err != nil {
 		t.Fatalf("WriteLine() error: %v", err)
@@ -224,7 +231,7 @@ func TestEmailTransportWriteString(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.WriteString("hello world")
 	if err != nil {
 		t.Fatalf("WriteString() error: %v", err)
@@ -251,7 +258,7 @@ func TestEmailTransportSendMailPlain(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.sendMail("test body")
 	if err != nil {
 		t.Fatalf("sendMail() error: %v", err)
@@ -289,11 +296,55 @@ func TestEmailTransportSendMailSMTPPortDefault(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.sendMail("test")
 	if err == nil {
 		t.Error("expected error when connecting to port 587")
 	}
+}
+
+// TestEmailSendIntegration sends a real email to test@siciv.space using the configured SMTP.
+func TestEmailSendIntegration(t *testing.T) {
+	cfg, err := config.Load("../../.dolphin/config.yaml")
+	if err != nil {
+		t.Skipf("config load failed: %v", err)
+	}
+	ec := cfg.Transport.Email
+	t.Logf("email enabled=%v user=%q from=%q smtp=%s:%d imap=%s:%d useTLS=%v",
+		ec.Enabled, ec.Username, ec.From, ec.SMTPHost, ec.SMTPPort, ec.IMAPHost, ec.IMAPPort, ec.UseTLS)
+	if !ec.Enabled {
+		t.Skip("email transport disabled")
+	}
+
+	tp := newEmailTransportWithSender(&ec, "test@siciv.space")
+	err = tp.sendMail("[dolphin integration test] SMTP connectivity check at " + time.Now().Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("sendMail failed: %v", err)
+	}
+	t.Log("email sent successfully")
+}
+
+// TestEmailIMAPIntegration checks IMAP connectivity and lists unseen messages.
+func TestEmailIMAPIntegration(t *testing.T) {
+	cfg, err := config.Load("../../.dolphin/config.yaml")
+	if err != nil {
+		t.Skipf("config load failed: %v", err)
+	}
+	ec := cfg.Transport.Email
+	t.Logf("email enabled=%v user=%q from=%q smtp=%s:%d imap=%s:%d useTLS=%v",
+		ec.Enabled, ec.Username, ec.From, ec.SMTPHost, ec.SMTPPort, ec.IMAPHost, ec.IMAPPort, ec.UseTLS)
+	if !ec.Enabled {
+		t.Skip("email transport disabled")
+	}
+	if ec.Username == "" || ec.Password == "" {
+		t.Skip("email credentials not configured")
+	}
+	t.Logf("IMAP: %s:%d, user=%s, TLS=%v",
+		ec.IMAPHost, ec.IMAPPort, ec.Username, ec.UseTLS)
+
+	tp := NewEmailTransport(&ec)
+	tp.poll()
+	t.Log("IMAP poll complete — check logs for results")
 }
 
 func TestEmailTransportSendMailTLSNotUsed(t *testing.T) {
@@ -308,7 +359,7 @@ func TestEmailTransportSendMailTLSNotUsed(t *testing.T) {
 		From:     "test@example.com",
 		UseTLS:   false,
 	}
-	tp := NewEmailTransport(cfg)
+	tp := newEmailTransportWithSender(cfg, "recipient@example.com")
 	err := tp.WriteString("non-tls test")
 	if err != nil {
 		t.Fatalf("WriteString error: %v", err)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -93,7 +94,9 @@ func applyMCPServers(servers []ToolEntry, baseDir string) error {
 	// Read existing full config as map
 	full := make(map[string]any)
 	if data, err := os.ReadFile(configPath); err == nil {
-		yaml.Unmarshal(data, &full)
+		if err := yaml.Unmarshal(data, &full); err != nil {
+			zap.S().Warnw("failed to parse existing config, starting fresh", "path", configPath, "error", err)
+		}
 	}
 
 	// Read existing mcp section, preserving other mcp settings

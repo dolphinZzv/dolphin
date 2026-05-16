@@ -327,7 +327,10 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 						Thinking    string `json:"thinking,omitempty"`
 						PartialJSON string `json:"partial_json,omitempty"`
 					}
-					json.Unmarshal(evt.Delta, &delta)
+					if err := json.Unmarshal(evt.Delta, &delta); err != nil {
+						zap.S().Debugw("failed to unmarshal streaming delta", "error", err)
+						continue
+					}
 					switch delta.Type {
 					case "text_delta":
 						ch <- StreamChunk{Content: TextContent(delta.Text)}

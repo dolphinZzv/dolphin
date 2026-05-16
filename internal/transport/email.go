@@ -26,6 +26,8 @@ type EmailTransport struct {
 	pollTicker *time.Ticker
 	closeMu    sync.Mutex
 	startTime  time.Time
+	lastSender string
+	senderMu   sync.RWMutex
 }
 
 func NewEmailTransport(cfg *config.EmailConfig) *EmailTransport {
@@ -106,9 +108,16 @@ func (t *EmailTransport) sendMail(body string) error {
 		from = t.cfg.Username
 	}
 
+	t.senderMu.RLock()
+	to := t.lastSender
+	t.senderMu.RUnlock()
+	if to == "" {
+		return fmt.Errorf("email: no sender yet — wait for an incoming message")
+	}
+
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("From: %s\r\n", from))
-	sb.WriteString(fmt.Sprintf("To: %s\r\n", from))
+	sb.WriteString(fmt.Sprintf("To: %s\r\n", to))
 	sb.WriteString(fmt.Sprintf("Subject: Re: dolphin Agent\r\n"))
 	sb.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	sb.WriteString("MIME-Version: 1.0\r\n")
@@ -117,12 +126,12 @@ func (t *EmailTransport) sendMail(body string) error {
 	sb.WriteString(body)
 
 	if t.cfg.UseTLS && t.cfg.SMTPPort == 465 {
-		return t.sendMailTLS(addr, host, sb.String())
+		return t.sendMailTLS(addr, host, sb.String(), to)
 	}
-	return t.sendMailPlain(addr, sb.String())
+	return t.sendMailPlain(addr, sb.String(), to)
 }
 
-func (t *EmailTransport) sendMailTLS(addr, host, msg string) error {
+func (t *EmailTransport) sendMailTLS(addr, host, msg, to string) error {
 	tconn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
 	if err != nil {
 		return fmt.Errorf("tls connect: %w", err)
@@ -140,7 +149,7 @@ func (t *EmailTransport) sendMailTLS(addr, host, msg string) error {
 		return fmt.Errorf("smtp auth: %w", err)
 	}
 	sc.Mail(t.cfg.From)
-	sc.Rcpt(t.cfg.From)
+	sc.Rcpt(to)
 	w, err := sc.Data()
 	if err != nil {
 		return err
@@ -149,9 +158,9 @@ func (t *EmailTransport) sendMailTLS(addr, host, msg string) error {
 	return w.Close()
 }
 
-func (t *EmailTransport) sendMailPlain(addr, msg string) error {
+func (t *EmailTransport) sendMailPlain(addr, msg, to string) error {
 	auth := smtp.PlainAuth("", t.cfg.Username, t.cfg.Password, t.cfg.SMTPHost)
-	return smtp.SendMail(addr, auth, t.cfg.From, []string{t.cfg.From}, []byte(msg))
+	return smtp.SendMail(addr, auth, t.cfg.From, []string{to}, []byte(msg))
 }
 
 func (t *EmailTransport) poll() {
@@ -229,18 +238,73 @@ func (t *EmailTransport) poll() {
 		return
 	}
 
+	// Skip self-sent messages to avoid infinite self-reply loop
+	if isOwnAddress(msg.Envelope.From, t.cfg.From, t.cfg.Username) {
+		return
+	}
+
+	// Only process emails from allowed senders (if configured)
+	if len(t.cfg.AllowedSenders) > 0 && !isOwnAddress(msg.Envelope.From, t.cfg.AllowedSenders...) {
+		zap.S().Debugw("email from non-allowed sender, skipped",
+			"from", formatAddresses(msg.Envelope.From))
+		return
+	}
+
 	subject := msg.Envelope.Subject
 	if subject == "" {
 		return
 	}
 
-	zap.S().Infow("email received", "subject", truncate(subject, 80))
+	// Store sender address for reply
+	if len(msg.Envelope.From) > 0 && msg.Envelope.From[0] != nil {
+		t.senderMu.Lock()
+		t.lastSender = msg.Envelope.From[0].Address()
+		t.senderMu.Unlock()
+	}
+
+	zap.S().Infow("email received", "from", t.lastSender, "subject", truncate(subject, 80))
 
 	select {
 	case t.msgCh <- subject:
 	default:
 		zap.S().Warnw("email message dropped, channel full")
 	}
+}
+
+// formatAddresses formats a list of IMAP addresses for logging.
+func formatAddresses(from []*goimap.Address) string {
+	var parts []string
+	for _, addr := range from {
+		if addr != nil {
+			parts = append(parts, addr.Address())
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// isOwnAddress checks whether any sender address matches the reference list.
+// Entries starting with "@" match any address ending with that domain suffix.
+func isOwnAddress(from []*goimap.Address, refs ...string) bool {
+	for _, addr := range from {
+		if addr == nil {
+			continue
+		}
+		addrStr := strings.ToLower(addr.Address())
+		for _, ref := range refs {
+			if ref == "" {
+				continue
+			}
+			ref = strings.ToLower(ref)
+			if strings.HasPrefix(ref, "@") {
+				if strings.HasSuffix(addrStr, ref) {
+					return true
+				}
+			} else if addrStr == ref {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (t *EmailTransport) Close() error {

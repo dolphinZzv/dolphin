@@ -408,7 +408,10 @@ func (p *OpenAIProvider) buildTools(defs []ToolDef) []openai.Tool {
 	tools := make([]openai.Tool, 0, len(defs))
 	for _, d := range defs {
 		var schema map[string]any
-		json.Unmarshal(d.InputSchema, &schema)
+		if err := json.Unmarshal(d.InputSchema, &schema); err != nil {
+			zap.S().Warnw("failed to unmarshal tool input schema", "tool", d.Name, "error", err)
+			continue
+		}
 
 		tools = append(tools, openai.Tool{
 			Type: "function",

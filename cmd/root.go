@@ -600,10 +600,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 
 	// DingTalk transport
 	if cfg.Transport.DingTalk.Enabled {
-		fmt.Fprintf(os.Stderr, "\n=== DingTalk bot active ===\n")
-		fmt.Fprintf(os.Stderr, "Mode: %s (listen: %s, poll: %s)\n\n",
-			cfg.Transport.DingTalk.Mode, cfg.Transport.DingTalk.ListenAddr,
-			cfg.Transport.DingTalk.PollInterval)
+		fmt.Fprintf(os.Stderr, "\n=== DingTalk bot active (Stream mode) ===\n")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewDingTalkTransport(&cfg.Transport.DingTalk)
