@@ -263,10 +263,11 @@ func firstRunSetup(cfg *config.Config) {
 	if isDevMode() {
 		profile = &config.CareerProfile{
 			Name:        "demo",
-			Skills:      []string{"frontend-expert", "backend-golang"},
-			MCP:         []string{"browser-preview", "filesystem"},
+			Skills:      []string{"demo-skill"},
+			MCP:         []string{"filesystem"},
 			Description: "Demo (integration test)",
 		}
+		cfg.Skills.Repos = append([]string{"dolphinZzv/demo_skills"}, cfg.Skills.Repos...)
 		fmt.Fprintf(os.Stderr, "\n[dev] Auto-loading demo career profile\n")
 	} else {
 		profile, err = config.RunFirstRunPrompt()
