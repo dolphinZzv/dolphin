@@ -360,20 +360,28 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		"provider", a.provider.Type(),
 	)
 
-	// Print welcome with MCP tools list
-	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.buildTime))
-	toolDefs := a.toolReg.List()
-	if len(toolDefs) > 0 {
-		io.WriteString("Loaded MCP tools: ")
-		for i, t := range toolDefs {
-			if i > 0 {
-				io.WriteString(", ")
+	// Print welcome with MCP tools list.
+	// For email transport: only send the startup notification the first time
+	// email is configured, not on every startup.
+	skipWelcome := io.Name() == "email" && config.IsEmailConfigured()
+	if !skipWelcome {
+		io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.buildTime))
+		toolDefs := a.toolReg.List()
+		if len(toolDefs) > 0 {
+			io.WriteString("Loaded MCP tools: ")
+			for i, t := range toolDefs {
+				if i > 0 {
+					io.WriteString(", ")
+				}
+				io.WriteString(t.Name)
 			}
-			io.WriteString(t.Name)
+			io.WriteLine("")
 		}
 		io.WriteLine("")
+		if io.Name() == "email" {
+			config.MarkEmailConfigured()
+		}
 	}
-	io.WriteLine("")
 
 	// Fire session:start hook + event
 	sid := string(sess.ID)

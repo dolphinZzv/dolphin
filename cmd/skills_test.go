@@ -175,7 +175,8 @@ func TestSkillsSearch_NoResults(t *testing.T) {
 
 func TestSkillsInstall(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	os.MkdirAll(filepath.Join(dir, "skills"), 0700)
+	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
+	os.MkdirAll(userSkillsDir, 0700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "my-new-skill", "A brand new skill"})
@@ -190,8 +191,8 @@ func TestSkillsInstall(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	// Verify file was created in the temp dir
-	skillPath := filepath.Join(dir, "skills", "my-new-skill.md")
+	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
+	skillPath := filepath.Join(userSkillsDir, "my-new-skill.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	} else {
@@ -207,7 +208,8 @@ func TestSkillsInstall(t *testing.T) {
 
 func TestSkillsInstall_DefaultDescription(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	os.MkdirAll(filepath.Join(dir, "skills"), 0700)
+	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
+	os.MkdirAll(userSkillsDir, 0700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "no-desc"})
@@ -222,8 +224,8 @@ func TestSkillsInstall_DefaultDescription(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	// Verify file was created
-	skillPath := filepath.Join(dir, "skills", "no-desc.md")
+	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
+	skillPath := filepath.Join(userSkillsDir, "no-desc.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}
@@ -231,7 +233,7 @@ func TestSkillsInstall_DefaultDescription(t *testing.T) {
 
 func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	// No skills dir at all — install should create it
+	// No skills dir at all — install should create it in user skills dir.
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "auto-create", "Testing"})
@@ -246,7 +248,8 @@ func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	skillPath := filepath.Join(dir, "skills", "auto-create.md")
+	// File is created in user-skills dir (~/.dolphin/skills) which gets auto-created.
+	skillPath := filepath.Join(dir, ".dolphin", "skills", "auto-create.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}
@@ -254,10 +257,11 @@ func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 
 func TestSkillsDisable(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	writeTestSkill(t, filepath.Join(dir, "skills"), "to-remove", "Will be removed", "content")
+	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
+	writeTestSkill(t, userSkillsDir, "to-remove", "Will be removed", "content")
 
 	// Verify it exists before
-	skillPath := filepath.Join(dir, "skills", "to-remove.md")
+	skillPath := filepath.Join(userSkillsDir, "to-remove.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Fatal("skill file should exist before disable")
 	}
@@ -345,7 +349,9 @@ func TestNewSkillsCmd_HasSubcommands(t *testing.T) {
 }
 
 func TestRunSkillsList_InvalidConfig(t *testing.T) {
-	cfgFile = "/nonexistent/config.yaml"
+	// Point cfgFile at a directory — ReadFile on a directory returns an error
+	// that is not fs.ErrNotExist, so config.Load will propagate it.
+	cfgFile = t.TempDir()
 	defer func() { cfgFile = "" }()
 
 	err := runSkillsList(nil, nil)

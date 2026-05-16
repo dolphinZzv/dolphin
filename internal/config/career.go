@@ -143,6 +143,35 @@ func CreateFirstRunMarker() error {
 	return os.WriteFile(path, []byte{}, 0600)
 }
 
+// EmailConfiguredMarker returns the path to the email-configured marker file.
+func EmailConfiguredMarker() string {
+	hd, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(hd, UserConfigDir, "email-configured")
+}
+
+// IsEmailConfigured checks whether the email transport has already been
+// configured and sent its initial startup notification.
+func IsEmailConfigured() bool {
+	_, err := os.Stat(EmailConfiguredMarker())
+	return err == nil
+}
+
+// MarkEmailConfigured creates the email-configured marker so future
+// startups skip the welcome email.
+func MarkEmailConfigured() error {
+	path := EmailConfiguredMarker()
+	if path == "" {
+		return fmt.Errorf("cannot determine home directory")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte{}, 0600)
+}
+
 // careerKeywords maps career names to search keywords for matching repo tools.
 var careerKeywords = map[string][]string{
 	"frontend":   {"frontend", "react", "vue", "angular", "typescript", "css", "ui", "browser"},

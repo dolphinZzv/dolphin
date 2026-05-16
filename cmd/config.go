@@ -18,7 +18,7 @@ func NewConfigCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "show",
 		Short: "Show effective configuration",
-		RunE: runConfigShow,
+		RunE:  runConfigShow,
 	})
 
 	return cmd
