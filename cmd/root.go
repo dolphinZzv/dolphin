@@ -598,6 +598,31 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 		actorCount += 2
 	}
 
+	// DingTalk transport
+	if cfg.Transport.DingTalk.Enabled {
+		fmt.Fprintf(os.Stderr, "\n=== DingTalk bot active ===\n")
+		fmt.Fprintf(os.Stderr, "Mode: %s (listen: %s, poll: %s)\n\n",
+			cfg.Transport.DingTalk.Mode, cfg.Transport.DingTalk.ListenAddr,
+			cfg.Transport.DingTalk.PollInterval)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t := transport.NewDingTalkTransport(&cfg.Transport.DingTalk)
+
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		g.Add(func() error {
+			newCoordinator().Run(ctx, t)
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount += 2
+	}
+
 	// Stdio transport
 	if cfg.Transport.Stdio.Enabled {
 		ctx, cancel := context.WithCancel(context.Background())

@@ -210,7 +210,7 @@ mcp:
 
 ## 传输层 (`transport`)
 
-控制 agent 的通信方式：本地终端、SSH、MQTT 或邮件。
+控制 agent 的通信方式：本地终端、SSH、MQTT、邮件或钉钉。
 
 ### Stdio (`transport.stdio`)
 
@@ -269,6 +269,26 @@ MQTT 消息传输。
 | `transport.email.use_tls` | `bool` | `true` | 启用 SMTP 和 IMAP 的 TLS 加密。 |
 | `transport.email.skip_tls_verify` | `bool` | `false` | 跳过 TLS 证书验证（用于自签名证书场景）。 |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP 收件箱轮询间隔（如 `"30s"`、`"5m"`）。 |
+
+### 钉钉 (`transport.dingtalk`)
+
+钉钉机器人传输 — 通过钉钉开放平台收发消息，支持手机端远程交互。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `transport.dingtalk.enabled` | `bool` | `false` | 启用钉钉传输。环境变量：`DZ_DINGTALK_ENABLED`。 |
+| `transport.dingtalk.client_id` | `string` | `""` | 钉钉应用 AppKey。环境变量：`DZ_DINGTALK_CLIENT_ID`。 |
+| `transport.dingtalk.client_secret` | `string` | `""` | 钉钉应用 AppSecret。环境变量：`DZ_DINGTALK_CLIENT_SECRET`。 |
+| `transport.dingtalk.listen_addr` | `string` | `":8090"` | HTTP 回调监听地址，用于接收钉钉事件推送。环境变量：`DZ_DINGTALK_LISTEN_ADDR`。 |
+| `transport.dingtalk.poll_interval` | `string` | `"5s"` | 轮询降级间隔，当回调不可用时主动拉取消息（如 `"10s"`）。 |
+| `transport.dingtalk.mode` | `string` | `"auto"` | 运行模式：`"callback"`（事件推送）、`"poll"`（主动轮询）、`"auto"`（自动选择）。 |
+
+**快速上手：**
+
+1. 在 [open.dingtalk.com](https://open.dingtalk.com) 创建钉钉应用
+2. 开通"企业机器人"权限
+3. 配置事件订阅回调地址为 `http://<你的服务器>:8090/dingtalk/callback`
+4. 将机器人添加到群聊，@机器人 发送指令
 
 ---
 

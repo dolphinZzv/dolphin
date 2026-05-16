@@ -205,7 +205,7 @@ Manages skill files that teach the agent new capabilities.
 
 ## Transports (`transport`)
 
-Controls how the agent communicates: local terminal, SSH, MQTT, or email.
+Controls how the agent communicates: local terminal, SSH, MQTT, email, or DingTalk.
 
 ### Stdio (`transport.stdio`)
 
@@ -264,6 +264,26 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 | `transport.email.use_tls` | `bool` | `true` | Enable TLS for SMTP and IMAP. |
 | `transport.email.skip_tls_verify` | `bool` | `false` | Skip TLS certificate verification (for self-signed certificates). |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP inbox poll interval (e.g. `"30s"`, `"5m"`). |
+
+### DingTalk (`transport.dingtalk`)
+
+DingTalk bot transport — receive commands and send responses via DingTalk Open Platform.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `transport.dingtalk.enabled` | `bool` | `false` | Enable DingTalk transport. Env: `DZ_DINGTALK_ENABLED`. |
+| `transport.dingtalk.client_id` | `string` | `""` | DingTalk app AppKey. Env: `DZ_DINGTALK_CLIENT_ID`. |
+| `transport.dingtalk.client_secret` | `string` | `""` | DingTalk app AppSecret. Env: `DZ_DINGTALK_CLIENT_SECRET`. |
+| `transport.dingtalk.listen_addr` | `string` | `":8090"` | HTTP callback listen address for event push. Env: `DZ_DINGTALK_LISTEN_ADDR`. |
+| `transport.dingtalk.poll_interval` | `string` | `"5s"` | Message poll interval when callback is unavailable (e.g. `"10s"`). |
+| `transport.dingtalk.mode` | `string` | `"auto"` | Operation mode: `"callback"` (event push), `"poll"` (active polling), or `"auto"` (try callback, fallback to poll). |
+
+**Quickstart:**
+
+1. Create a DingTalk Open Platform app at [open.dingtalk.com](https://open.dingtalk.com)
+2. Grant "Enterprise Chat Robot" permissions
+3. Configure event subscription callback URL to `http://<your-server>:8090/dingtalk/callback`
+4. Add the bot to a group chat and `@robot <command>`
 
 ---
 
