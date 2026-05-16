@@ -26,6 +26,49 @@ Dolphin ships with several built-in MCP tools:
 
 These can be toggled on/off and configured independently. Details are in the [Configuration Reference]({{< relref "docs/config" >}}).
 
+### CDP Browser Tool
+
+The CDP (Chrome DevTools Protocol) tool enables browser automation. It uses chromedp to control a headless Chrome/Chromium browser.
+
+**Actions:**
+
+| Action | Parameters | Description |
+|--------|------------|-------------|
+| `navigate` | `url` | Open a URL and wait for page load |
+| `click` | `selector` | Click an element by CSS selector |
+| `screenshot` | `selector` (optional) | Capture screenshot — full page or element |
+| `evaluate` | `script` | Run JavaScript (async/await supported) |
+| `get_text` | `selector` | Extract visible text from an element |
+
+**Screenshot behavior:**
+- Full page: `{"action": "screenshot"}` — captures the entire viewport
+- Element: `{"action": "screenshot", "selector": "#my-element"}` — captures only the element
+- Result: saves to `.dolphin/screenshots/screenshot_<timestamp>.png` and returns the file path + size
+- File size is typically 50KB–500KB for a full page PNG
+
+**Example session:**
+```
+user: take a screenshot of github.com
+agent: {
+  "action": "navigate",
+  "url": "https://github.com"
+}
+// Agent receives "Navigated to https://github.com\nPage title: GitHub"
+agent: {
+  "action": "screenshot"
+}
+// Agent receives "Screenshot saved: .dolphin/screenshots/screenshot_20260516_221142.png (1874 bytes)"
+```
+
+**Remote browser:** To connect to an existing browser instead of launching a new one:
+```yaml
+mcp:
+  cdp:
+    ws_url: "ws://localhost:9222"  # Chrome remote debugging URL
+```
+
+**Browser compatibility:** Dolphin auto-detects Chrome, Chromium, or Edge on the system. On macOS, it checks `/Applications/Google Chrome.app`, `/Applications/Chromium.app`, and `/Applications/Microsoft Edge.app`.
+
 ### External MCP Servers
 
 Connect to third-party MCP servers over three transport types:

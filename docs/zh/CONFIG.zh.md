@@ -112,6 +112,7 @@ Chrome DevTools Protocol — 浏览器自动化。
 | `mcp.cdp.priority` | `int` | `1000` | 工具列表优先级。 |
 | `mcp.cdp.ws_url` | `string` | `""` | 连接到已有的 CDP 端点（WebSocket URL），而非启动新浏览器。 |
 | `mcp.cdp.idle_timeout` | `int` | `300` | 空闲多少秒后自动关闭浏览器。设为 `0` 禁用自动关闭。 |
+| `mcp.cdp.startup_timeout` | `int` | `30` | 等待浏览器初始化验证的秒数。macOS 冷启动较慢。 |
 
 ### 邮件 MCP (`mcp.email`)
 

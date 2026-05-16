@@ -243,6 +243,7 @@ func TestOpenAIBuildMessagesRawThinkingWithToolCall(t *testing.T) {
 	p := NewOpenAIProvider(cfg)
 	msgs := p.buildMessagesRaw(ProviderRequest{
 		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"run find"`)},
 			{
 				Role: "assistant",
 				Content: json.RawMessage(`[
@@ -251,19 +252,40 @@ func TestOpenAIBuildMessagesRawThinkingWithToolCall(t *testing.T) {
 					{"type":"tool_use","id":"tc1","name":"shell","input":{"cmd":"find"}}
 				]`),
 			},
+			{
+				Role: "tool",
+				Content: json.RawMessage(`[
+					{"type":"tool_result","tool_use_id":"tc1","content":"file list"}
+				]`),
+			},
 		},
 	})
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
+	// User message + assistant message + tool result = 2 non-system msgs
+	// (tool results are merged into the assistant's tool_calls in OpenAI format)
+	if len(msgs) < 1 {
+		t.Fatalf("expected at least 1 message, got %d", len(msgs))
 	}
-	msg := msgs[0]
-	if msg["reasoning_content"] != "i need to search" {
-		t.Errorf("reasoning_content = %q", msg["reasoning_content"])
+	// Find the assistant message with reasoning_content
+	var assistantMsg map[string]any
+	for _, m := range msgs {
+		if m["role"] == "assistant" {
+			assistantMsg = m
+			break
+		}
 	}
-	if msg["content"] != "let me look that up" {
-		t.Errorf("content = %q", msg["content"])
+	if assistantMsg == nil {
+		t.Fatal("expected assistant message")
 	}
-	tcs := msg["tool_calls"].([]any)
+	if assistantMsg["reasoning_content"] != "i need to search" {
+		t.Errorf("reasoning_content = %q", assistantMsg["reasoning_content"])
+	}
+	if assistantMsg["content"] != "let me look that up" {
+		t.Errorf("content = %q", assistantMsg["content"])
+	}
+	tcs, ok := assistantMsg["tool_calls"].([]any)
+	if !ok {
+		t.Fatalf("tool_calls is not []any, got %T", assistantMsg["tool_calls"])
+	}
 	if len(tcs) != 1 {
 		t.Fatalf("expected 1 tool_call, got %d", len(tcs))
 	}

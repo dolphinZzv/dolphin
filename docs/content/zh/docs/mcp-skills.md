@@ -26,6 +26,49 @@ Dolphin 内置了以下 MCP 工具：
 
 这些工具可以独立开关和配置。详细配置参数参见[配置参考]({{< relref "docs/config" >}})。
 
+### CDP 浏览器工具
+
+CDP（Chrome DevTools Protocol）工具实现浏览器自动化，使用 chromedp 控制无界面 Chrome/Chromium 浏览器。
+
+**支持的 action：**
+
+| Action | 参数 | 说明 |
+|--------|------|------|
+| `navigate` | `url` | 打开 URL 并等待页面加载 |
+| `click` | `selector` | 通过 CSS selector 点击元素 |
+| `screenshot` | `selector`（可选） | 截图 — 全页或指定元素 |
+| `evaluate` | `script` | 执行 JavaScript（支持 async/await） |
+| `get_text` | `selector` | 提取元素的可见文本 |
+
+**截图行为：**
+- 全页截图：`{"action": "screenshot"}` — 捕获整个视口
+- 元素截图：`{"action": "screenshot", "selector": "#my-element"}` — 仅捕获该元素
+- 结果：保存到 `.dolphin/screenshots/screenshot_<时间戳>.png`，返回文件路径 + 大小
+- 正常全页 PNG 文件大小通常为 50KB–500KB
+
+**示例对话：**
+```
+user: 截取 github.com 的截图
+agent: {
+  "action": "navigate",
+  "url": "https://github.com"
+}
+// Agent 收到 "Navigated to https://github.com\nPage title: GitHub"
+agent: {
+  "action": "screenshot"
+}
+// Agent 收到 "Screenshot saved: .dolphin/screenshots/screenshot_20260516_221142.png (1874 bytes)"
+```
+
+**远程浏览器：** 可连接到已有的浏览器而非启动新实例：
+```yaml
+mcp:
+  cdp:
+    ws_url: "ws://localhost:9222"  # Chrome 远程调试 URL
+```
+
+**浏览器兼容性：** Dolphin 自动检测系统上的 Chrome、Chromium 或 Edge。在 macOS 上会检查 `/Applications/Google Chrome.app`、`/Applications/Chromium.app` 和 `/Applications/Microsoft Edge.app`。
+
 ### 外部 MCP 服务器
 
 支持三种传输类型连接第三方 MCP 服务器：

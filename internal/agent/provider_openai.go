@@ -331,7 +331,8 @@ func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any 
 		})
 	}
 
-	for _, m := range req.Messages {
+	messages := sanitizeToolPairing(req.Messages)
+	for _, m := range messages {
 		switch m.Role {
 		case "user":
 			msgs = append(msgs, map[string]any{

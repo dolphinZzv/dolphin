@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/mail"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -904,5 +907,224 @@ func TestEmailToolSchema(t *testing.T) {
 		if !found {
 			t.Errorf("schema enum missing action %q, got %v", e, actions)
 		}
+	}
+
+	// Verify attachments field in schema
+	if _, ok := props["attachments"]; !ok {
+		t.Error("schema missing attachments property")
+	}
+}
+
+// ── Attachment tests ────────────────────────────────────────────────────
+
+func TestEmailSendWithAttachment(t *testing.T) {
+	// Create a temp file to attach
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(filePath, []byte("attachment content here"), 0600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	addr, gotMsg := startTestSMTPServer(t)
+	cfg := emailConfig(addr)
+	cfg.Transport.Email.UseTLS = false
+	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
+
+	tool := NewEmailTool(cfg)
+	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"With Attachment","body":"See attached.","attachments":[{"file_path":"%s"}]}`, filePath)
+	result, err := tool.Execute(context.Background(), json.RawMessage(input))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	select {
+	case msg := <-gotMsg:
+		if !strings.Contains(msg, "Content-Type: multipart/mixed") {
+			t.Errorf("expected multipart/mixed content type, got: %q", msg)
+		}
+		if !strings.Contains(msg, "Content-Disposition: attachment; filename=\"test.txt\"") {
+			t.Errorf("expected attachment disposition, got: %q", msg)
+		}
+		if !strings.Contains(msg, "See attached.") {
+			t.Errorf("expected text body in multipart, got: %q", msg)
+		}
+		if !strings.Contains(msg, "attachment content here") {
+			t.Errorf("expected attachment content, got: %q", msg)
+		}
+		if !strings.Contains(result.Content, "attachments: test.txt") {
+			t.Errorf("expected attachment name in result, got: %q", result.Content)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SMTP server")
+	}
+}
+
+func TestEmailSendWithMultipleAttachments(t *testing.T) {
+	tmpDir := t.TempDir()
+	files := []string{"a.txt", "b.pdf"}
+	for _, name := range files {
+		if err := os.WriteFile(filepath.Join(tmpDir, name), []byte(name+" content"), 0600); err != nil {
+			t.Fatalf("write temp file %s: %v", name, err)
+		}
+	}
+
+	addr, gotMsg := startTestSMTPServer(t)
+	cfg := emailConfig(addr)
+	cfg.Transport.Email.UseTLS = false
+	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
+
+	tool := NewEmailTool(cfg)
+	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"Two Files","body":"Here are two files.","attachments":[{"file_path":"%s"},{"file_path":"%s"}]}`,
+		filepath.Join(tmpDir, "a.txt"), filepath.Join(tmpDir, "b.pdf"))
+	result, err := tool.Execute(context.Background(), json.RawMessage(input))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "attachments: a.txt, b.pdf") {
+		t.Errorf("expected both attachment names, got: %q", result.Content)
+	}
+
+	select {
+	case msg := <-gotMsg:
+		if !strings.Contains(msg, `attachment; filename="a.txt"`) {
+			t.Errorf("missing a.txt attachment, got: %q", msg)
+		}
+		if !strings.Contains(msg, `attachment; filename="b.pdf"`) {
+			t.Errorf("missing b.pdf attachment, got: %q", msg)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SMTP server")
+	}
+}
+
+func TestEmailSendAttachmentNotFound(t *testing.T) {
+	addr, _ := startTestSMTPServer(t)
+	cfg := emailConfig(addr)
+	cfg.Transport.Email.UseTLS = false
+	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
+
+	tool := NewEmailTool(cfg)
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"r@x.com","subject":"Bad Attach","body":"test","attachments":[{"file_path":"/nonexistent/file.txt"}]}`))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for missing attachment file")
+	}
+	if !strings.Contains(result.Content, "Cannot read attachment") {
+		t.Errorf("expected 'Cannot read attachment' error, got: %q", result.Content)
+	}
+}
+
+func TestEmailSendAttachmentEmptyPath(t *testing.T) {
+	addr, gotMsg := startTestSMTPServer(t)
+	cfg := emailConfig(addr)
+	cfg.Transport.Email.UseTLS = false
+	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
+
+	tool := NewEmailTool(cfg)
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"r@x.com","subject":"Empty Path","body":"test","attachments":[{"file_path":""}]}`))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+
+	// Should have sent as plain text (empty file_path is skipped)
+	select {
+	case msg := <-gotMsg:
+		if strings.Contains(msg, "multipart/mixed") {
+			t.Error("empty file_path should not produce multipart")
+		}
+		if !strings.Contains(msg, "Content-Type: text/plain") {
+			t.Errorf("expected text/plain for no-attach send, got: %q", msg)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for SMTP server")
+	}
+}
+
+// ── Multipart parse tests ───────────────────────────────────────────────
+
+func TestFormatParsedMessageMultipart(t *testing.T) {
+	// Build a multipart/mixed message similar to what our send() produces
+	var raw strings.Builder
+	raw.WriteString("From: sender@test.com\r\n")
+	raw.WriteString("To: recipient@test.com\r\n")
+	raw.WriteString("Subject: Multipart Test\r\n")
+	raw.WriteString("Date: Mon, 10 Mar 2025 10:00:00 +0000\r\n")
+	raw.WriteString("MIME-Version: 1.0\r\n")
+	raw.WriteString("Content-Type: multipart/mixed; boundary=\"testboundary\"\r\n")
+	raw.WriteString("\r\n")
+	raw.WriteString("--testboundary\r\n")
+	raw.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	raw.WriteString("\r\n")
+	raw.WriteString("This is the text body.\r\n")
+	raw.WriteString("--testboundary\r\n")
+	raw.WriteString("Content-Type: application/pdf\r\n")
+	raw.WriteString("Content-Disposition: attachment; filename=\"report.pdf\"\r\n")
+	raw.WriteString("Content-Transfer-Encoding: base64\r\n")
+	raw.WriteString("\r\n")
+	raw.WriteString("fakebase64data\r\n")
+	raw.WriteString("--testboundary--\r\n")
+
+	result := formatParsedMessage(raw.String(), 1, func(hdr mail.Header) string {
+		return fmt.Sprintf("From: %s\nSubject: %s\nSeq: 1", hdr.Get("From"), hdr.Get("Subject"))
+	})
+
+	if !strings.Contains(result, "Multipart Test") {
+		t.Errorf("expected subject in result, got: %q", result)
+	}
+	if !strings.Contains(result, "This is the text body.") {
+		t.Errorf("expected text body in result, got: %q", result)
+	}
+	if !strings.Contains(result, "Attachments:") {
+		t.Errorf("expected Attachments section, got: %q", result)
+	}
+	if !strings.Contains(result, "report.pdf") {
+		t.Errorf("expected report.pdf attachment, got: %q", result)
+	}
+	if !strings.Contains(result, "application/pdf") {
+		t.Errorf("expected application/pdf mime type, got: %q", result)
+	}
+}
+
+func TestFormatParsedMessagePlainText(t *testing.T) {
+	raw := "From: sender@test.com\r\nSubject: Plain Text\r\nDate: Mon, 10 Mar 2025 10:00:00 +0000\r\n\r\nPlain body here."
+
+	result := formatParsedMessage(raw, 1, func(hdr mail.Header) string {
+		return fmt.Sprintf("From: %s\nSubject: %s\nSeq: 1", hdr.Get("From"), hdr.Get("Subject"))
+	})
+
+	if !strings.Contains(result, "Plain Text") {
+		t.Errorf("expected subject, got: %q", result)
+	}
+	if !strings.Contains(result, "Plain body here.") {
+		t.Errorf("expected body, got: %q", result)
+	}
+	if strings.Contains(result, "Attachments:") {
+		t.Error("plain text should not have Attachments section")
+	}
+}
+
+func TestFormatParsedMessageParseFailure(t *testing.T) {
+	raw := "not a valid email message"
+
+	result := formatParsedMessage(raw, 5, func(hdr mail.Header) string {
+		return "should not reach"
+	})
+
+	if !strings.Contains(result, "parse failed") {
+		t.Errorf("expected parse failure note, got: %q", result)
+	}
+	if !strings.Contains(result, "Seq: 5") {
+		t.Errorf("expected seq number, got: %q", result)
 	}
 }

@@ -7,9 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -63,6 +67,19 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 				"type":        "boolean",
 				"description": "only search unread messages (IMAP only, default false)",
 			},
+			"attachments": map[string]any{
+				"type":        "array",
+				"description": "Optional file attachments (send only). Each item must have an absolute file_path.",
+				"items": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"file_path": map[string]any{
+							"type":        "string",
+							"description": "Absolute path to the file to attach",
+						},
+					},
+				},
+			},
 		},
 		"required": []string{"action"},
 	})
@@ -81,14 +98,17 @@ func (e *EmailTool) Definition() ToolDefinition {
 
 func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error) {
 	var params struct {
-		Action     string `json:"action"`
-		To         string `json:"to,omitempty"`
-		Subject    string `json:"subject,omitempty"`
-		Body       string `json:"body,omitempty"`
-		Query      string `json:"query,omitempty"`
-		MaxResults int    `json:"max_results,omitempty"`
-		Seq        int    `json:"seq,omitempty"`
-		UnreadOnly bool   `json:"unread_only,omitempty"`
+		Action      string `json:"action"`
+		To          string `json:"to,omitempty"`
+		Subject     string `json:"subject,omitempty"`
+		Body        string `json:"body,omitempty"`
+		Query       string `json:"query,omitempty"`
+		MaxResults  int    `json:"max_results,omitempty"`
+		Seq         int    `json:"seq,omitempty"`
+		UnreadOnly  bool   `json:"unread_only,omitempty"`
+		Attachments []struct {
+			FilePath string `json:"file_path"`
+		} `json:"attachments,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &ToolResult{Content: "Invalid input: " + err.Error(), IsError: true}, nil
@@ -101,7 +121,7 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 
 	switch params.Action {
 	case "send":
-		return e.send(ecfg, params.To, params.Subject, params.Body)
+		return e.send(ecfg, params.To, params.Subject, params.Body, params.Attachments)
 	case "search":
 		if params.MaxResults <= 0 || params.MaxResults > 50 {
 			params.MaxResults = 10
@@ -119,7 +139,9 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 
 // ── Send ─────────────────────────────────────────────────────────────
 
-func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string) (*ToolResult, error) {
+func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, attachments []struct {
+	FilePath string `json:"file_path"`
+}) (*ToolResult, error) {
 	if to == "" {
 		return &ToolResult{Content: "Missing required field: to.", IsError: true}, nil
 	}
@@ -139,26 +161,96 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string) (*T
 	}
 	addr := fmt.Sprintf("%s:%d", host, port)
 
+	// Read attachment files
+	type attachFile struct {
+		name     string
+		data     []byte
+		mimeType string
+	}
+	var files []attachFile
+	const maxFileSize = 10 * 1024 * 1024 // 10MB per file
+	for _, a := range attachments {
+		if a.FilePath == "" {
+			continue
+		}
+		absPath, err := filepath.Abs(a.FilePath)
+		if err != nil {
+			return &ToolResult{Content: fmt.Sprintf("Invalid file path %q: %v", a.FilePath, err), IsError: true}, nil
+		}
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			return &ToolResult{Content: fmt.Sprintf("Cannot read attachment %q: %v", absPath, err), IsError: true}, nil
+		}
+		if len(data) > maxFileSize {
+			return &ToolResult{Content: fmt.Sprintf("Attachment %q too large (%d bytes, max %d)", absPath, len(data), maxFileSize), IsError: true}, nil
+		}
+		mimeType := mime.TypeByExtension(filepath.Ext(absPath))
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+		files = append(files, attachFile{
+			name:     filepath.Base(absPath),
+			data:     data,
+			mimeType: mimeType,
+		})
+	}
+
 	var msg strings.Builder
 	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
 	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	msg.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
-	msg.WriteString("\r\n")
-	msg.WriteString(body)
+
+	if len(files) == 0 {
+		msg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+		msg.WriteString("\r\n")
+		msg.WriteString(body)
+	} else {
+		mw := multipart.NewWriter(&msg)
+		msg.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mw.Boundary()))
+		msg.WriteString("\r\n")
+
+		// Text part
+		textPart, _ := mw.CreatePart(map[string][]string{
+			"Content-Type": {"text/plain; charset=\"utf-8\""},
+		})
+		textPart.Write([]byte(body))
+
+		// Attachment parts
+		for _, f := range files {
+			part, err := mw.CreatePart(map[string][]string{
+				"Content-Type":              {f.mimeType},
+				"Content-Disposition":       {fmt.Sprintf("attachment; filename=\"%s\"", f.name)},
+				"Content-Transfer-Encoding": {"base64"},
+			})
+			if err != nil {
+				return &ToolResult{Content: fmt.Sprintf("Failed to create attachment part: %v", err), IsError: true}, nil
+			}
+			part.Write(f.data)
+		}
+		mw.Close()
+	}
+
+	rawMsg := msg.String()
 
 	if ecfg.UseTLS && ecfg.SMTPPort == 465 {
-		if err := sendTLS(addr, host, from, []string{to}, msg.String(), ecfg.Username, ecfg.Password); err != nil {
+		if err := sendTLS(addr, host, from, []string{to}, rawMsg, ecfg.Username, ecfg.Password); err != nil {
 			return &ToolResult{Content: fmt.Sprintf("Send failed (TLS): %s", err.Error()), IsError: true}, nil
 		}
 	} else {
-		if err := sendPlain(addr, host, from, []string{to}, msg.String(), ecfg.Username, ecfg.Password); err != nil {
+		if err := sendPlain(addr, host, from, []string{to}, rawMsg, ecfg.Username, ecfg.Password); err != nil {
 			return &ToolResult{Content: fmt.Sprintf("Send failed: %s", err.Error()), IsError: true}, nil
 		}
 	}
 
+	if len(files) > 0 {
+		var names []string
+		for _, f := range files {
+			names = append(names, f.name)
+		}
+		return &ToolResult{Content: fmt.Sprintf("Email sent to %s: %s (attachments: %s)", to, subject, strings.Join(names, ", "))}, nil
+	}
 	return &ToolResult{Content: fmt.Sprintf("Email sent to %s: %s", to, subject)}, nil
 }
 
@@ -386,15 +478,11 @@ func (e *EmailTool) fetchPOP3(ecfg *config.EmailConfig, seq int) (*ToolResult, e
 		return &ToolResult{Content: fmt.Sprintf("Failed to fetch message %d: %s", seq, err.Error()), IsError: true}, nil
 	}
 
-	if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
-		header := parsed.Header
-		bodyBytes, _ := io.ReadAll(parsed.Body)
-		return &ToolResult{Content: fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d\n\n%s",
-			header.Get("From"), header.Get("To"), header.Get("Subject"),
-			header.Get("Date"), seq, truncate(string(bodyBytes), 10000))}, nil
-	}
-
-	return &ToolResult{Content: fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 10000))}, nil
+	content := formatParsedMessage(raw, seq, func(hdr mail.Header) string {
+		return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d",
+			hdr.Get("From"), hdr.Get("To"), hdr.Get("Subject"), hdr.Get("Date"), seq)
+	})
+	return &ToolResult{Content: content}, nil
 }
 
 // ── IMAP helpers ─────────────────────────────────────────────────────
@@ -459,15 +547,74 @@ func formatMessageBody(body map[*goimap.BodySectionName]goimap.Literal, seq int)
 		return &ToolResult{Content: "No body content found."}
 	}
 
-	if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
-		header := parsed.Header
-		bodyBytes, _ := io.ReadAll(parsed.Body)
-		return &ToolResult{Content: fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d\n\n%s",
-			header.Get("From"), header.Get("To"), header.Get("Subject"),
-			header.Get("Date"), seq, truncate(string(bodyBytes), 10000))}
+	content := formatParsedMessage(raw, seq, func(hdr mail.Header) string {
+		return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d",
+			hdr.Get("From"), hdr.Get("To"), hdr.Get("Subject"), hdr.Get("Date"), seq)
+	})
+	return &ToolResult{Content: content}
+}
+
+// formatParsedMessage parses a raw RFC822 message and returns a formatted string.
+// Handles multipart messages by listing attachments separately.
+func formatParsedMessage(raw string, seq int, headerFn func(mail.Header) string) string {
+	parsed, err := mail.ReadMessage(strings.NewReader(raw))
+	if err != nil {
+		return fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 2000))
 	}
 
-	return &ToolResult{Content: fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 2000))}
+	header := parsed.Header
+	contentType := header.Get("Content-Type")
+
+	bodyBytes, _ := io.ReadAll(parsed.Body)
+	bodyStr := string(bodyBytes)
+
+	// If multipart, walk parts
+	if strings.HasPrefix(contentType, "multipart/") {
+		_, params, _ := mime.ParseMediaType(contentType)
+		boundary := params["boundary"]
+		if boundary != "" {
+			mpReader := multipart.NewReader(strings.NewReader(bodyStr), boundary)
+
+			var textParts []string
+			var attachInfos []string
+
+			for {
+				part, err := mpReader.NextPart()
+				if err != nil {
+					break
+				}
+				partCT := part.Header.Get("Content-Type")
+				partData, _ := io.ReadAll(part)
+
+				if strings.HasPrefix(partCT, "text/plain") || strings.HasPrefix(partCT, "text/html") {
+					textParts = append(textParts, string(partData))
+				} else {
+					filename := ""
+					disp := part.Header.Get("Content-Disposition")
+					if disp != "" {
+						_, dispParams, _ := mime.ParseMediaType(disp)
+						filename = dispParams["filename"]
+					}
+					if filename == "" {
+						filename = "unnamed"
+					}
+					attachInfos = append(attachInfos, fmt.Sprintf("  [%d] %s (%s, %d bytes)",
+						len(attachInfos)+1, filename, partCT, len(partData)))
+				}
+			}
+
+			result := headerFn(header) + "\n"
+			if len(textParts) > 0 {
+				result += "\n" + truncate(strings.Join(textParts, "\n---\n"), 8000)
+			}
+			if len(attachInfos) > 0 {
+				result += "\n\nAttachments:\n" + strings.Join(attachInfos, "\n")
+			}
+			return result
+		}
+	}
+
+	return fmt.Sprintf("%s\n\n%s", headerFn(header), truncate(bodyStr, 10000))
 }
 
 // ── POP3 client ──────────────────────────────────────────────────────

@@ -166,6 +166,9 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 			chromedp.Flag("disable-translate", true),
 			chromedp.Flag("no-first-run", true),
 			chromedp.Flag("no-default-browser-check", true),
+			chromedp.Flag("window-size", "1920,1080"),
+			chromedp.Flag("disable-blink-features", "AutomationControlled"),
+			chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"),
 		}
 		allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
@@ -260,6 +263,8 @@ func (c *CDPTool) navigate(ctx context.Context, url string) (*ToolResult, error)
 	var title string
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(url),
+		chromedp.WaitReady("body"),
+		chromedp.Sleep(2*time.Second),
 		chromedp.Title(&title),
 	)
 	if err != nil {

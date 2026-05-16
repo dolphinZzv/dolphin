@@ -380,8 +380,13 @@ func (p *AnthropicProvider) buildReq(req ProviderRequest, stream bool) anthroReq
 		Stream:    stream,
 	}
 
-	for i := 0; i < len(req.Messages); i++ {
-		msg := req.Messages[i]
+	// Defense: ensure tool_use/tool_result pairing before building the request.
+	// Session replay can introduce orphaned tool_use blocks when a previous
+	// session was interrupted mid-tool-execution.
+	msgs := sanitizeToolPairing(req.Messages)
+
+	for i := 0; i < len(msgs); i++ {
+		msg := msgs[i]
 		switch msg.Role {
 		case "user":
 			ar.Messages = append(ar.Messages, anthroMsg{Role: "user", Content: msg.Content})
@@ -393,9 +398,9 @@ func (p *AnthropicProvider) buildReq(req ProviderRequest, stream bool) anthroReq
 			// tool_result in the very next message, and all tool_results for a
 			// turn must be in one user message — consecutive user messages are invalid.
 			var blocks []json.RawMessage
-			for i < len(req.Messages) && req.Messages[i].Role == "tool" {
+			for i < len(msgs) && msgs[i].Role == "tool" {
 				var toolBlocks []json.RawMessage
-				if err := json.Unmarshal(req.Messages[i].Content, &toolBlocks); err == nil {
+				if err := json.Unmarshal(msgs[i].Content, &toolBlocks); err == nil {
 					blocks = append(blocks, toolBlocks...)
 				}
 				i++

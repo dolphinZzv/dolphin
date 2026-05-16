@@ -101,7 +101,6 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 	tool := NewCDPTool(cfg)
 	defer tool.Shutdown()
 
-	// Test 1: Navigate to baidu.com
 	t.Run("navigate", func(t *testing.T) {
 		input, _ := json.Marshal(map[string]string{
 			"action": "navigate",
@@ -122,7 +121,6 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 		t.Logf("navigate OK [%s]: %s", elapsed, result.Content)
 	})
 
-	// Test 2: Screenshot baidu.com
 	t.Run("screenshot", func(t *testing.T) {
 		input, _ := json.Marshal(map[string]string{
 			"action": "screenshot",
@@ -140,10 +138,9 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 			t.Fatalf("expected 'Screenshot saved:' in result, got: %s", result.Content)
 		}
 
-		// Verify the file exists and is non-empty
 		fields := strings.Fields(result.Content)
 		if len(fields) >= 3 {
-			filePath := fields[2] // "Screenshot saved: <path> (<size> bytes)"
+			filePath := fields[2]
 			if data, err := os.ReadFile(filePath); err == nil {
 				if len(data) < 100 {
 					t.Fatalf("screenshot too small: %d bytes", len(data))
@@ -153,5 +150,26 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 				t.Logf("screenshot file not readable (test env): %v", err)
 			}
 		}
+	})
+
+	// Element screenshot
+	t.Run("element_screenshot", func(t *testing.T) {
+		input, _ := json.Marshal(map[string]string{
+			"action":   "screenshot",
+			"selector": "body",
+		})
+		start := time.Now()
+		result, err := tool.Execute(context.Background(), input)
+		elapsed := time.Since(start).Round(time.Millisecond)
+		if err != nil {
+			t.Fatalf("Execute error after %s: %v", elapsed, err)
+		}
+		if result.IsError {
+			t.Fatalf("element screenshot failed after %s: %s", elapsed, result.Content)
+		}
+		if !strings.Contains(result.Content, "Screenshot saved:") {
+			t.Fatalf("expected 'Screenshot saved:' in result, got: %s", result.Content)
+		}
+		t.Logf("element screenshot OK [%s]: %s", elapsed, result.Content)
 	})
 }

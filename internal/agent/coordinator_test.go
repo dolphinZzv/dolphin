@@ -129,6 +129,97 @@ func TestReplayMessagesSkipsMessageWithoutRole(t *testing.T) {
 	}
 }
 
+func TestSanitizeToolPairingOrphanedToolUse(t *testing.T) {
+	// Simulate: assistant with 2 tool_use blocks, but only 1 tool_result exists.
+	assistantContent, _ := json.Marshal([]map[string]any{
+		{"type": "text", "text": "Let me help"},
+		{"type": "tool_use", "id": "call_A", "name": "bash", "input": map[string]any{"cmd": "ls"}},
+		{"type": "tool_use", "id": "call_B", "name": "cdp", "input": map[string]any{"action": "screenshot"}},
+	})
+	toolContent, _ := json.Marshal([]map[string]any{
+		{"type": "tool_result", "tool_use_id": "call_A", "content": "file list"},
+		// call_B result is missing — session was interrupted
+	})
+
+	messages := []Message{
+		{Role: "user", Content: json.RawMessage(`"do stuff"`)},
+		{Role: "assistant", Content: assistantContent},
+		{Role: "tool", Content: toolContent},
+	}
+
+	cleaned := sanitizeToolPairing(messages)
+
+	// Verify call_B was stripped from assistant
+	var blocks []map[string]any
+	json.Unmarshal(cleaned[1].Content, &blocks)
+
+	foundCallA := false
+	foundCallB := false
+	for _, b := range blocks {
+		if b["type"] == "tool_use" {
+			if b["id"] == "call_A" {
+				foundCallA = true
+			}
+			if b["id"] == "call_B" {
+				foundCallB = true
+			}
+		}
+	}
+	if !foundCallA {
+		t.Error("call_A should be kept (has matching tool_result)")
+	}
+	if foundCallB {
+		t.Error("call_B should be stripped (no matching tool_result)")
+	}
+	if len(cleaned) != 3 {
+		t.Errorf("message count unchanged, got %d", len(cleaned))
+	}
+}
+
+func TestSanitizeToolPairingAllMatched(t *testing.T) {
+	assistantContent, _ := json.Marshal([]map[string]any{
+		{"type": "tool_use", "id": "call_1", "name": "bash", "input": map[string]any{}},
+	})
+	toolContent, _ := json.Marshal([]map[string]any{
+		{"type": "tool_result", "tool_use_id": "call_1", "content": "done"},
+	})
+
+	messages := []Message{
+		{Role: "user", Content: json.RawMessage(`"hi"`)},
+		{Role: "assistant", Content: assistantContent},
+		{Role: "tool", Content: toolContent},
+	}
+
+	cleaned := sanitizeToolPairing(messages)
+
+	var blocks []map[string]any
+	json.Unmarshal(cleaned[1].Content, &blocks)
+
+	found := false
+	for _, b := range blocks {
+		if b["type"] == "tool_use" && b["id"] == "call_1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("call_1 should be kept (has matching tool_result)")
+	}
+}
+
+func TestSanitizeToolPairingNoToolUse(t *testing.T) {
+	// Assistant without tool_use shouldn't be modified
+	content := json.RawMessage(`[{"type":"text","text":"hello"}]`)
+	messages := []Message{
+		{Role: "user", Content: json.RawMessage(`"hi"`)},
+		{Role: "assistant", Content: content},
+	}
+
+	cleaned := sanitizeToolPairing(messages)
+	if string(cleaned[1].Content) != string(content) {
+		t.Error("assistant without tool_use should be unchanged")
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

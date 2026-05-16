@@ -112,6 +112,7 @@ Chrome DevTools Protocol — browser automation.
 | `mcp.cdp.priority` | `int` | `1000` | Tool listing priority. |
 | `mcp.cdp.ws_url` | `string` | `""` | Connect to an existing CDP endpoint instead of launching a new browser. |
 | `mcp.cdp.idle_timeout` | `int` | `300` | Seconds of inactivity before auto-closing the browser. Set to `0` to disable. |
+| `mcp.cdp.startup_timeout` | `int` | `30` | Seconds to wait for browser init verification. Cold starts on macOS can be slow. |
 
 ### Email MCP (`mcp.email`)
 
