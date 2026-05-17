@@ -82,6 +82,7 @@ brews:
     repository:
       owner: dolphinZzv
       name: homebrew-dolphin
+      token: "{{ .Env.GH_PAT }}"
     commit_author:
       name: dolphinZzv
       email: dolphin@siciv.space
