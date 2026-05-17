@@ -12,178 +12,50 @@ Dolphin runs on **Linux**, **macOS**, and **Windows**. Choose the method that wo
 - **LLM API key** — from OpenAI (or any OpenAI-compatible provider), Anthropic, or a regional LLM service
 - **Go 1.26+** (only required for building from source)
 
-## Option 1: Download a pre-built binary (recommended)
-
-Download the archive for your platform from the [latest release](https://github.com/dolphinZzv/dolphin/releases/latest), extract the binary, and place `dolphin-ai` in your `PATH`.
-
-| Platform | Archive name |
-|----------|-------------|
-| Linux x86_64 | `dolphin-ai_<version>_linux_x86_64.tar.gz` |
-| Linux arm64 | `dolphin-ai_<version>_linux_arm64.tar.gz` |
-| macOS Intel | `dolphin-ai_<version>_macOS_x86_64.tar.gz` |
-| macOS Apple Silicon | `dolphin-ai_<version>_macOS_arm64.tar.gz` |
-| Windows x86_64 | `dolphin-ai_<version>_windows_x86_64.zip` |
-| Windows arm64 | `dolphin-ai_<version>_windows_arm64.zip` |
+## Option 1: Homebrew install (recommended macOS/Linux)
 
 ```bash
-# Example: install the latest version on Linux x86_64
-VERSION="v1.0.0"   # replace with actual latest version
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
-tar xzf "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
+brew install dolphin-ai
+```
+
+## Option 2: Download a pre-built binary
+
+Download the archive for your platform from the [latest release](https://github.com/dolphinZzv/dolphin/releases/latest).
+
+```bash
+# macOS Apple Silicon (M1/M2/M3/M4)
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_macOS_arm64.tar.gz | tar -xz
 sudo mv dolphin-ai /usr/local/bin/
-rm "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
-```
 
-```bash
-# macOS Apple Silicon example
-VERSION="v1.0.0"
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
-tar xzf "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
+# macOS Intel
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_macOS_x86_64.tar.gz | tar -xz
 sudo mv dolphin-ai /usr/local/bin/
-rm "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
-```
 
-```powershell
-# Windows x86_64 example (PowerShell)
-$VERSION = "v1.0.0"
-Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai_${VERSION}_windows_x86_64.zip"
-Expand-Archive -Path "dolphin-ai_${VERSION}_windows_x86_64.zip" -DestinationPath .
-Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
-Remove-Item "dolphin-ai_${VERSION}_windows_x86_64.zip"
-```
+# Linux x86_64
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_linux_x86_64.tar.gz | tar -xz
+sudo mv dolphin-ai /usr/local/bin/
 
-Alternatively, add the download directory to your `PATH` instead of moving the binary.
-
-## Option 2: Install with `go install`
-
-Requires Go 1.26+.
-
-```bash
-go install github.com/dolphinZzv/dolphin@latest
-```
-
-This places the `dolphin-ai` binary in `$GOPATH/bin` (or `$HOME/go/bin` by default). Make sure that directory is in your `PATH`.
-
-To install a specific version:
-
-```bash
-go install github.com/dolphinZzv/dolphin@v1.0.0
+# Linux arm64
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_linux_arm64.tar.gz | tar -xz
+sudo mv dolphin-ai /usr/local/bin/
 ```
 
 ## Option 3: Build from source
 
 Requires Go 1.26+ and `git`.
 
-Clone the repo:
-
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
-cd dolphin-ai
+cd dolphin
+go build -o dolphin-ai .
+sudo mv dolphin-ai /usr/local/bin/
 ```
 
-Then follow the instructions for your platform.
-
-### Linux
-
-`make` is available out of the box:
-
-```bash
-make build   # produces ./dolphin-ai (version = dev)
-```
-
-Or build manually:
-
-```bash
-go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin-ai .
-```
-
-For a release build, set VERSION:
-
-```bash
-make build VERSION=v1.0.0
-```
-
-### macOS
-
-`make` is included with Xcode Command Line Tools. Install them if you haven't already:
-
-```bash
-xcode-select --install
-```
-
-Then:
-
-```bash
-make build   # produces ./dolphin-ai (version = dev)
-```
-
-Or build manually:
-
-```bash
-go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin-ai .
-```
-
-### Windows
-
-**Option A — Go build (PowerShell / cmd):**
-
-```powershell
-# Development build (version = dev)
-go build -o dolphin-ai.exe .
-
-# Release build with version
-$env:VERSION = "v1.0.0"
-go build -ldflags="-X 'dolphin/cmd.Version=$env:VERSION'" -o dolphin-ai.exe .
-```
-
-**Option B — Make (native Windows):**
-
-Install `make` via one of:
-
-```powershell
-# Chocolatey
-choco install make
-
-# winget
-winget install GnuWin32.Make
-```
-
-Then build:
-
-```powershell
-make build   # produces ./dolphin-ai.exe (version = dev)
-make build VERSION=v1.0.0
-```
-
-**Option C — Git Bash / WSL:**
-
-```bash
-make build   # produces ./dolphin-ai.exe (version = dev)
-```
-
-## Verify the installation
+## Verify installation
 
 ```bash
 dolphin-ai --version
 ```
-
-You should see output like:
-
-```
-dolphin-ai dev
-```
-
-## Post-installation: configure your API key
-
-Dolphin needs at least an API key to run. Set it via environment variable:
-
-```bash
-export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="claude-sonnet-4-6"
-./dolphin-ai
-```
-
-On the first run, Dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file. Everything is stored locally.
 
 ### Recommended models
 

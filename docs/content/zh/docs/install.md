@@ -12,95 +12,43 @@ weight: 10
 - **LLM API 密钥** — 来自 DeepSeek、MiniMax、Kimi、智谱 GLM、通义千问，或 Anthropic
 - **Go 1.26+**（仅源码编译时需要）
 
-## 方式一：下载预编译二进制（推荐）
-
-从 [latest release](https://github.com/dolphinZzv/dolphin/releases/latest) 下载对应平台的压缩包，解压后将 `dolphin-ai` 二进制放入 `PATH`。
-
-| 平台 | 文件名 |
-|------|--------|
-| Linux x86_64 | `dolphin-ai_<版本>_linux_x86_64.tar.gz` |
-| Linux arm64 | `dolphin-ai_<版本>_linux_arm64.tar.gz` |
-| macOS Intel | `dolphin-ai_<版本>_macOS_x86_64.tar.gz` |
-| macOS Apple Silicon | `dolphin-ai_<版本>_macOS_arm64.tar.gz` |
-| Windows x86_64 | `dolphin-ai_<版本>_windows_x86_64.zip` |
-| Windows arm64 | `dolphin-ai_<版本>_windows_arm64.zip` |
+## 方式一：Homebrew 安装（推荐 macOS/Linux）
 
 ```bash
-# 示例：Linux x86_64
-VERSION="v1.0.0"   # 替换为实际最新版本号
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
-tar xzf "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
+brew install dolphin-ai
+```
+
+## 方式二：下载预编译二进制
+
+从 [latest release](https://github.com/dolphinZzv/dolphin/releases/latest) 下载对应平台的压缩包。
+
+```bash
+# macOS Apple Silicon (M1/M2/M3/M4)
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_macOS_arm64.tar.gz | tar -xz
 sudo mv dolphin-ai /usr/local/bin/
-rm "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
-```
 
-```bash
-# 示例：macOS Apple Silicon
-VERSION="v1.0.0"
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
-tar xzf "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
+# macOS Intel
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_macOS_x86_64.tar.gz | tar -xz
 sudo mv dolphin-ai /usr/local/bin/
-rm "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
-```
 
-```powershell
-# 示例：Windows x86_64（PowerShell）
-$VERSION = "v1.0.0"
-Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai_${VERSION}_windows_x86_64.zip"
-Expand-Archive -Path "dolphin-ai_${VERSION}_windows_x86_64.zip" -DestinationPath .
-Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
-Remove-Item "dolphin-ai_${VERSION}_windows_x86_64.zip"
-```
+# Linux x86_64
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_linux_x86_64.tar.gz | tar -xz
+sudo mv dolphin-ai /usr/local/bin/
 
-也可将下载目录加入 `PATH` 环境变量代替移动操作。
-
-## 方式二：使用 `go install` 安装
-
-需要 Go 1.26+。
-
-```bash
-go install github.com/dolphinZzv/dolphin@latest
-```
-
-`dolphin-ai` 二进制会安装到 `$GOPATH/bin` 目录（默认是 `$HOME/go/bin`）。请确保该目录已在 `PATH` 中。
-
-安装指定版本：
-
-```bash
-go install github.com/dolphinZzv/dolphin@v1.0.0
+# Linux arm64
+curl -L https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_0.2.9_linux_arm64.tar.gz | tar -xz
+sudo mv dolphin-ai /usr/local/bin/
 ```
 
 ## 方式三：源码编译
 
 需要 Go 1.26+ 和 `git`。
 
-克隆仓库：
-
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
-cd dolphin-ai
-```
-
-然后根据你的系统选择对应方式。
-
-### Linux
-
-`make` 直接可用：
-
-```bash
-make build   # 生成 ./dolphin-ai（版本号 = dev）
-```
-
-或手动编译：
-
-```bash
-go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin-ai .
-```
-
-发布版本可指定 VERSION：
-
-```bash
-make build VERSION=v1.0.0
+cd dolphin
+go build -o dolphin-ai .
+sudo mv dolphin-ai /usr/local/bin/
 ```
 
 ### macOS
