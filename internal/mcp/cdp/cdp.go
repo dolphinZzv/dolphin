@@ -125,8 +125,10 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	defer c.mu.Unlock()
 
 	if c.initialized {
-		healthCtx, _ := context.WithTimeout(c.browserCtx, 10*time.Second)
+		healthCtx, healthCancel := context.WithTimeout(c.browserCtx, 10*time.Second)
+		defer func() { healthCancel() }()
 		if err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank")); err == nil {
+			healthCancel = func() {}
 			return c.browserCtx, nil
 		} else {
 			zap.S().Warnw("cdp browser appears dead, reinitializing", "error", err)
@@ -177,11 +179,13 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	if startupTimeout <= 0 {
 		startupTimeout = 30 * time.Second
 	}
-	initCtx, _ := context.WithTimeout(c.browserCtx, startupTimeout)
+	initCtx, initCancel := context.WithTimeout(c.browserCtx, startupTimeout)
+	defer func() { initCancel() }()
 	if err := chromedp.Run(initCtx, chromedp.Navigate("about:blank")); err != nil {
 		c.shutdownBrowser()
 		return nil, fmt.Errorf("browser init verify failed: %w", err)
 	}
+	initCancel = func() {}
 
 	return c.browserCtx, nil
 }
