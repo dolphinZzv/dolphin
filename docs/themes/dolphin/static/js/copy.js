@@ -1,3 +1,4 @@
+// Copy button on code blocks
 (function() {
   document.querySelectorAll('pre').forEach(function(pre) {
     var btn = document.createElement('button');
@@ -13,4 +14,25 @@
     });
     pre.appendChild(btn);
   });
+
+  // Activate first tab in each tab group
+  document.querySelectorAll('.tabs').forEach(function(tabs) {
+    var first = tabs.querySelector('.tab-header');
+    if (first && !tabs.querySelector('.tab-header.active')) {
+      first.classList.add('active');
+    }
+  });
 })();
+
+// Tab switching (called from onclick)
+function switchTab(btn) {
+  var tabs = btn.parentElement;
+  var id = btn.getAttribute('data-tab');
+
+  tabs.querySelectorAll('.tab-header').forEach(function(h) { h.classList.remove('active'); });
+  btn.classList.add('active');
+
+  tabs.querySelectorAll('.tab-panel').forEach(function(p) { p.style.display = 'none'; });
+  var panel = tabs.querySelector('.tab-panel[data-tab="' + id + '"]');
+  if (panel) panel.style.display = 'block';
+}

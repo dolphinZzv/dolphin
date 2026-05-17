@@ -185,6 +185,41 @@ pre { position: relative; }
 pre:hover .copy-btn { opacity: 1; }
 .copy-btn:hover { background: var(--accent, #06b6d4); color: #fff; border-color: var(--accent, #06b6d4); }
 
+/* Tabs */
+.tabs { margin-bottom: 20px; }
+.tab-header {
+  display: inline-block;
+  padding: 8px 16px;
+  font-size: 0.9em;
+  background: none;
+  border: 1px solid var(--border, #cbd5e1);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  color: var(--text-muted, #64748b);
+  margin-right: 4px;
+}
+.tab-header:hover { color: var(--text, #334155); }
+.tab-header.active {
+  background: var(--code-bg, #f3f4f6);
+  color: var(--accent, #06b6d4);
+  font-weight: 600;
+}
+.tab-panel {
+  display: none;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 0 6px 6px 6px;
+  padding: 16px;
+  background: var(--code-bg, #f3f4f6);
+}
+.tab-panel pre {
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  background: none;
+}
+
 /* Tables */
 table {
   width: 100%;

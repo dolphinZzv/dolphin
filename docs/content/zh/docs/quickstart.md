@@ -37,29 +37,32 @@ Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.e
 
 按你的服务商设置全部环境变量：
 
+{{< tabs >}}
+{{< tab title="DeepSeek" id="deepseek" active="true" >}}
 ```bash
-# DeepSeek
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_MODEL="deepseek-v4-flash"
 ```
-
+{{< /tab >}}
+{{< tab title="通义千问" id="tongyi" >}}
 ```bash
-# 通义千问
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 export DZ_LLM_MODEL="qwen3.6-max-preview"
 ```
-
+{{< /tab >}}
+{{< tab title="智谱 GLM" id="zhipu" >}}
 ```bash
-# 智谱 GLM
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 export DZ_LLM_MODEL="glm-5"
 ```
+{{< /tab >}}
+{{< /tabs >}}
 
 ## 3. 启动小海豚
 

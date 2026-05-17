@@ -37,29 +37,32 @@ See the [full install guide]({{< relref "docs/install" >}}) for more options.
 
 Choose your provider and set all required variables:
 
+{{< tabs >}}
+{{< tab title="Anthropic" id="anthropic" active="true" >}}
 ```bash
-# Anthropic
 export DZ_LLM_TYPE="anthropic"
 export DZ_LLM_API_KEY="sk-ant-..."
 export DZ_LLM_BASE_URL="https://api.anthropic.com/v1"
 export DZ_LLM_MODEL="claude-sonnet-4-6"
 ```
-
+{{< /tab >}}
+{{< tab title="OpenAI" id="openai" >}}
 ```bash
-# OpenAI
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://api.openai.com/v1"
 export DZ_LLM_MODEL="gpt-4o"
 ```
-
+{{< /tab >}}
+{{< tab title="DeepSeek" id="deepseek" >}}
 ```bash
-# DeepSeek
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_MODEL="deepseek-v4-flash"
 ```
+{{< /tab >}}
+{{< /tabs >}}
 
 ## 3. Start Dolphin
 
