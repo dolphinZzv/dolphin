@@ -9,6 +9,7 @@ on:
       - 'docs/**'
       - 'design/**'
       - 'workflow/**'
+      - 'scripts/**'
   pull_request:
     branches: [main]
     paths:
@@ -16,6 +17,7 @@ on:
       - 'docs/**'
       - 'design/**'
       - 'workflow/**'
+      - 'scripts/**'
 
 jobs:
   docs-smoke:
