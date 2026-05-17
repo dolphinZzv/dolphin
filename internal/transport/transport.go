@@ -1,3 +1,4 @@
+// Package transport provides user I/O transport implementations.
 package transport
 
 import "context"

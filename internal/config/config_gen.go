@@ -479,7 +479,7 @@ func PromptConfigFile() (bool, error) {
 	input = strings.TrimSpace(strings.ToLower(input))
 
 	if input == "r" || input == "restrictive" {
-		path, err := GenerateRestrictiveConfigFile(lang)
+		path, err := GenerateRestrictiveConfigFile(lang) //nolint:govet
 		if err != nil {
 			return false, fmt.Errorf("generate restrictive config: %w", err)
 		}

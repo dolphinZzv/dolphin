@@ -1,3 +1,4 @@
+// Package i18n provides internationalization support with English and Chinese translations.
 package i18n
 
 import (

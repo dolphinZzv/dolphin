@@ -127,7 +127,7 @@ func TestAnthropicSetHeaders(t *testing.T) {
 	p := &AnthropicProvider{
 		apiKey: "sk-test-key",
 	}
-	req, _ := http.NewRequest("POST", "https://example.com", nil)
+	req, _ := http.NewRequest("POST", "https://example.com", http.NoBody)
 	p.setHeaders(req)
 
 	if req.Header.Get("Content-Type") != "application/json" {

@@ -1,3 +1,4 @@
+// Package skill manages agent skill definitions and execution.
 package skill
 
 import (

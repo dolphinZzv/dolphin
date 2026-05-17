@@ -35,6 +35,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Handle --reset flag
 	if reset, _ := cmd.Flags().GetBool("reset"); reset {
+		//nolint:govet
 		if err := config.MarkFirstRunDone(); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("reset first-run marker: %w", err)
 		}

@@ -31,6 +31,7 @@ func TestInstallBinary_Unix(t *testing.T) {
 	}
 
 	// Backup should be cleaned up.
+	//nolint:govet
 	if _, err := os.Stat(execPath + ".bak"); !os.IsNotExist(err) {
 		t.Error("expected .bak file to be removed after successful install")
 	}

@@ -79,7 +79,7 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 
 	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/manifest.json", repoName)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}

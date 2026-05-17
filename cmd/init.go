@@ -94,7 +94,8 @@ func gitInitDotDolphin(dir string) error {
 	}
 
 	gitignore := "# dolphin version control\nconfig.yaml\nlogs/\n"
-	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gitignore), 0600); err != nil {
+	//nolint:govet
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gitignore), 0o600); err != nil {
 		return fmt.Errorf(".gitignore: %w", err)
 	}
 

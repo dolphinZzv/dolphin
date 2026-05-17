@@ -418,6 +418,7 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 
 	// Load existing file if present (to preserve un-tracked settings)
 	existing := make(map[string]any)
+	//nolint:govet
 	if data, err := os.ReadFile(filePath); err == nil {
 		if err := yaml.Unmarshal(data, &existing); err != nil {
 			zap.S().Warnw("failed to parse existing config, starting fresh", "path", filePath, "error", err)
@@ -433,10 +434,10 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 		return &mcp.ToolResult{Content: fmt.Sprintf("marshal config: %v", err), IsError: true}, nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(filePath), 0o700); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("create config dir: %v", err), IsError: true}, nil
 	}
-	if err := os.WriteFile(filePath, data, 0600); err != nil {
+	if err := os.WriteFile(filePath, data, 0o600); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("write config: %v", err), IsError: true}, nil
 	}
 

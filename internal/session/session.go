@@ -1,3 +1,4 @@
+// Package session manages conversation session storage, retrieval, and lifecycle.
 package session
 
 import (
@@ -226,6 +227,7 @@ func (m *Manager) LatestSession() (SessionID, string, int, error) {
 		if !strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, "-summary.json") {
 			continue
 		}
+		//nolint:govet
 		info, err := entry.Info()
 		if err != nil {
 			continue

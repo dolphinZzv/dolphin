@@ -43,7 +43,7 @@ func NewSSE(name string, cfg config.MCPServerConfig) (*sseTransport, error) {
 }
 
 func (t *sseTransport) Connect(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+"/sse", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+"/sse", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("sse connect: %w", err)
 	}
@@ -109,7 +109,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 		default:
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+"/sse", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+"/sse", http.NoBody)
 		if err != nil {
 			return
 		}

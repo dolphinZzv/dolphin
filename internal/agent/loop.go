@@ -224,16 +224,16 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 		buf.WriteString(i18n.TL(i18n.KeyLLMProvidersHeader))
 		for _, r := range results {
 			if r.ok {
-				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMProviderOK), r.pc.Name, r.pc.Model, r.ms))
+				fmt.Fprintf(&buf, i18n.TL(i18n.KeyLLMProviderOK), r.pc.Name, r.pc.Model, r.ms)
 			} else {
-				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMProviderFail), r.pc.Name, r.pc.Model, r.ms, r.err))
+				fmt.Fprintf(&buf, i18n.TL(i18n.KeyLLMProviderFail), r.pc.Name, r.pc.Model, r.ms, r.err)
 			}
 		}
 		// Pick first available in config order.
 		selected := false
 		for _, r := range results {
 			if r.ok {
-				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMUsing), r.pc.Name))
+				fmt.Fprintf(&buf, i18n.TL(i18n.KeyLLMUsing), r.pc.Name)
 				fmt.Fprint(os.Stderr, buf.String())
 
 				zap.S().Infow("selected LLM provider",
@@ -273,9 +273,9 @@ func printProviderHelp(providers []config.ProviderConfig) {
 	buf.WriteString("\nConfigured providers:\n")
 	for _, pc := range providers {
 		link := providerLink(pc.Name)
-		buf.WriteString(fmt.Sprintf("  - %s (%s)", pc.Name, pc.BaseURL))
+		fmt.Fprintf(&buf, "  - %s (%s)", pc.Name, pc.BaseURL)
 		if link != "" {
-			buf.WriteString(fmt.Sprintf("\n    Get API key: %s", link))
+			fmt.Fprintf(&buf, "\n    Get API key: %s", link)
 		}
 		buf.WriteString("\n")
 	}

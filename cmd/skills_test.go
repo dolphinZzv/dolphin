@@ -30,7 +30,7 @@ mcp:
     enabled: false
 `
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte(cfg), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -40,12 +40,12 @@ mcp:
 func writeTestSkill(t *testing.T, dir, name, desc, content string) {
 	t.Helper()
 	skillDir := filepath.Join(dir, name)
-	if err := os.MkdirAll(skillDir, 0700); err != nil {
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	data := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + content
 	path := filepath.Join(skillDir, "SKILL.md")
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -91,7 +91,7 @@ func captureOutput(f func()) string {
 
 func TestSkillsList_Empty(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	os.MkdirAll(filepath.Join(dir, "skills"), 0700)
+	os.MkdirAll(filepath.Join(dir, "skills"), 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"list"})
@@ -178,7 +178,7 @@ func TestSkillsSearch_NoResults(t *testing.T) {
 func TestSkillsInstall(t *testing.T) {
 	_, dir := setupSkillsTest(t)
 	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
-	os.MkdirAll(userSkillsDir, 0700)
+	os.MkdirAll(userSkillsDir, 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "my-new-skill", "A brand new skill"})
@@ -211,7 +211,7 @@ func TestSkillsInstall(t *testing.T) {
 func TestSkillsInstall_DefaultDescription(t *testing.T) {
 	_, dir := setupSkillsTest(t)
 	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
-	os.MkdirAll(userSkillsDir, 0700)
+	os.MkdirAll(userSkillsDir, 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "no-desc"})
@@ -289,7 +289,7 @@ func TestSkillsDisable(t *testing.T) {
 
 func TestSkillsDisable_NotFound(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	os.MkdirAll(filepath.Join(dir, "skills"), 0700)
+	os.MkdirAll(filepath.Join(dir, "skills"), 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"disable", "not-exist"})
@@ -314,7 +314,7 @@ func TestSkills_SearchFetchesRemote(t *testing.T) {
 		t.Fatal(err)
 	}
 	withRepo := strings.ReplaceAll(string(data), "repos: []", "repos: [\"dolphinv/nonexistent\"]")
-	if err := os.WriteFile(cfgPath, []byte(withRepo), 0600); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(withRepo), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

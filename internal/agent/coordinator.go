@@ -502,7 +502,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		start := 0
 		if len(c.pending) > maxResults {
 			start = len(c.pending) - maxResults
-			sb.WriteString(fmt.Sprintf("[%d older results omitted]\n", start))
+			fmt.Fprintf(&sb, "[%d older results omitted]\n", start)
 		}
 		for _, r := range c.pending[start:] {
 			output := r.Output
@@ -514,8 +514,8 @@ func (c *Coordinator) buildDynamicPrompt() string {
 			if !r.Success {
 				statusIcon = "✗"
 			}
-			sb.WriteString(fmt.Sprintf("%s %s (%s): %s in %dms\n",
-				statusIcon, r.AgentName, r.TaskID, r.Status, r.DurationMs))
+			fmt.Fprintf(&sb, "%s %s (%s): %s in %dms\n",
+				statusIcon, r.AgentName, r.TaskID, r.Status, r.DurationMs)
 			if output != "" {
 				sb.WriteString("  " + strings.ReplaceAll(output, "\n", "\n  ") + "\n")
 			} else if r.Error != "" {
@@ -845,9 +845,9 @@ func (c *Coordinator) handleGetAgentStatus(_ context.Context, input json.RawMess
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%d agent(s) available:\n", len(agents)))
+	fmt.Fprintf(&sb, "%d agent(s) available:\n", len(agents))
 	for _, a := range agents {
-		sb.WriteString(fmt.Sprintf("- %s [%s] [%s] tasks: %d\n", a.Name, a.Status, a.Kind, a.TasksDone))
+		fmt.Fprintf(&sb, "- %s [%s] [%s] tasks: %d\n", a.Name, a.Status, a.Kind, a.TasksDone)
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
@@ -898,14 +898,14 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d MCP tool(s) matching %q:\n", len(defs), params.Query))
+	fmt.Fprintf(&sb, "Found %d MCP tool(s) matching %q:\n", len(defs), params.Query)
 	for _, d := range defs {
 		stats := c.toolReg.ToolStats()
 		usage := ""
 		if s, ok := stats[d.Name]; ok && s.CallCount > 0 {
 			usage = fmt.Sprintf(" (used %d times)", s.CallCount)
 		}
-		sb.WriteString(fmt.Sprintf("- %s: %s%s\n", d.Name, d.Description, usage))
+		fmt.Fprintf(&sb, "- %s: %s%s\n", d.Name, d.Description, usage)
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
@@ -955,14 +955,14 @@ func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessag
 
 	var sb strings.Builder
 	if len(loaded) > 0 {
-		sb.WriteString(fmt.Sprintf("Loaded %d tool(s): %s\n", len(loaded), strings.Join(loaded, ", ")))
+		fmt.Fprintf(&sb, "Loaded %d tool(s): %s\n", len(loaded), strings.Join(loaded, ", "))
 		sb.WriteString("They will be available in the tool list starting from your next turn.")
 	}
 	if len(notFound) > 0 {
 		if sb.Len() > 0 {
 			sb.WriteString("\n")
 		}
-		sb.WriteString(fmt.Sprintf("Tool(s) not found: %s. Use search_mcp_tools to discover available tools.", strings.Join(notFound, ", ")))
+		fmt.Fprintf(&sb, "Tool(s) not found: %s. Use search_mcp_tools to discover available tools.", strings.Join(notFound, ", "))
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
@@ -987,13 +987,13 @@ func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessag
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Found %d skill(s) matching %q:\n", len(results), params.Query))
+	fmt.Fprintf(&sb, "Found %d skill(s) matching %q:\n", len(results), params.Query)
 	for _, s := range results {
 		usage := ""
 		if s.CallCount > 0 {
 			usage = fmt.Sprintf(" (used %d times)", s.CallCount)
 		}
-		sb.WriteString(fmt.Sprintf("- %s: %s%s\n", s.Name, s.Description, usage))
+		fmt.Fprintf(&sb, "- %s: %s%s\n", s.Name, s.Description, usage)
 	}
 	sb.WriteString("\nUse load_skill to load the full content of a skill.")
 	return &mcp.ToolResult{Content: sb.String()}, nil
@@ -1085,13 +1085,13 @@ func (c *Coordinator) handleListCronTasks(_ context.Context, input json.RawMessa
 		return &mcp.ToolResult{Content: "No scheduled tasks. Use add_cron_task to create one."}, nil
 	}
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%d scheduled task(s):\n", len(tasks)))
+	fmt.Fprintf(&sb, "%d scheduled task(s):\n", len(tasks))
 	for _, t := range tasks {
 		status := "enabled"
 		if !t.Enabled {
 			status = "disabled"
 		}
-		sb.WriteString(fmt.Sprintf("- %s [%s] %s (%s)\n", t.Name, status, t.Schedule, t.Description))
+		fmt.Fprintf(&sb, "- %s [%s] %s (%s)\n", t.Name, status, t.Schedule, t.Description)
 	}
 	results := c.cronMgr.PendingResults()
 	if len(results) > 0 {
@@ -1108,7 +1108,7 @@ func (c *Coordinator) handleListCronTasks(_ context.Context, input json.RawMessa
 			if len(msg) > 200 {
 				msg = msg[:200] + "..."
 			}
-			sb.WriteString(fmt.Sprintf("  %s %s: %s\n", mark, r.TaskName, msg))
+			fmt.Fprintf(&sb, "  %s %s: %s\n", mark, r.TaskName, msg)
 		}
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil

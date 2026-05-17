@@ -660,8 +660,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	// Pprof HTTP server
 	if cfg.Pprof.Enabled {
 		srv := &http.Server{
-			Addr:    cfg.Pprof.Addr,
-			Handler: http.DefaultServeMux,
+			Addr:              cfg.Pprof.Addr,
+			Handler:           http.DefaultServeMux,
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 		host := cfg.Pprof.Addr
 		if strings.HasPrefix(host, ":") {
@@ -700,8 +701,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", metrics.Handler())
 		srv := &http.Server{
-			Addr:    cfg.Metrics.Addr,
-			Handler: mux,
+			Addr:              cfg.Metrics.Addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 		g.Add(func() error {
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
@@ -732,8 +734,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		mux := http.NewServeMux()
 		mux.Handle("/health", health.Handler(checkers...))
 		srv := &http.Server{
-			Addr:    cfg.Health.Addr,
-			Handler: mux,
+			Addr:              cfg.Health.Addr,
+			Handler:           mux,
+			ReadHeaderTimeout: 10 * time.Second,
 		}
 		g.Add(func() error {
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {

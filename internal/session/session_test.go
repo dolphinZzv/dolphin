@@ -318,6 +318,7 @@ func TestSessionLogSystemSpecialChars(t *testing.T) {
 
 	// Message with double quotes, backslashes
 	msg := `user said "hello", path is C:\test\data`
+	//nolint:govet
 	if err := sess.LogSystem(msg); err != nil {
 		t.Fatalf("LogSystem: %v", err)
 	}
@@ -354,6 +355,7 @@ func TestSessionLogSystemInjectionAttempt(t *testing.T) {
 
 	// Attempt JSON injection via LogSystem
 	msg := `","type":"injected"}`
+	//nolint:govet
 	if err := sess.LogSystem(msg); err != nil {
 		t.Fatalf("LogSystem: %v", err)
 	}

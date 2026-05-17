@@ -61,6 +61,7 @@ func TestSSETransportInitialize(t *testing.T) {
 	defer tport.Close()
 
 	ctx := context.Background()
+	//nolint:govet
 	if err := tport.Connect(ctx); err != nil {
 		t.Fatalf("connect: %v", err)
 	}

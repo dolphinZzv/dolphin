@@ -179,7 +179,7 @@ func TestBuilderWithTemplateExpansion(t *testing.T) {
 	// Write an AGENTS.md with template syntax
 	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(
 		"You are {{default .Config.name \"dolphin\"}}, instance {{or .Config.id \"unknown\"}}.",
-	), 0644)
+	), 0o644)
 
 	b := testBuilder(dir, t.TempDir(), t.TempDir())
 	b.SetRenderData(&RenderData{
@@ -201,7 +201,7 @@ func TestBuilderWithTemplateDefaultFallback(t *testing.T) {
 
 	os.WriteFile(filepath.Join(dir, "RULES.md"), []byte(
 		`Name: {{default .Config.name "dolphin"}}, Model: {{default .Config.llm.model "unknown"}}`,
-	), 0644)
+	), 0o644)
 
 	b := testBuilder(dir, t.TempDir(), t.TempDir())
 	// Don't set name or model — should use defaults
@@ -221,7 +221,7 @@ func TestBuilderWithTemplateDefaultFallback(t *testing.T) {
 
 func TestBuilderWithoutRenderData(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("{{.Config.name}}"), 0644)
+	os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("{{.Config.name}}"), 0o644)
 
 	b := testBuilder(dir, t.TempDir(), t.TempDir())
 	// No SetRenderData — template should NOT be expanded
@@ -237,7 +237,7 @@ func TestBuilderWithoutRenderData(t *testing.T) {
 func TestStatCacheTemplateReExpansion(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "AGENTS.md")
-	os.WriteFile(path, []byte("Name: {{.Config.name}}"), 0644)
+	os.WriteFile(path, []byte("Name: {{.Config.name}}"), 0o644)
 
 	b := testBuilder(dir, t.TempDir(), t.TempDir())
 	b.SetRenderData(&RenderData{

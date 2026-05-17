@@ -77,7 +77,7 @@ func applySkills(skills []ToolEntry, skillsDir string) error {
 			}
 		}
 
-		if err := os.MkdirAll(skillDir, 0700); err != nil {
+		if err := os.MkdirAll(skillDir, 0o700); err != nil {
 			return fmt.Errorf("mkdir %s: %w", skillDir, err)
 		}
 		if err := os.WriteFile(dst, []byte(content), 0600); err != nil {
@@ -131,7 +131,7 @@ func applyMCPServers(servers []ToolEntry, baseDir string) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
 		return err
 	}
 	data, err := yaml.Marshal(full)

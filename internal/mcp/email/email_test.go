@@ -781,6 +781,7 @@ func TestEmailPOP3NoDelete(t *testing.T) {
 	t.Cleanup(func() { ln.Close() })
 
 	go func() {
+		//nolint:govet
 		conn, err := ln.Accept()
 		if err != nil {
 			return

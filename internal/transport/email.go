@@ -214,7 +214,7 @@ func (t *EmailTransport) sendMail(body string) error {
 	for i := len(history) - 1; i >= 0; i-- {
 		h := history[i]
 		sb.WriteString("\r\n\r\n")
-		sb.WriteString(fmt.Sprintf("On %s, %s wrote:\r\n", h.Date.Format(time.RFC1123Z), h.From))
+		fmt.Fprintf(&sb, "On %s, %s wrote:\r\n", h.Date.Format(time.RFC1123Z), h.From)
 		for _, line := range strings.Split(h.Body, "\n") {
 			sb.WriteString("> " + line + "\r\n")
 		}
@@ -240,6 +240,7 @@ func (t *EmailTransport) sendMailTLS(addr, host, msg, to string) error {
 	defer sc.Close()
 
 	auth := smtp.PlainAuth("", t.cfg.Username, t.cfg.Password, host)
+	//nolint:govet
 	if err := sc.Auth(auth); err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 	}
@@ -296,6 +297,7 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 	}
 	defer c.Logout()
 
+	//nolint:govet
 	if err := c.Login(t.cfg.Username, t.cfg.Password); err != nil {
 		zap.S().Warnw("email imap login failed", "error", err)
 		return nil

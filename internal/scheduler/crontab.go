@@ -1,3 +1,4 @@
+// Package scheduler manages cron-like scheduled tasks defined in CRONTAB.md.
 package scheduler
 
 import (
@@ -75,6 +76,7 @@ func (m *Manager) Load() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File doesn't exist — create a fresh one with a header
+			//nolint:govet
 			if err := m.writeEmptyFile(); err != nil {
 				return fmt.Errorf("create crontab file: %w", err)
 			}

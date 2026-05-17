@@ -522,7 +522,7 @@ func serveDiagram(sid, diagram string, openBrowser bool) error {
 		w.Write([]byte(htmlPage(sid, diagram)))
 	})
 
-	server := &http.Server{Handler: mux}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go server.Serve(ln)
 
 	fmt.Println("Press Ctrl+C to stop.")

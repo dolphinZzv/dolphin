@@ -1,3 +1,4 @@
+// Package update manages self-updating and version checking.
 package update
 
 import (
@@ -179,6 +180,7 @@ func DownloadAndInstall(assetURL, archiveName string) error {
 		return fmt.Errorf("download HTTP %d", resp.StatusCode)
 	}
 
+	//nolint:govet
 	if _, err := io.Copy(tmpFile, resp.Body); err != nil {
 		tmpFile.Close()
 		return fmt.Errorf("download: %w", err)

@@ -1,3 +1,4 @@
+// Package telemetry provides OpenTelemetry hooks and metrics for agent lifecycle events.
 package telemetry
 
 import (

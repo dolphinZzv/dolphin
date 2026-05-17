@@ -206,7 +206,7 @@ func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachme
 		msg.WriteString(body)
 	} else {
 		mw := multipart.NewWriter(&msg)
-		msg.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mw.Boundary()))
+		fmt.Fprintf(&msg, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mw.Boundary())
 		msg.WriteString("\r\n")
 
 		textPart, _ := mw.CreatePart(map[string][]string{
@@ -264,13 +264,16 @@ func sendTLS(addr, host, from string, to []string, msg, user, pass string) error
 	defer sc.Close()
 
 	auth := smtp.PlainAuth("", user, pass, host)
+	//nolint:govet
 	if err := sc.Auth(auth); err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
+	//nolint:govet
 	if err := sc.Mail(from); err != nil {
 		return fmt.Errorf("mail from: %w", err)
 	}
 	for _, rcpt := range to {
+		//nolint:govet
 		if err := sc.Rcpt(rcpt); err != nil {
 			return fmt.Errorf("rcpt %s: %w", rcpt, err)
 		}
@@ -645,10 +648,12 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 		return nil, fmt.Errorf("pop3 unexpected greeting: %s", line)
 	}
 
+	//nolint:govet
 	if _, err := p.cmd("USER %s", ecfg.Username); err != nil {
 		tlsConn.Close()
 		return nil, fmt.Errorf("pop3 user: %w", err)
 	}
+	//nolint:govet
 	if _, err := p.cmd("PASS %s", ecfg.Password); err != nil {
 		tlsConn.Close()
 		return nil, fmt.Errorf("pop3 pass: %w", err)
