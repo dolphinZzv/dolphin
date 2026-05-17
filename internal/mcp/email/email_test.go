@@ -931,7 +931,15 @@ func TestEmailSendWithAttachment(t *testing.T) {
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
 	tool := New(cfg)
-	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"With Attachment","body":"See attached.","attachments":[{"file_path":"%s"}]}`, filePath)
+	input, _ := json.Marshal(map[string]any{
+		"action":  "send",
+		"to":      "r@x.com",
+		"subject": "With Attachment",
+		"body":    "See attached.",
+		"attachments": []map[string]any{
+			{"file_path": filePath},
+		},
+	})
 	result, err := tool.Execute(context.Background(), json.RawMessage(input))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -977,8 +985,16 @@ func TestEmailSendWithMultipleAttachments(t *testing.T) {
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
 	tool := New(cfg)
-	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"Two Files","body":"Here are two files.","attachments":[{"file_path":"%s"},{"file_path":"%s"}]}`,
-		filepath.Join(tmpDir, "a.txt"), filepath.Join(tmpDir, "b.pdf"))
+	input, _ := json.Marshal(map[string]any{
+		"action":  "send",
+		"to":      "r@x.com",
+		"subject": "Two Files",
+		"body":    "Here are two files.",
+		"attachments": []map[string]any{
+			{"file_path": filepath.Join(tmpDir, "a.txt")},
+			{"file_path": filepath.Join(tmpDir, "b.pdf")},
+		},
+	})
 	result, err := tool.Execute(context.Background(), json.RawMessage(input))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)

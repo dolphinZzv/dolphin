@@ -67,6 +67,7 @@ func setupSkillsTest(t *testing.T) (origCfg string, dir string) {
 	})
 
 	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir) // Windows: os.UserHomeDir checks USERPROFILE first
 
 	cfgFile = writeTestConfig(t, dir)
 	return

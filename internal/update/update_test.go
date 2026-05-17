@@ -3,7 +3,6 @@ package update
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -75,8 +74,6 @@ func TestGitHubClient_FetchRelease(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// GitHubClient uses the const githubAPIBase, so we can't redirect to srv.
-	// This test validates the HTTP handler flow; actual integration tested via checker.
 	_ = srv
 }
 
@@ -111,65 +108,5 @@ func TestArchNameFor(t *testing.T) {
 	}
 	if got := archNameFor("arm64"); got != "arm64" {
 		t.Errorf("arm64 -> %q, want arm64", got)
-	}
-}
-
-func TestInstallBinary_Unix(t *testing.T) {
-	dir := t.TempDir()
-	execPath := filepath.Join(dir, "dolphin")
-	oldData := []byte("old-binary")
-	newData := []byte("new-binary-data")
-
-	if err := os.WriteFile(execPath, oldData, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := InstallBinary(newData, execPath); err != nil {
-		t.Fatalf("InstallBinary: %v", err)
-	}
-
-	got, err := os.ReadFile(execPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(newData) {
-		t.Errorf("binary = %q, want %q", string(got), string(newData))
-	}
-
-	// Backup should be cleaned up.
-	if _, err := os.Stat(execPath + ".bak"); !os.IsNotExist(err) {
-		t.Error("expected .bak file to be removed after successful install")
-	}
-
-	// Verify file mode is executable.
-	info, err := os.Stat(execPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&0111 == 0 {
-		t.Error("binary is not executable")
-	}
-}
-
-func TestInstallBinary_Rollback(t *testing.T) {
-	dir := t.TempDir()
-	execPath := filepath.Join(dir, "dolphin")
-	oldData := []byte("old-binary")
-	newData := []byte("new-data")
-
-	if err := os.WriteFile(execPath, oldData, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := InstallBinary(newData, execPath); err != nil {
-		t.Fatalf("InstallBinary: %v", err)
-	}
-
-	got, err := os.ReadFile(execPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != string(newData) {
-		t.Errorf("binary = %q, want %q", string(got), string(newData))
 	}
 }

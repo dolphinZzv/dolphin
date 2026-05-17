@@ -77,20 +77,6 @@ func TestShellDefinition(t *testing.T) {
 	}
 }
 
-func TestShellExecuteWithWorkdir(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.MCP.Shell.AllowedCommands = nil
-	tool := New(cfg)
-	ctx := WithWorkdir(context.Background(), "/tmp")
-	result, err := tool.Execute(ctx, json.RawMessage(`{"command":"pwd"}`))
-	if err != nil {
-		t.Fatalf("Execute error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("unexpected error: %s", result.Content)
-	}
-}
-
 func TestShellExecuteTimeout(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
@@ -110,20 +96,6 @@ func TestShellExecutePipeCommand(t *testing.T) {
 	cfg.MCP.Shell.AllowedCommands = nil
 	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | wc -c"}`))
-	if err != nil {
-		t.Fatalf("Execute error: %v", err)
-	}
-	if result.IsError {
-		t.Fatalf("unexpected error: %s", result.Content)
-	}
-}
-
-func TestShellExecuteRedirectCommand(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.MCP.Shell.AllowedCommands = nil
-	tool := New(cfg)
-	// Use a pipe to test shell features: echo piped to cat with redirect target
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | tee /dev/null"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
 	}

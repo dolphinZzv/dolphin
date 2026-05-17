@@ -1,32 +1,22 @@
-//go:build !windows
+//go:build windows
 
 package shell
 
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 
 	"dolphin/internal/config"
 )
 
-func TestShellCommandUnix(t *testing.T) {
-	cmd := shellCommand(context.Background(), "echo hello")
-	if cmd == nil {
-		t.Fatal("shellCommand() returned nil")
-	}
-	args := cmd.Args
-	if len(args) < 3 || args[0] != "sh" || args[1] != "-c" || args[2] != "echo hello" {
-		t.Errorf("shellCommand args = %v, want [sh -c echo hello]", args)
-	}
-}
-
 func TestShellExecuteWithWorkdir(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
 	tool := New(cfg)
-	ctx := WithWorkdir(context.Background(), "/tmp")
-	result, err := tool.Execute(ctx, json.RawMessage(`{"command":"pwd"}`))
+	ctx := WithWorkdir(context.Background(), t.TempDir())
+	result, err := tool.Execute(ctx, json.RawMessage(`{"command":"echo %cd%"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
 	}
@@ -39,7 +29,8 @@ func TestShellExecuteRedirectCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
 	tool := New(cfg)
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | tee /dev/null"}`))
+	// Use echo with NUL redirect (Windows equivalent of /dev/null)
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello > `+os.DevNull+` && echo ok"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
 	}

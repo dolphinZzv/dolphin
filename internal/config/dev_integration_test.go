@@ -10,8 +10,13 @@ import (
 func TestDevModeFullFlow(t *testing.T) {
 	homeDir := t.TempDir()
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	os.Setenv("USERPROFILE", homeDir) // Windows: os.UserHomeDir checks USERPROFILE first
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
 
 	// Find project root (where mcp.json and skills.json live)
 	rootDir := findProjectRoot(t)
@@ -84,8 +89,13 @@ func TestDevModeFullFlow(t *testing.T) {
 func TestDevModeNoDuplicates(t *testing.T) {
 	homeDir := t.TempDir()
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	os.Setenv("USERPROFILE", homeDir) // Windows: os.UserHomeDir checks USERPROFILE first
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
 
 	rootDir := findProjectRoot(t)
 
@@ -121,8 +131,13 @@ func TestDevModeDemoSkillsDownload(t *testing.T) {
 	// This test exercises the full remote flow with dolphinZzv/demo_skills
 	homeDir := t.TempDir()
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", homeDir)
-	defer os.Setenv("HOME", origHome)
+	os.Setenv("USERPROFILE", homeDir) // Windows: os.UserHomeDir checks USERPROFILE first
+	defer func() {
+		os.Setenv("HOME", origHome)
+		os.Setenv("USERPROFILE", origUserProfile)
+	}()
 
 	profile := &CareerProfile{
 		Name:        "demo",
