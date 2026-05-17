@@ -14,42 +14,42 @@ Dolphin runs on **Linux**, **macOS**, and **Windows**. Choose the method that wo
 
 ## Option 1: Download a pre-built binary (recommended)
 
-Download the archive for your platform from the [latest release](https://github.com/dolphinZzv/dolphin/releases/latest), extract the binary, and place it in your `PATH`.
+Download the archive for your platform from the [latest release](https://github.com/dolphinZzv/dolphin/releases/latest), extract the binary, and place `dolphin-ai` in your `PATH`.
 
 | Platform | Archive name |
 |----------|-------------|
-| Linux x86_64 | `dolphin_<version>_linux_x86_64.tar.gz` |
-| Linux arm64 | `dolphin_<version>_linux_arm64.tar.gz` |
-| macOS Intel | `dolphin_<version>_macOS_x86_64.tar.gz` |
-| macOS Apple Silicon | `dolphin_<version>_macOS_arm64.tar.gz` |
-| Windows x86_64 | `dolphin_<version>_windows_x86_64.zip` |
-| Windows arm64 | `dolphin_<version>_windows_arm64.zip` |
+| Linux x86_64 | `dolphin-ai_<version>_linux_x86_64.tar.gz` |
+| Linux arm64 | `dolphin-ai_<version>_linux_arm64.tar.gz` |
+| macOS Intel | `dolphin-ai_<version>_macOS_x86_64.tar.gz` |
+| macOS Apple Silicon | `dolphin-ai_<version>_macOS_arm64.tar.gz` |
+| Windows x86_64 | `dolphin-ai_<version>_windows_x86_64.zip` |
+| Windows arm64 | `dolphin-ai_<version>_windows_arm64.zip` |
 
 ```bash
 # Example: install the latest version on Linux x86_64
 VERSION="v1.0.0"   # replace with actual latest version
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_linux_x86_64.tar.gz"
-tar xzf "dolphin_${VERSION}_linux_x86_64.tar.gz"
-sudo mv dolphin /usr/local/bin/
-rm "dolphin_${VERSION}_linux_x86_64.tar.gz"
+curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
+tar xzf "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
+sudo mv dolphin-ai /usr/local/bin/
+rm "dolphin-ai_${VERSION}_linux_x86_64.tar.gz"
 ```
 
 ```bash
 # macOS Apple Silicon example
 VERSION="v1.0.0"
-curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_macOS_arm64.tar.gz"
-tar xzf "dolphin_${VERSION}_macOS_arm64.tar.gz"
-sudo mv dolphin /usr/local/bin/
-rm "dolphin_${VERSION}_macOS_arm64.tar.gz"
+curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
+tar xzf "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
+sudo mv dolphin-ai /usr/local/bin/
+rm "dolphin-ai_${VERSION}_macOS_arm64.tar.gz"
 ```
 
 ```powershell
 # Windows x86_64 example (PowerShell)
 $VERSION = "v1.0.0"
-Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin_${VERSION}_windows_x86_64.zip" -OutFile "dolphin_${VERSION}_windows_x86_64.zip"
-Expand-Archive -Path "dolphin_${VERSION}_windows_x86_64.zip" -DestinationPath .
-Move-Item .\dolphin.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin.exe"
-Remove-Item "dolphin_${VERSION}_windows_x86_64.zip"
+Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai_${VERSION}_windows_x86_64.zip"
+Expand-Archive -Path "dolphin-ai_${VERSION}_windows_x86_64.zip" -DestinationPath .
+Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
+Remove-Item "dolphin-ai_${VERSION}_windows_x86_64.zip"
 ```
 
 Alternatively, add the download directory to your `PATH` instead of moving the binary.
@@ -62,7 +62,7 @@ Requires Go 1.26+.
 go install github.com/dolphinZzv/dolphin@latest
 ```
 
-This places the `dolphin` binary in `$GOPATH/bin` (or `$HOME/go/bin` by default). Make sure that directory is in your `PATH`.
+This places the `dolphin-ai` binary in `$GOPATH/bin` (or `$HOME/go/bin` by default). Make sure that directory is in your `PATH`.
 
 To install a specific version:
 
@@ -78,7 +78,7 @@ Clone the repo:
 
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
-cd dolphin
+cd dolphin-ai
 ```
 
 Then follow the instructions for your platform.
@@ -88,13 +88,13 @@ Then follow the instructions for your platform.
 `make` is available out of the box:
 
 ```bash
-make build   # produces ./dolphin (version = dev)
+make build   # produces ./dolphin-ai (version = dev)
 ```
 
 Or build manually:
 
 ```bash
-go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin-ai .
 ```
 
 For a release build, set VERSION:
@@ -114,13 +114,13 @@ xcode-select --install
 Then:
 
 ```bash
-make build   # produces ./dolphin (version = dev)
+make build   # produces ./dolphin-ai (version = dev)
 ```
 
 Or build manually:
 
 ```bash
-go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin-ai .
 ```
 
 ### Windows
@@ -129,11 +129,11 @@ go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
 
 ```powershell
 # Development build (version = dev)
-go build -o dolphin.exe .
+go build -o dolphin-ai.exe .
 
 # Release build with version
 $env:VERSION = "v1.0.0"
-go build -ldflags="-X 'dolphin/cmd.Version=$env:VERSION'" -o dolphin.exe .
+go build -ldflags="-X 'dolphin/cmd.Version=$env:VERSION'" -o dolphin-ai.exe .
 ```
 
 **Option B — Make (native Windows):**
@@ -151,26 +151,26 @@ winget install GnuWin32.Make
 Then build:
 
 ```powershell
-make build   # produces ./dolphin.exe (version = dev)
+make build   # produces ./dolphin-ai.exe (version = dev)
 make build VERSION=v1.0.0
 ```
 
 **Option C — Git Bash / WSL:**
 
 ```bash
-make build   # produces ./dolphin.exe (version = dev)
+make build   # produces ./dolphin-ai.exe (version = dev)
 ```
 
 ## Verify the installation
 
 ```bash
-dolphin --version
+dolphin-ai --version
 ```
 
 You should see output like:
 
 ```
-dolphin dev
+dolphin-ai dev
 ```
 
 ## Post-installation: configure your API key
@@ -180,7 +180,7 @@ Dolphin needs at least an API key to run. Set it via environment variable:
 ```bash
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="claude-sonnet-4-6"
-./dolphin
+./dolphin-ai
 ```
 
 On the first run, Dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file. Everything is stored locally.
