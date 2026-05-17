@@ -476,7 +476,7 @@ func TestDiaryAtomicWriteNoTempFileLeft(t *testing.T) {
 	// Walk diary dir, ensure no .tmp files remain
 	filepath.Walk(diaryDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr
 		}
 		if filepath.Ext(path) == ".tmp" {
 			t.Errorf("found leftover tmp file: %s", path)

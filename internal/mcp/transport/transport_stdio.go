@@ -8,7 +8,6 @@ import (
 	"io"
 	"os/exec"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,10 +32,11 @@ type stdioTransport struct {
 	stdin  *bufio.Writer
 	stdout *bufio.Scanner
 	mu     sync.Mutex
-	nextID atomic.Int64
 }
 
 // NewStdio creates a stdio-based transport for a local MCP server subprocess.
+//
+//nolint:revive
 func NewStdio(name string, cfg config.MCPServerConfig) (*stdioTransport, error) {
 	if cfg.Command == "" {
 		return nil, fmt.Errorf("mcp server %q: command is required", name)

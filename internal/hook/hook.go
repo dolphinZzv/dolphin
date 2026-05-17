@@ -24,6 +24,16 @@ const (
 	PointAfterTool      Point = "tool:after"
 	PointBeforeResponse Point = "response:before"
 	PointOnError        Point = "error"
+
+	// Scheduler hook points
+	PointSchedulerTaskBefore Point = "scheduler:task:before"
+	PointSchedulerTaskAfter  Point = "scheduler:task:after"
+
+	// Transport hook points
+	PointTransportConnect    Point = "transport:connect"
+	PointTransportDisconnect Point = "transport:disconnect"
+	PointTransportReceive    Point = "transport:receive"
+	PointTransportSend       Point = "transport:send"
 )
 
 // Abortable returns true if returning an error from this hook point aborts the flow.
@@ -56,6 +66,13 @@ type Context struct {
 	Response   any   // llm:after — *ProviderResponse
 	ToolResult any   // tool:after — *ToolResult
 	Error      error // error
+
+	// Scheduler fields (scheduler:task:before / scheduler:task:after)
+	TaskName  string // cron task name
+	TaskInput string // cron task prompt/input
+
+	// Transport fields (transport:*)
+	TransportName string // transport name (e.g. "stdio", "ssh", "dingtalk")
 
 	// Values persists across hook points within a single turn. Plugins use it
 	// to pass data from one point to another (e.g. timing from tool:before → tool:after).

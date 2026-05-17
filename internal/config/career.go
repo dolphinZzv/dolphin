@@ -373,19 +373,19 @@ func GenerateSystemMD(lang i18n.Lang) (string, error) {
 
 	switch lang {
 	case i18n.ZH:
-		sb.WriteString(fmt.Sprintf("- 操作系统: %s/%s\n", runtime.GOOS, runtime.GOARCH))
-		sb.WriteString(fmt.Sprintf("- 主机名: %s\n", hostname))
-		sb.WriteString(fmt.Sprintf("- Shell: %s\n", shellName()))
-		sb.WriteString(fmt.Sprintf("- 用户目录: %s\n", home))
-		sb.WriteString(fmt.Sprintf("- 工作目录: %s\n", cwd))
-		sb.WriteString(fmt.Sprintf("- CPU 核心数: %d\n", runtime.NumCPU()))
+		fmt.Fprintf(&sb, "- 操作系统: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(&sb, "- 主机名: %s\n", hostname)
+		fmt.Fprintf(&sb, "- Shell: %s\n", shellName())
+		fmt.Fprintf(&sb, "- 用户目录: %s\n", home)
+		fmt.Fprintf(&sb, "- 工作目录: %s\n", cwd)
+		fmt.Fprintf(&sb, "- CPU 核心数: %d\n", runtime.NumCPU())
 	default:
-		sb.WriteString(fmt.Sprintf("- OS: %s/%s\n", runtime.GOOS, runtime.GOARCH))
-		sb.WriteString(fmt.Sprintf("- Hostname: %s\n", hostname))
-		sb.WriteString(fmt.Sprintf("- Shell: %s\n", shellName()))
-		sb.WriteString(fmt.Sprintf("- Home: %s\n", home))
-		sb.WriteString(fmt.Sprintf("- Working Dir: %s\n", cwd))
-		sb.WriteString(fmt.Sprintf("- CPUs: %d\n", runtime.NumCPU()))
+		fmt.Fprintf(&sb, "- OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(&sb, "- Hostname: %s\n", hostname)
+		fmt.Fprintf(&sb, "- Shell: %s\n", shellName())
+		fmt.Fprintf(&sb, "- Home: %s\n", home)
+		fmt.Fprintf(&sb, "- Working Dir: %s\n", cwd)
+		fmt.Fprintf(&sb, "- CPUs: %d\n", runtime.NumCPU())
 	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -406,7 +406,7 @@ func PromptSystemMD() (bool, error) {
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr
 	}
 	input = strings.TrimSpace(strings.ToLower(input))
 

@@ -26,6 +26,9 @@ func loadDingTalkConfig(t *testing.T) *config.DingTalkConfig {
 // TestDingTalkStreamConnect tests the full Stream mode: register + connect + wait for message.
 // The user must @ the robot in DingTalk for this test to complete.
 func TestDingTalkStreamConnect(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping dingtalk integration test in short mode")
+	}
 	cfg := loadDingTalkConfig(t)
 	dt := NewDingTalkTransport(cfg)
 

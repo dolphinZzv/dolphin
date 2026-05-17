@@ -184,9 +184,9 @@ func toRawGitHubURL(url string) string {
 func skillTemplate(s ToolEntry) string {
 	var sb strings.Builder
 	if s.Description != "" {
-		sb.WriteString(fmt.Sprintf("---\nname: %s\ndescription: %s\n---\n\n", s.Name, s.Description))
+		fmt.Fprintf(&sb, "---\nname: %s\ndescription: %s\n---\n\n", s.Name, s.Description)
 	}
-	sb.WriteString(fmt.Sprintf("# %s\n\n", s.Name))
+	fmt.Fprintf(&sb, "# %s\n\n", s.Name)
 	sb.WriteString("Add your skill content here.\n")
 	return sb.String()
 }

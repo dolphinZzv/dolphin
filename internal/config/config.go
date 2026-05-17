@@ -1,3 +1,4 @@
+// Package config manages dolphin configuration loading, validation, and persistence.
 package config
 
 import (
@@ -37,6 +38,7 @@ type Config struct {
 	Pprof     PprofConfig     `mapstructure:"pprof"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	Health    HealthConfig    `mapstructure:"health"`
+	Telemetry TelemetryConfig `mapstructure:"telemetry"`
 	Diary     DiaryConfig     `mapstructure:"diary"`
 	Update    UpdateConfig    `mapstructure:"update"`
 	LogLevel  string          `mapstructure:"log_level"`
@@ -307,6 +309,18 @@ type MetricsConfig struct {
 type HealthConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
+}
+
+// TelemetryConfig holds OpenTelemetry tracing configuration.
+type TelemetryConfig struct {
+	Enabled        bool              `mapstructure:"enabled"`
+	ServiceName    string            `mapstructure:"service_name"`
+	Exporter       string            `mapstructure:"exporter"` // otlp-grpc, otlp-http, stdout
+	OTLPEndpoint   string            `mapstructure:"otlp_endpoint"`
+	OTLPHeaders    map[string]string `mapstructure:"otlp_headers"`
+	SampleRate     float64           `mapstructure:"sample_rate"`
+	LogsEnabled    bool              `mapstructure:"logs_enabled"`
+	MetricsEnabled bool              `mapstructure:"metrics_enabled"`
 }
 
 type UpdateConfig struct {
@@ -804,6 +818,15 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("health.enabled", false)
 	v.SetDefault("health.addr", "127.0.0.1:9091")
+
+	v.SetDefault("telemetry.enabled", false)
+	v.SetDefault("telemetry.service_name", "dolphin")
+	v.SetDefault("telemetry.exporter", "stdout")
+	v.SetDefault("telemetry.otlp_endpoint", "localhost:4317")
+	v.SetDefault("telemetry.otlp_headers", map[string]string{})
+	v.SetDefault("telemetry.sample_rate", 1.0)
+	v.SetDefault("telemetry.logs_enabled", false)
+	v.SetDefault("telemetry.metrics_enabled", false)
 
 	v.SetDefault("update.enabled", true)
 	v.SetDefault("update.check_interval", "24h")

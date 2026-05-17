@@ -402,7 +402,7 @@ func TestDueChBuffer(t *testing.T) {
 		case <-m.dueCh:
 			got++
 		case <-time.After(time.Second):
-			break
+			break //nolint:staticcheck
 		}
 	}
 	if got != 2 {

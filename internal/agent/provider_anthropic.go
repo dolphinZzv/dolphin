@@ -233,10 +233,13 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 	}
 	p.setHeaders(httpReq)
 
-	resp, err := p.client.Do(httpReq)
+	resp, err := p.client.Do(httpReq) //nolint:bodyclose
 	if err != nil {
 		llmErrors.With("anthropic").Inc()
 		timer.Stop()
+		if resp != nil {
+			resp.Body.Close()
+		}
 		return nil, fmt.Errorf("http: %w", err)
 	}
 
@@ -412,11 +415,7 @@ func (p *AnthropicProvider) buildReq(req ProviderRequest, stream bool) anthroReq
 	}
 
 	for _, t := range req.Tools {
-		ar.Tools = append(ar.Tools, anthroTool{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
-		})
+		ar.Tools = append(ar.Tools, anthroTool(t))
 	}
 	return ar
 }

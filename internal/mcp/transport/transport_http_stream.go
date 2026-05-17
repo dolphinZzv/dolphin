@@ -24,6 +24,8 @@ type httpStreamTransport struct {
 }
 
 // NewHTTPStream creates a Streamable HTTP transport for a remote MCP server.
+//
+//nolint:revive
 func NewHTTPStream(name string, cfg config.MCPServerConfig) (*httpStreamTransport, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("mcp server %q: url is required for http-stream transport", name)

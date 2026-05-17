@@ -50,10 +50,6 @@ func emailConfig(addr string) *config.Config {
 	}
 }
 
-func emailToolForTest(t *testing.T, addr string) *Tool {
-	return New(emailConfig(addr))
-}
-
 // ── Mock TCP servers ───────────────────────────────────────────────────
 
 // testTLSConfig returns a TLS config with a self-signed cert for use in tests.
@@ -225,7 +221,7 @@ func startIMAPServer(t *testing.T, msgs []imapMessage) string {
 				if len(parts) >= 2 {
 					seqStr := parts[1]
 					// Parse range "1:2" -> start and end
-					seqStart, seqEnd := 1, len(msgs)
+					var seqStart, seqEnd int
 					if idx := strings.IndexByte(seqStr, ':'); idx >= 0 {
 						seqStart, _ = strconv.Atoi(seqStr[:idx])
 						seqEnd, _ = strconv.Atoi(seqStr[idx+1:])

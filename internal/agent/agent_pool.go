@@ -149,8 +149,12 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 
 	p.mu.Lock()
 	p.agents[name] = inst
+	size := int64(len(p.agents))
 	p.mu.Unlock()
 	agentPoolSize.Add(1)
+	if TelemetryCallbacks.OnPoolSize != nil {
+		TelemetryCallbacks.OnPoolSize(size)
+	}
 
 	// Start worker goroutine
 	p.wg.Add(1)
@@ -222,6 +226,9 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	inst.currentTaskID = task.ID
 	inst.mu.Unlock()
 	activeAgents.Add(1)
+	if TelemetryCallbacks.OnActiveAgents != nil {
+		TelemetryCallbacks.OnActiveAgents(activeAgents.Value())
+	}
 
 	// Create task context with timeout
 	timeout := task.Timeout
@@ -244,6 +251,9 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	defer func() {
 		cancel()
 		activeAgents.Add(-1)
+		if TelemetryCallbacks.OnActiveAgents != nil {
+			TelemetryCallbacks.OnActiveAgents(activeAgents.Value())
+		}
 		inst.mu.Lock()
 		inst.cancel = nil
 		inst.status = "idle"
@@ -266,7 +276,14 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		"timeout", timeout,
 	)
 
+	var taskEnd func()
+	if TelemetryCallbacks.OnTaskSpan != nil {
+		taskEnd = TelemetryCallbacks.OnTaskSpan(taskCtx, inst.Def.Name, task.ID)
+	}
 	result, err := inst.agent.RunTask(taskCtx, task.Input, systemPrompt, inst.agent.toolReg, p.parentSessionID)
+	if taskEnd != nil {
+		taskEnd()
+	}
 	if err != nil {
 		zap.S().Debugw("agent task finished with error",
 			"agent", inst.Def.Name,
@@ -282,6 +299,9 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		taskCompleted.Inc()
 	} else {
 		taskFailed.Inc()
+	}
+	if TelemetryCallbacks.OnTaskCompleted != nil {
+		TelemetryCallbacks.OnTaskCompleted(inst.Def.Name, result.Success)
 	}
 
 	// If context was cancelled externally, override status
@@ -310,6 +330,15 @@ func (p *AgentPool) Dispatch(agentName string, task Task) error {
 	select {
 	case inst.taskCh <- task:
 		taskDispatched.Inc()
+		if TelemetryCallbacks.OnTaskDispatched != nil {
+			TelemetryCallbacks.OnTaskDispatched(agentName)
+		}
+		if TelemetryCallbacks.OnDispatchSpan != nil {
+			end := TelemetryCallbacks.OnDispatchSpan(context.Background(), agentName)
+			if end != nil {
+				end()
+			}
+		}
 		return nil
 	default:
 		return fmt.Errorf("agent %s task queue full", agentName)
@@ -405,6 +434,9 @@ func (p *AgentPool) Remove(name string) bool {
 	if ok {
 		delete(p.agents, name)
 		agentPoolSize.Add(-1)
+		if TelemetryCallbacks.OnPoolSize != nil {
+			TelemetryCallbacks.OnPoolSize(int64(len(p.agents)))
+		}
 	}
 	p.mu.Unlock()
 	if ok {
@@ -490,11 +522,15 @@ func (p *AgentPool) reapIdleAgents() {
 				if !lastRun.IsZero() && time.Since(lastRun) > p.cfg.IdleTimeout {
 					zap.S().Infow("reaping idle coordinator-created agent", "name", name)
 					delete(p.agents, name)
+					agentPoolSize.Add(-1)
 					inst.taskChCloseOnce.Do(func() {
 						close(inst.taskCh)
 					})
 					reap = append(reap, inst)
 				}
+			}
+			if len(reap) > 0 && TelemetryCallbacks.OnPoolSize != nil {
+				TelemetryCallbacks.OnPoolSize(int64(len(p.agents)))
 			}
 			p.mu.Unlock()
 

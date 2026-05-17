@@ -250,7 +250,6 @@ func TestRepoFetcherFetchAllParallel(t *testing.T) {
 	// Start multiple test servers
 	var servers []*httptest.Server
 	for i := 0; i < 3; i++ {
-		i := i
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(ToolManifest{
 				Name:        "repo",

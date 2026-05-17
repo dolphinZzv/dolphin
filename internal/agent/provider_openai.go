@@ -158,10 +158,13 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 		httpReq.Header.Set("anthropic-version", "2023-06-01")
 	}
 
-	resp, err := p.httpDoer.Do(httpReq)
+	resp, err := p.httpDoer.Do(httpReq) //nolint:bodyclose
 	if err != nil {
 		timer.Stop()
 		llmErrors.With("openai").Inc()
+		if resp != nil {
+			resp.Body.Close()
+		}
 		return nil, fmt.Errorf("openai stream request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {

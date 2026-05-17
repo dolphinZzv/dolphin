@@ -547,13 +547,13 @@ func htmlPage(sid, diagram string) string {
   <h2>Session Diagram — ` + sid + `</h2>
   <div class="mermaid">` + diagram + `</div>
   <h3>Raw Mermaid</h3>
-  <pre>` + escapeHtml(diagram) + `</pre>
+  <pre>` + escapeHTML(diagram) + `</pre>
   <script>mermaid.initialize({ startOnLoad: true, theme: 'dark' });</script>
 </body>
 </html>`
 }
 
-func escapeHtml(s string) string {
+func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
 	s = strings.ReplaceAll(s, "<", "&lt;")
 	s = strings.ReplaceAll(s, ">", "&gt;")

@@ -1,3 +1,4 @@
+// Package diary manages session history, compression, and chronological summary.
 package diary
 
 import (
@@ -372,7 +373,7 @@ func (d *Diary) buildDayEntry(date time.Time, sessions []SessionRef) DiaryEntry 
 		children = append(children, ChildRef{
 			Date:  s.StartedAt.Format("15:04"),
 			Level: LevelDay,
-			Path:  string(s.SessionID),
+			Path:  s.SessionID,
 		})
 	}
 
@@ -648,7 +649,7 @@ func (d *Diary) listEntries(level Level) ([]DiaryEntry, error) {
 func (d *Diary) listYearEntries() ([]DiaryEntry, error) {
 	entries, err := os.ReadDir(d.dir)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	var result []DiaryEntry
 	for _, e := range entries {
@@ -670,7 +671,7 @@ func (d *Diary) listEntriesUnder(parent string, level Level) ([]DiaryEntry, erro
 	dir := filepath.Join(d.dir, parent)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	var result []DiaryEntry
 	for _, e := range entries {

@@ -1,3 +1,4 @@
+// Package cdp provides Chrome DevTools Protocol browser automation tools.
 package cdp
 
 import (
@@ -87,12 +88,12 @@ func (c *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 		Script   string `json:"script,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	browserCtx, err := c.getBrowser(ctx)
 	if err != nil {
-		return &mcp.ToolResult{Content: err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	c.mu.Lock()
@@ -127,7 +128,8 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	if c.initialized {
 		healthCtx, healthCancel := context.WithTimeout(c.browserCtx, 10*time.Second)
 		defer func() { healthCancel() }()
-		if err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank")); err == nil {
+		var ok bool
+		if err := chromedp.Run(healthCtx, chromedp.Evaluate("!!window.chrome", &ok)); err == nil && ok {
 			healthCancel = func() {}
 			return c.browserCtx, nil
 		} else {
@@ -174,18 +176,6 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 
 	c.initialized = true
 	zap.S().Debugw("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
-
-	startupTimeout := time.Duration(c.cfg.StartupTimeout) * time.Second
-	if startupTimeout <= 0 {
-		startupTimeout = 30 * time.Second
-	}
-	initCtx, initCancel := context.WithTimeout(c.browserCtx, startupTimeout)
-	defer func() { initCancel() }()
-	if err := chromedp.Run(initCtx, chromedp.Navigate("about:blank")); err != nil {
-		c.shutdownBrowser()
-		return nil, fmt.Errorf("browser init verify failed: %w", err)
-	}
-	initCancel = func() {}
 
 	return c.browserCtx, nil
 }
@@ -271,6 +261,15 @@ func (c *Tool) click(ctx context.Context, selector string) (*mcp.ToolResult, err
 }
 
 func (c *Tool) screenshot(ctx context.Context, selector string) (*mcp.ToolResult, error) {
+	var currentURL string
+	if err := chromedp.Run(ctx, chromedp.Evaluate("window.location.href", &currentURL)); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("screenshot failed: cannot get current URL: %v", err), IsError: true}, nil
+	}
+
+	if currentURL == "about:blank" || currentURL == "" {
+		return &mcp.ToolResult{Content: "screenshot failed: browser is on blank page, please navigate first", IsError: true}, nil
+	}
+
 	var buf []byte
 
 	if selector != "" {

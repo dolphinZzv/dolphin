@@ -1,3 +1,4 @@
+// Package cmd provides the CLI commands for dolphin.
 package cmd
 
 import (
@@ -18,6 +19,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/health"
 	"dolphin/internal/hook"
+	"dolphin/internal/hook/telemetry"
 	"dolphin/internal/i18n"
 	"dolphin/internal/logger"
 	"dolphin/internal/mcp"
@@ -194,6 +196,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Init plugin system: hooks (sync) + events (async)
 	hooks := hook.NewRegistry()
+
+	// Init OpenTelemetry tracing
+	if err := telemetry.Init(context.Background(), cfg.Telemetry); err != nil {
+		zap.S().Warnw("telemetry init failed, continuing without tracing", "error", err)
+	} else if cfg.Telemetry.Enabled {
+		telemetry.RegisterHooks(hooks)
+		if cfg.Telemetry.LogsEnabled {
+			telemetry.BridgeZap()
+		}
+	}
+
 	bus := event.NewEventBus(256)
 	pm := plugin.NewManager(hooks, bus)
 
@@ -437,6 +450,11 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}, func(err error) {
 			signal.Stop(sigCh)
 			close(sigCh)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := telemetry.Shutdown(shutdownCtx); err != nil {
+				zap.S().Warnw("telemetry shutdown error", "error", err)
+			}
 		})
 		actorCount++
 	}

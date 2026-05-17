@@ -98,6 +98,11 @@ brews:
 
       For CDP browser automation, install chromium or google-chrome.
       See https://github.com/dolphinZzv/dolphin for documentation.
+    service: |
+      run [opt_bin/"dolphin-ai", "setup"]
+      keep_alive true
+      log_path var/"log/dolphin-ai.log"
+      error_log_path var/"log/dolphin-ai.log"
 
 checksum:
   name_template: "checksums.txt"

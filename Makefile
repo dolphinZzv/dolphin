@@ -2,7 +2,7 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt init-hooks llm-smoke docs-smoke app app-clean distribute
+.PHONY: build run clean test fmt check-fmt lint init-hooks llm-smoke docs-smoke app app-clean distribute
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
@@ -21,8 +21,11 @@ check-fmt:
 		exit 1; \
 	} || exit 0
 
-test: check-fmt
-	go test ./...
+test: check-fmt lint
+	go test -race -count=1 -short ./...
+
+lint:
+	golangci-lint run --timeout 5m ./...
 
 fmt:
 	gofmt -w .

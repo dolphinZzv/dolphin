@@ -530,7 +530,7 @@ var defaultRegistry = NewRegistry()
 // Default returns the global metrics registry.
 func Default() *Registry { return defaultRegistry }
 
-// Convenience wrappers for the default registry.
+// NewCounter creates a new counter in the default registry.
 func NewCounter(name, help string, labels map[string]string) *Counter {
 	return defaultRegistry.NewCounter(name, help, labels)
 }

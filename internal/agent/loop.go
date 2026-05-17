@@ -82,6 +82,7 @@ func (a *Agent) switchToNextProvider() bool {
 		cancel()
 
 		if err == nil {
+			prevName := a.provider.Name()
 			a.providerIndex = i
 			a.provider = p
 			// Copy back to legacy fields for downstream compat.
@@ -91,6 +92,9 @@ func (a *Agent) switchToNextProvider() bool {
 			a.cfg.LLM.Model = pc.Model
 			a.cfg.LLM.MaxTokens = pc.MaxTokens
 			a.rebuildCompressor()
+			if TelemetryCallbacks.OnFailover != nil {
+				TelemetryCallbacks.OnFailover(prevName, a.provider.Name())
+			}
 			zap.S().Infow("failed over to provider", "name", pc.Name, "model", pc.Model)
 			return true
 		}
@@ -230,7 +234,6 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 		for _, r := range results {
 			if r.ok {
 				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMUsing), r.pc.Name))
-				selected = true
 				fmt.Fprint(os.Stderr, buf.String())
 
 				zap.S().Infow("selected LLM provider",
@@ -296,7 +299,6 @@ func providerLink(name string) string {
 	return ""
 }
 
-// Run starts the agent loop with interactive I/O (stdio, SSH, etc.).
 // SetHooks sets the hook registry for this agent.
 func (a *Agent) SetHooks(h *hook.Registry) { a.hooks = h }
 
@@ -703,6 +705,16 @@ func (a *Agent) emitHeartbeat(ctx context.Context, state *LoopState) {
 }
 
 func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
+	if TelemetryCallbacks.OnCompression != nil {
+		TelemetryCallbacks.OnCompression()
+	}
+	if TelemetryCallbacks.OnCompressionSpan != nil {
+		end := TelemetryCallbacks.OnCompressionSpan(ctx, string(state.Sess.ID), state.Turn)
+		if end != nil {
+			defer end()
+		}
+	}
+
 	comp := a.compressor
 	if comp == nil {
 		comp = &DropCompressor{}
@@ -803,6 +815,15 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 			io.WriteString(blockBuf.String())
 			blockBuf.Reset()
 		}
+	}
+
+	// Hook: transport:send — fires before delivering response to transport
+	if a.hooks != nil {
+		a.hooks.Fire(ctx, hook.PointTransportSend, &hook.Context{
+			SessionID:     sessionID,
+			Turn:          turn,
+			TransportName: io.Name(),
+		})
 	}
 
 	// Hook: response:before — last chance to abort before output
@@ -1285,9 +1306,8 @@ func extractFinalResponse(messages []Message) string {
 // Uses byte/3.5 for non-CJK and ~1 token per CJK character, which is closer
 // to reality than bytes/4 for the project's Chinese-language audience.
 func estimateTokens(content string) int {
-	runes := []rune(content)
 	cjk := 0
-	for _, r := range runes {
+	for _, r := range content {
 		if r >= 0x2E80 && r <= 0x9FFF || r >= 0xF900 && r <= 0xFAFF || r >= 0xFE30 && r <= 0xFE4F {
 			cjk++
 		}

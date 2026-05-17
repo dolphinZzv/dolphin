@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"dolphin/internal/config"
@@ -24,12 +23,13 @@ type sseTransport struct {
 	baseURL    string
 	messageURL string
 	client     *http.Client
-	mu         sync.Mutex
 
 	sseCancel context.CancelFunc
 }
 
 // NewSSE creates an SSE-based transport for a remote MCP server.
+//
+//nolint:revive
 func NewSSE(name string, cfg config.MCPServerConfig) (*sseTransport, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("mcp server %q: url is required for sse transport", name)
@@ -116,7 +116,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 		req.Header.Set("Accept", "text/event-stream")
 		t.setHeaders(req)
 
-		resp, err := t.client.Do(req)
+		resp, err := t.client.Do(req) //nolint:bodyclose
 		if err != nil {
 			select {
 			case <-ctx.Done():

@@ -152,7 +152,7 @@ func TestGenerateRestrictiveConfigFile(t *testing.T) {
 		t.Fatalf("Load restrictive config: %v", err)
 	}
 
-	if cfg.MCP.Shell.AllowedCommands == nil || len(cfg.MCP.Shell.AllowedCommands) == 0 {
+	if len(cfg.MCP.Shell.AllowedCommands) == 0 {
 		t.Error("restrictive: expected non-empty allowed_commands")
 	}
 	if cfg.MCP.CDP.Enabled {

@@ -62,18 +62,14 @@ func RecommendTools(ctx context.Context, workDir string, profile *CareerProfile,
 	var skillManifests []*ToolManifest
 	if len(skillRepos) > 0 {
 		skillManifests = fetcher.FetchAll(fetchCtx, skillRepos)
-		for _, repo := range skillRepos {
-			result.Repos = append(result.Repos, repo)
-		}
+		result.Repos = append(result.Repos, skillRepos...)
 	}
 
 	// Fetch MCP repos
 	var mcpManifests []*ToolManifest
 	if len(mcpRepos) > 0 {
 		mcpManifests = fetcher.FetchAll(fetchCtx, mcpRepos)
-		for _, repo := range mcpRepos {
-			result.Repos = append(result.Repos, repo)
-		}
+		result.Repos = append(result.Repos, mcpRepos...)
 	}
 
 	// Match keywords against manifests
@@ -139,7 +135,7 @@ func PrintRecommendation(rec *Recommendation) string {
 	if len(rec.MCP) > 0 {
 		s += fmt.Sprintf("MCP:    %v\n", rec.MCP)
 	}
-	s += fmt.Sprintf("\nLoad to: [p] project  [a] global  [n] skip\n")
+	s += "\nLoad to: [p] project  [a] global  [n] skip\n"
 	return s
 }
 

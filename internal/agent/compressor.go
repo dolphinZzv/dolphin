@@ -155,9 +155,9 @@ func extractSummarySegments(messages []Message) []segmentSummary {
 func (s *segmentSummary) toMessage() Message {
 	var sb strings.Builder
 	sb.WriteString("[L")
-	sb.WriteString(fmt.Sprint(s.Level))
+	fmt.Fprint(&sb, s.Level)
 	sb.WriteString(" 摘要, 覆盖 ")
-	sb.WriteString(fmt.Sprint(s.CoveredCount))
+	fmt.Fprint(&sb, s.CoveredCount)
 	sb.WriteString(" 组] ")
 	sb.WriteString(s.Content)
 	return Message{Role: "user", Content: TextContent(sb.String())}

@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net"
 	"strings"
@@ -371,5 +372,206 @@ func TestEmailTransportSendMailTLSNotUsed(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout")
+	}
+}
+
+// ========== decodeMIMEBody tests ==========
+
+func TestDecodeMIMEBody_Empty(t *testing.T) {
+	result := decodeMIMEBody(nil)
+	if result != "" {
+		t.Errorf("expected empty, got %q", result)
+	}
+	result = decodeMIMEBody([]byte("  \n  "))
+	if result != "" {
+		t.Errorf("expected empty, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_PlainText(t *testing.T) {
+	input := []byte("hello world\nwhat time is it?")
+	result := decodeMIMEBody(input)
+	if result != "hello world\nwhat time is it?" {
+		t.Errorf("expected plain text pass-through, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_Base64TextPlain(t *testing.T) {
+	body := base64.StdEncoding.EncodeToString([]byte("现在几点了？"))
+	input := fmt.Sprintf("Content-Type: text/plain; charset=\"utf-8\"\r\nContent-Transfer-Encoding: base64\r\n\r\n%s", body)
+	result := decodeMIMEBody([]byte(input))
+	if !strings.Contains(result, "现在几点了") {
+		t.Errorf("expected decoded text, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_QuotedPrintable(t *testing.T) {
+	input := []byte("Content-Type: text/plain; charset=\"utf-8\"\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\nhello=20world=21")
+	result := decodeMIMEBody(input)
+	if result != "hello world!" {
+		t.Errorf("expected 'hello world!', got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_MultipartPreferPlain(t *testing.T) {
+	boundary := "----=_NextPart_001"
+	textPlain := "这是纯文本"
+	htmlB64 := base64.StdEncoding.EncodeToString([]byte("<div>这是HTML</div>"))
+
+	input := fmt.Sprintf(`Content-Type: multipart/alternative; boundary="%s"
+
+--%s
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: base64
+
+%s
+--%s
+Content-Type: text/plain; charset="utf-8"
+
+%s
+--%s--
+`, boundary, boundary, htmlB64, boundary, textPlain, boundary)
+
+	result := decodeMIMEBody([]byte(input))
+	if !strings.Contains(result, textPlain) {
+		t.Errorf("expected plain text preferred, got %q", result)
+	}
+	if strings.Contains(result, "HTML") || strings.Contains(result, "<div>") {
+		t.Errorf("should not contain HTML content, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_MultipartHTMLOnly(t *testing.T) {
+	boundary := "----=_NextPart_002"
+	htmlContent := "<div>Hello <b>World</b></div><br><div><!--emptysign--></div>"
+
+	input := fmt.Sprintf(`Content-Type: multipart/alternative; boundary="%s"
+
+--%s
+Content-Type: text/html; charset="utf-8"
+
+%s
+--%s--
+`, boundary, boundary, htmlContent, boundary)
+
+	result := decodeMIMEBody([]byte(input))
+	if !strings.Contains(result, "Hello World") {
+		t.Errorf("expected stripped HTML text, got %q", result)
+	}
+	if strings.Contains(result, "<div>") || strings.Contains(result, "emptysign") {
+		t.Errorf("HTML tags and comments should be stripped, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_GB18030Charset(t *testing.T) {
+	// "测试邮件" in GB18030
+	gb18030Text := []byte{0xb2, 0xe2, 0xca, 0xd4, 0xd3, 0xca, 0xbc, 0xfe}
+	body := base64.StdEncoding.EncodeToString(gb18030Text)
+	input := fmt.Sprintf("Content-Type: text/plain; charset=\"gb18030\"\r\nContent-Transfer-Encoding: base64\r\n\r\n%s", body)
+	result := decodeMIMEBody([]byte(input))
+	if !strings.Contains(result, "测试邮件") {
+		t.Errorf("expected GB18030 decoded text '测试邮件', got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_EmptyEmailBug(t *testing.T) {
+	// Reproduce the exact bug scenario: multipart email with empty text/plain
+	// and empty HTML (just <div><br></div><div><!--emptysign--></div>)
+	boundary := "----=_NextPart_6A096321_00A669A0_1DCD0CEC"
+	emptyHTML := base64.StdEncoding.EncodeToString([]byte("<div><br></div><div><!--emptysign--></div>"))
+
+	input := fmt.Sprintf(`Content-Type: multipart/alternative; boundary="%s"
+
+--%s
+Content-Type: text/plain; charset="gb18030"
+Content-Transfer-Encoding: base64
+
+
+--%s
+Content-Type: text/html; charset="gb18030"
+Content-Transfer-Encoding: base64
+
+%s
+--%s--
+`, boundary, boundary, boundary, emptyHTML, boundary)
+
+	result := decodeMIMEBody([]byte(input))
+	// text/plain is empty (or just whitespace), so we fall back to HTML minus tags
+	// The result should be empty or just contain newlines (from <br>)
+	result = strings.TrimSpace(result)
+	t.Logf("empty email decoded to: %q", result)
+	// Should NOT contain raw MIME, base64, or HTML tags
+	if strings.Contains(result, "Content-Type:") {
+		t.Errorf("MIME headers leaked into result: %q", result)
+	}
+	if strings.Contains(result, "base64") {
+		t.Errorf("base64 text leaked into result: %q", result)
+	}
+	if strings.Contains(result, "emptysign") {
+		t.Errorf("HTML comment leaked into result: %q", result)
+	}
+}
+
+func TestStripQuotedReply_NoQuoting(t *testing.T) {
+	input := "hello, what time is it?"
+	result := stripQuotedReply(input)
+	if result != input {
+		t.Errorf("expected no change, got %q", result)
+	}
+}
+
+func TestStripQuotedReply_OnWrote(t *testing.T) {
+	input := "my new message\n\nOn Mon, Jan 1 2026, someone@example.com wrote:\n> old reply\n> more old"
+	result := stripQuotedReply(input)
+	if !strings.HasPrefix(result, "my new message") {
+		t.Errorf("expected only new message, got %q", result)
+	}
+	if strings.Contains(result, ">") {
+		t.Errorf("quoted text not stripped, got %q", result)
+	}
+}
+
+func TestStripQuotedReply_QuotedLineOnly(t *testing.T) {
+	input := "> This is a quoted reply"
+	result := stripQuotedReply(input)
+	if result != "" {
+		t.Errorf("expected empty, got %q", result)
+	}
+}
+
+func TestStripQuotedReply_ChineseReply(t *testing.T) {
+	input := "今天日期是2026年5月17日\n\n在 2026年5月17日，dolphin@siciv.space 写道：\n> 这是引用的内容"
+	result := stripQuotedReply(input)
+	if !strings.Contains(result, "今天日期") {
+		t.Errorf("expected new message retained, got %q", result)
+	}
+	if strings.Contains(result, ">") || strings.Contains(result, "写道") {
+		t.Errorf("quoted text not stripped, got %q", result)
+	}
+}
+
+func TestDecodeMIMEBody_PreambleMultipart(t *testing.T) {
+	// Simulates an email with Outlook-style preamble before the MIME boundary
+	boundary := "----=_NextPart_6A0980D1_DAC6FD60_1CEFE28F"
+	textPlainB64 := base64.StdEncoding.EncodeToString([]byte("今天日期是多少？"))
+	input := fmt.Sprintf(`This is a multi-part message in MIME format.
+
+--%s
+Content-Type: text/plain;
+	charset="utf-8"
+Content-Transfer-Encoding: base64
+
+%s
+--%s--
+`, boundary, textPlainB64, boundary)
+	result := decodeMIMEBody([]byte(input))
+	if !strings.Contains(result, "今天日期是多少") {
+		t.Errorf("expected decoded text '今天日期是多少？', got %q", result)
+	}
+	if strings.Contains(result, "This is a multi-part") {
+		t.Errorf("preamble leaked into result: %q", result)
+	}
+	if strings.Contains(result, "Content-Type:") {
+		t.Errorf("MIME headers leaked into result: %q", result)
 	}
 }

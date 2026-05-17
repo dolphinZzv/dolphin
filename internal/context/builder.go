@@ -1,3 +1,4 @@
+// Package context builds the LLM context prompt from project configuration.
 package context
 
 import (

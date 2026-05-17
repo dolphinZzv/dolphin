@@ -118,6 +118,14 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	}
 
 	defer func() {
+		// Fire transport:disconnect hook
+		if c.hooks != nil {
+			c.hooks.Fire(ctx, hook.PointTransportDisconnect, &hook.Context{
+				SessionID:     string(sess.ID),
+				TransportName: io.Name(),
+				Turn:          state.Turn,
+			})
+		}
 		// Fire session:end hook
 		if c.hooks != nil {
 			c.hooks.Fire(ctx, hook.PointSessionEnd, &hook.Context{
@@ -162,6 +170,14 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		})
 	}
 
+	// Fire transport:connect hook
+	if c.hooks != nil {
+		c.hooks.Fire(ctx, hook.PointTransportConnect, &hook.Context{
+			SessionID:     string(sess.ID),
+			TransportName: io.Name(),
+		})
+	}
+
 	zap.S().Debugw("coordinator session started",
 		"session_id", sess.ID,
 		"max_loop", c.cfg.Session.MaxLoop,
@@ -203,6 +219,16 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			zap.S().Debugw("read line error", "error", err)
 			state.StopReason = "transport_error"
 			return
+		}
+
+		// Fire transport:receive hook
+		if c.hooks != nil {
+			c.hooks.Fire(ctx, hook.PointTransportReceive, &hook.Context{
+				SessionID:     string(sess.ID),
+				Turn:          state.Turn + 1,
+				UserInput:     line,
+				TransportName: io.Name(),
+			})
 		}
 
 		// Fire user:input hook (can rewrite or reject input)
@@ -433,7 +459,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		var sb strings.Builder
 		sb.WriteString("\n## Available Agents\n")
 		for _, a := range agents {
-			sb.WriteString(fmt.Sprintf("- %s [%s]: %s\n", a.Name, a.Status, a.Role))
+			fmt.Fprintf(&sb, "- %s [%s]: %s\n", a.Name, a.Status, a.Role)
 		}
 		parts = append(parts, sb.String())
 	}
@@ -455,10 +481,10 @@ func (c *Coordinator) buildDynamicPrompt() string {
 				if s.CallCount > 0 {
 					usage = fmt.Sprintf(" (used %d times)", s.CallCount)
 				}
-				sb.WriteString(fmt.Sprintf("- %s: %s%s\n", s.Name, s.Description, usage))
+				fmt.Fprintf(&sb, "- %s: %s%s\n", s.Name, s.Description, usage)
 			}
 			if len(skills) > maxTop {
-				sb.WriteString(fmt.Sprintf("\n  [%d more skills available — use search_skills to find them]\n", len(skills)-maxTop))
+				fmt.Fprintf(&sb, "\n  [%d more skills available — use search_skills to find them]\n", len(skills)-maxTop)
 			}
 			parts = append(parts, sb.String())
 		}
@@ -718,7 +744,7 @@ func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMess
 		Timeout int    `json:"timeout,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	task := Task{
@@ -728,7 +754,7 @@ func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMess
 	}
 
 	if err := c.pool.Dispatch(params.Agent, task); err != nil {
-		return &mcp.ToolResult{Content: "dispatch failed: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "dispatch failed: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	if c.events != nil {
@@ -756,7 +782,7 @@ func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage
 		Timeout int      `json:"timeout,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	// Check if agent already exists
@@ -795,7 +821,7 @@ func (c *Coordinator) handleGetAgentStatus(_ context.Context, input json.RawMess
 		Agent string `json:"agent,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	agents := c.pool.List()
@@ -831,7 +857,7 @@ func (c *Coordinator) handleCancelTask(_ context.Context, input json.RawMessage)
 		TaskID string `json:"task_id"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	if c.pool.Cancel(params.TaskID) {
@@ -845,7 +871,7 @@ func (c *Coordinator) handleDeleteAgent(_ context.Context, input json.RawMessage
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	if c.pool.Remove(params.Name) {
 		return &mcp.ToolResult{Content: fmt.Sprintf("Agent '%s' deleted.", params.Name)}, nil
@@ -863,7 +889,7 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 		Query string `json:"query"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	defs := c.toolReg.SearchTools(params.Query)
@@ -911,7 +937,7 @@ func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessag
 		Tools []string `json:"tools"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	if len(params.Tools) == 0 {
 		return &mcp.ToolResult{Content: "No tool names provided.", IsError: true}, nil
@@ -952,7 +978,7 @@ func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessag
 		Query string `json:"query"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	results := c.skills.Search(params.Query)
@@ -982,7 +1008,7 @@ func (c *Coordinator) handleLoadSkill(ctx context.Context, input json.RawMessage
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
 	s, ok := c.skills.Get(params.Name)
@@ -1017,7 +1043,7 @@ func (c *Coordinator) handleAddCronTask(_ context.Context, input json.RawMessage
 		Task        string `json:"task"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	task := &scheduler.CronTask{
 		Name:        params.Name,
@@ -1027,7 +1053,7 @@ func (c *Coordinator) handleAddCronTask(_ context.Context, input json.RawMessage
 		Task:        params.Task,
 	}
 	if err := c.cronMgr.AddTask(task); err != nil {
-		return &mcp.ToolResult{Content: "add cron task: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "add cron task: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	return &mcp.ToolResult{
 		Content: fmt.Sprintf("Scheduled task %q created (schedule: %s). It will run automatically at the specified times.", params.Name, params.Schedule),
@@ -1042,7 +1068,7 @@ func (c *Coordinator) handleRemoveCronTask(_ context.Context, input json.RawMess
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	if c.cronMgr.RemoveTask(params.Name) {
 		return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q removed.", params.Name)}, nil
@@ -1097,7 +1123,7 @@ func (c *Coordinator) handleToggleCronTask(_ context.Context, input json.RawMess
 		Enabled bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 	if c.cronMgr.ToggleTask(params.Name, params.Enabled) {
 		state := "disabled"
@@ -1506,19 +1532,11 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 	}
 
 	if caps.ShowToolDetails {
-		// Interactive transport: prompt the user
 		age := "unknown"
 		if info, serr := os.Stat(path); serr == nil {
 			age = formatDuration(time.Since(info.ModTime()))
 		}
-
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyResumePrompt), id, turns, age))
-		line, rerr := io.ReadLine()
-		if rerr != nil || (line != "" && line != "y" && line != "Y" && line != strings.ToLower(i18n.TL(i18n.KeyResumeYes))) {
-			io.WriteLine("")
-			return nil, nil
-		}
-		io.WriteLine("")
+		zap.S().Infow("auto-resuming session", "id", id, "turns", turns, "age", age)
 	}
 
 	// Read and replay session events
@@ -1700,6 +1718,13 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 			if !ok {
 				return
 			}
+			if c.hooks != nil {
+				c.hooks.Fire(ctx, hook.PointSchedulerTaskBefore, &hook.Context{
+					SessionID: string(parentSessionID),
+					TaskName:  task.Name,
+					TaskInput: task.Task,
+				})
+			}
 			result, err := c.RunTask(ctx, task.Task, c.basePrompt, c.toolReg, parentSessionID)
 			if err != nil {
 				c.cronMgr.AddResult(task.Name, false, "", err.Error())
@@ -1707,6 +1732,14 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 			} else {
 				c.cronMgr.AddResult(task.Name, result.Success, result.Output, result.Error)
 				zap.S().Infow("scheduled task completed", "name", task.Name, "task_id", result.TaskID)
+			}
+			if c.hooks != nil {
+				c.hooks.Fire(ctx, hook.PointSchedulerTaskAfter, &hook.Context{
+					SessionID: string(parentSessionID),
+					TaskName:  task.Name,
+					TaskInput: task.Task,
+					Error:     err,
+				})
 			}
 		}
 	}

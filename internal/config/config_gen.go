@@ -172,6 +172,16 @@ pprof:
 metrics:
   enabled: false
   addr: ":9090"
+
+telemetry:
+  enabled: false
+  service_name: dolphin
+  exporter: stdout                    # stdout, otlp-grpc, otlp-http
+  otlp_endpoint: localhost:4317
+  sample_rate: 1.0
+  # otlp_headers:                     # custom headers for OTLP exporters
+  #   Authorization: Bearer <token>
+  #   stream-name: default
 `
 
 // restrictiveNotes is appended to the standard template to document security
@@ -348,6 +358,16 @@ pprof:
 metrics:
   enabled: false
   addr: ":9090"
+
+telemetry:
+  enabled: false
+  service_name: dolphin
+  exporter: stdout                    # stdout, otlp-grpc, otlp-http
+  otlp_endpoint: localhost:4317
+  sample_rate: 1.0
+  # otlp_headers:                     # custom headers for OTLP exporters
+  #   Authorization: Bearer <token>
+  #   stream-name: default
 `
 
 func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
@@ -454,7 +474,7 @@ func PromptConfigFile() (bool, error) {
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
 	if err != nil {
-		return false, nil
+		return false, nil //nolint:nilerr
 	}
 	input = strings.TrimSpace(strings.ToLower(input))
 

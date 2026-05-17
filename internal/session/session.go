@@ -215,7 +215,7 @@ func (m *Manager) Remove(id SessionID) {
 func (m *Manager) LatestSession() (SessionID, string, int, error) {
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
-		return "", "", 0, nil
+		return "", "", 0, err
 	}
 
 	var latestPath string
@@ -245,7 +245,7 @@ func (m *Manager) LatestSession() (SessionID, string, int, error) {
 	// Count turns from the session file
 	turns, err := CountTurns(latestPath)
 	if err != nil {
-		return latestID, latestPath, 0, nil
+		return latestID, latestPath, 0, err
 	}
 	return latestID, latestPath, turns, nil
 }

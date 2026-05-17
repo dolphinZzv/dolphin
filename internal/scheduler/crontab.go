@@ -454,11 +454,3 @@ func (m *Manager) rewriteFileLocked() {
 		zap.S().Errorw("write crontab file", "error", err)
 	}
 }
-
-// truncate shortens a string for logging.
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
-}

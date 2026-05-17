@@ -87,6 +87,9 @@ func TestCDPInvalidInput(t *testing.T) {
 }
 
 func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping CDP integration test in short mode")
+	}
 	if os.Getenv("SKIP_CDP_INTEGRATION") != "" {
 		t.Skip("skipping CDP integration test (SKIP_CDP_INTEGRATION set)")
 	}
