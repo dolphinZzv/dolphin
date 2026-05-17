@@ -118,5 +118,5 @@ release:
   github:
     owner: dolphinZzv
     name: dolphin
-  draft: true
+  draft: false
   make_latest: false
