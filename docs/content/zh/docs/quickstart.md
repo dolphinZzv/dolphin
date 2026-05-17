@@ -9,23 +9,23 @@ weight: 5
 
 ## 1. 安装小海豚
 
-**macOS / Linux：**
+**Homebrew 安装（macOS/Linux，推荐）：**
 
 ```bash
-curl -sfL https://github.com/dolphinZzv/dolphin/releases/latest/download/install.sh | sh
+brew install dolphin-ai
 dolphin-ai --version
 ```
 
 **Go 安装**（需 Go 1.26+）：
 
 ```bash
-go install github.com/dolphinZzv/dolphin@latest
+go build -o dolphin-ai .
 ```
 
 **Windows（PowerShell）：**
 
 ```powershell
-$VERSION = "v1.0.0"
+$VERSION = "v0.2.1"
 Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai.zip"
 Expand-Archive -Path "dolphin-ai.zip" -DestinationPath .
 Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
@@ -84,15 +84,24 @@ Dolphin >
 ```
 Dolphin > 这个目录下有哪些文件？
 
-Dolphin > 创建一个 hello.txt，内容写上"你好，小海豚！"
+Dolphin > 创建 hello.txt，内容写上"你好，小海豚！"
 
-Dolphin > 今天天气怎么样？
-  ─ 我来查一下你所在位置的天气。
+Dolphin > 查看系统环境信息
 ```
 
 小海豚可以执行命令、读写文件、浏览网页等等。
 
-## 5. 接下来
+## 5. 常用命令
+
+```bash
+dolphin-ai --version      # 查看版本
+dolphin-ai init           # 初始化项目
+dolphin-ai setup          # 交互式设置向导
+dolphin-ai skills list    # 列出已安装技能
+dolphin-ai sessions list  # 列出会话历史
+```
+
+## 6. 接下来
 
 - **[配置参考]({{< relref "docs/config" >}})** — 自定义提供商、传输层和工具
 - **[安装指南]({{< relref "docs/install" >}})** — 所有安装方式和故障排查

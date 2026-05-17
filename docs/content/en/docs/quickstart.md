@@ -9,23 +9,23 @@ Get Dolphin running in five minutes. You'll need an LLM API key and a terminal.
 
 ## 1. Install Dolphin
 
-**macOS / Linux:**
+**Homebrew install (macOS/Linux, recommended):**
 
 ```bash
-curl -sfL https://github.com/dolphinZzv/dolphin/releases/latest/download/install.sh | sh
+brew install dolphin-ai
 dolphin-ai --version
 ```
 
-**Go install** (requires Go 1.26+):
+**Build from source** (requires Go 1.26+):
 
 ```bash
-go install github.com/dolphinZzv/dolphin@latest
+go build -o dolphin-ai .
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-$VERSION = "v1.0.0"
+$VERSION = "v0.2.1"
 Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai.zip"
 Expand-Archive -Path "dolphin-ai.zip" -DestinationPath .
 Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
@@ -84,38 +84,24 @@ Dolphin >
 ```
 Dolphin > what files are in this directory?
 
-Dolphin > create a hello.txt with "Hello, Dolphin!" in it
+Dolphin > create hello.txt with "Hello, Dolphin!" in it
 
-Dolphin > what does the weather look like today?
-  ─ I'll check your location and find the weather for you.
+Dolphin > show me the system environment
 ```
 
 Dolphin can run commands, read and write files, browse the web, and more — all from the prompt.
 
-## 5. Session Diagram
-
-Generate a Mermaid sequence diagram from any past session:
+## 5. Common Commands
 
 ```bash
-# List available sessions
-dolphin sessions list
-
-# Generate mermaid diagram for a session
-dolphin sessions dump <session-id>
+dolphin-ai --version     # Check version
+dolphin-ai init          # Initialize project
+dolphin-ai setup         # Interactive setup wizard
+dolphin-ai skills list   # List installed skills
+dolphin-ai sessions list # List session history
 ```
 
-Example output:
-
-```mermaid
-sequenceDiagram
-    autoNumber
-    Note over User,Agent: Turn 0
-    Agent->>shell: shell({"command":"date"})
-    shell-->>Agent: (empty)
-    Agent->>Agent: 当前系统时间为：**2026年5月16日 星期六 18:10:47 CST**（中国标准时间）。
-
-    participant shell
-```
+## 6. Next Steps
 
 Paste the output into https://mermaid.live to render.
 
