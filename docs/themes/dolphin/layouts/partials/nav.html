@@ -5,11 +5,6 @@
       <span>Dolphin</span>
     </a>
     <div class="nav-links">
-      <div class="theme-toggle">
-        <button class="theme-btn" data-theme="auto">Auto</button>
-        <button class="theme-btn" data-theme="light">Light</button>
-        <button class="theme-btn" data-theme="dark">Dark</button>
-      </div>
       <a href="{{ relLangURL "docs/" }}">{{ i18n "docs" }}</a>
       {{ if eq .Section "docs" }}
       {{ range .CurrentSection.Pages.ByWeight }}
