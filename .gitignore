@@ -1,6 +1,10 @@
 # Binary
 /dolphin
 /dolphin.exe
+/dolphin-ai
+/dolphin-ai.exe
+/dolphin-agent
+/dolphin-agent.exe
 
 # Session logs
 /sessions/
