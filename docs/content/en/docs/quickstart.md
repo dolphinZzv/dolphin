@@ -43,7 +43,7 @@ Choose your provider and set all required variables:
 export DZ_LLM_TYPE="anthropic"
 export DZ_LLM_API_KEY="sk-ant-..."
 export DZ_LLM_BASE_URL="https://api.anthropic.com/v1"
-export DZ_LLM_MODEL="claude-sonnet-4-6"
+export DZ_LLM_MODEL="claude-opus-4-7"
 ```
 {{< /tab >}}
 {{< tab title="OpenAI" id="openai" >}}
@@ -51,7 +51,7 @@ export DZ_LLM_MODEL="claude-sonnet-4-6"
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://api.openai.com/v1"
-export DZ_LLM_MODEL="gpt-4o"
+export DZ_LLM_MODEL="gpt-5.5"
 ```
 {{< /tab >}}
 {{< tab title="DeepSeek" id="deepseek" >}}

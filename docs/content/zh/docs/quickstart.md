@@ -59,7 +59,15 @@ export DZ_LLM_MODEL="qwen3.6-max-preview"
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-export DZ_LLM_MODEL="glm-5"
+export DZ_LLM_MODEL="glm-5.1"
+```
+{{< /tab >}}
+{{< tab title="MiniMax" id="minimax" >}}
+```bash
+export DZ_LLM_TYPE="openai"
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_BASE_URL="https://api.minimaxi.com/v1"
+export DZ_LLM_MODEL="MiniMax-M2.7"
 ```
 {{< /tab >}}
 {{< /tabs >}}

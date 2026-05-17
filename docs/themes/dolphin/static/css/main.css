@@ -186,7 +186,7 @@ pre:hover .copy-btn { opacity: 1; }
 .copy-btn:hover { background: var(--accent, #06b6d4); color: #fff; border-color: var(--accent, #06b6d4); }
 
 /* Tabs */
-.tabs { margin-bottom: 20px; }
+.tabs { margin-bottom: 20px; white-space: nowrap; overflow-x: auto; }
 .tab-header {
   display: inline-block;
   padding: 8px 16px;
