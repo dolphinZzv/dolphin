@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -128,12 +129,32 @@ func (t *DingTalkTransport) sendMessage(body string) error {
 	}
 
 	replier := chatbot.NewChatbotReplier()
-	if err := replier.SimpleReplyText(context.Background(), webhook, []byte(body)); err != nil {
-		return fmt.Errorf("dingtalk reply: %w", err)
+
+	if isMarkdownContent(body) {
+		if err := replier.SimpleReplyMarkdown(context.Background(), webhook, []byte("Dolphin"), []byte(body)); err != nil {
+			return fmt.Errorf("dingtalk markdown reply: %w", err)
+		}
+	} else {
+		if err := replier.SimpleReplyText(context.Background(), webhook, []byte(body)); err != nil {
+			return fmt.Errorf("dingtalk reply: %w", err)
+		}
 	}
 
 	zap.S().Debugw("dingtalk message sent", "len", len(body))
 	return nil
+}
+
+// isMarkdownContent detects if a string contains markdown formatting markers.
+func isMarkdownContent(s string) bool {
+	markdownIndicators := []string{
+		"# ", "**", "```", "`", "- ", "* ", "1. ", "> ", "---", "[](",
+	}
+	for _, indicator := range markdownIndicators {
+		if strings.Contains(s, indicator) {
+			return true
+		}
+	}
+	return false
 }
 
 // Close shuts down the transport.
