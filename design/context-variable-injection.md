@@ -183,4 +183,4 @@ System language: zh_CN.UTF-8
 | Template errors → raw content | Context files must never break the agent |
 | All default keys pre-populated | `{{.Config.name}}` never empty, no surprises |
 
-<!-- last-modified: 2026-05-16 -->
+> Last modified: 2026-05-17

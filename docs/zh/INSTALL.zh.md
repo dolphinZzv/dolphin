@@ -241,4 +241,4 @@ sha256sum dolphin_*.tar.gz
 # 与 release 中的 checksums.txt 对比
 ```
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17

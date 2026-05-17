@@ -6,4 +6,4 @@
 - YAML frontmatter + Markdown body
 - 使用跟踪 (call_count, last_called_at)
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17

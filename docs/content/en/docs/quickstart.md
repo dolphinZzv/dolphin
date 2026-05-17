@@ -124,4 +124,4 @@ Paste the output into https://mermaid.live to render.
 - **[Configuration Reference]({{< relref "docs/config" >}})** — customize providers, transports, and tools
 - **[Install Guide]({{< relref "docs/install" >}})** — all install options and troubleshooting
 
-<!-- last-modified: 2026-05-16 -->
+> Last modified: 2026-05-17

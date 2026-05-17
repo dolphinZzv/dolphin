@@ -23,4 +23,4 @@ Types: session:created | session:ended | user:message | llm:response |
 - 内置 JSONL 日志 + Webhook 投递
 - per-handler channel (buffer 256), 满时 drop + warn
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17

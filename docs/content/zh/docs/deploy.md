@@ -196,4 +196,4 @@ nssm start dolphin
 | nohup | 重定向的 stdout 位置 |
 | Dolphin 会话日志 | `~/.dolphin/logs/agent.log` |
 
-<!-- last-modified: 2026-05-15 -->
+> Last modified: 2026-05-17

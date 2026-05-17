@@ -175,4 +175,4 @@ Compression happens before each LLM call (`runTurn`), triggered when estimated t
 | Stat-cached context files | Context files are read once per session, hot-reloaded on mtime change |
 | LLM fallback to concatenation | Compression must never fail — if provider is down, degrade gracefully |
 
-<!-- last-modified: 2026-05-16 -->
+> Last modified: 2026-05-17

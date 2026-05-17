@@ -394,4 +394,4 @@ Run `dolphin init --restrictive` to generate a security-hardened config:
 - **Log level**: `warn` (reduces secret leakage in logs)
 - **Plugins**: disabled
 
-<!-- last-modified: 2026-05-14 -->
+> Last modified: 2026-05-17

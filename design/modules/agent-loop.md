@@ -107,4 +107,4 @@ flowchart LR
     Comp --> C1 --> C2 --> C3
 ```
 
-<!-- last-modified: 2026-05-17 -->
+> Last modified: 2026-05-17

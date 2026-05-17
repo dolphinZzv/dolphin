@@ -80,4 +80,4 @@ sequenceDiagram
 - `FilteredView(names)` — 子 Agent 工具子集
 - 自动统计: CallCount, ErrorCount, LastCalledAt, TotalDuration
 
-<!-- last-modified: 2026-05-17 -->
+> Last modified: 2026-05-17

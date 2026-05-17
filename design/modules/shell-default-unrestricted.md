@@ -52,4 +52,4 @@ flowchart TD
 - 回归测试：白名单模式仍能正确拦截 shell 元字符
 - 新测试：管道命令 `echo hello | wc -c` 正常输出
 
-<!-- last-modified: 2026-05-17 -->
+> Last modified: 2026-05-17

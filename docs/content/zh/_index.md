@@ -42,4 +42,4 @@ export DZ_LLM_MODEL="deepseek-v4-flash"
 - [GitHub](https://github.com/dolphinZzv/dolphin)
 - [Gitee](https://gitee.com/dolphinzzv/dolphindolphin)
 
-<!-- last-modified: 2026-05-14 -->
+> Last modified: 2026-05-17

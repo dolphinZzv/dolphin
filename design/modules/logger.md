@@ -6,4 +6,4 @@
 - Config: Level, File, MaxSize, MaxAge, MaxBackup
 - 空 File → stderr 输出
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17

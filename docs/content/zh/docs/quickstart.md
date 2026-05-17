@@ -97,4 +97,4 @@ Dolphin > 今天天气怎么样？
 - **[配置参考]({{< relref "docs/config" >}})** — 自定义提供商、传输层和工具
 - **[安装指南]({{< relref "docs/install" >}})** — 所有安装方式和故障排查
 
-<!-- last-modified: 2026-05-14 -->
+> Last modified: 2026-05-17

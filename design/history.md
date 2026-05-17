@@ -27,4 +27,4 @@
 | 23 | config_handler | v0.3 |
 | 24 | config_gen + career + project + repo | v0.3 |
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17

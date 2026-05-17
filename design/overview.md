@@ -119,4 +119,4 @@ runAgent():
   11. g.Run() — 任一 Actor 退出 → cancel 全部
 ```
 
-<!-- last-modified: 2026-05-13 -->
+> Last modified: 2026-05-17
