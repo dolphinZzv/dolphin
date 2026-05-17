@@ -59,7 +59,14 @@ install-systemd: build
 
 release:
 	@if [ -z "$(TAG)" ]; then echo "Usage: make release TAG=v0.1.0"; exit 1; fi
-	git tag -a "$(TAG)" -m "release $(TAG)"
+	@VERSION=$(TAG) && \
+	perl -pi -e "s/dolphin-ai_0\.2\.9_macOS/dolphin-ai_$${VERSION#v}_macOS/g" docs/content/zh/docs/install.md && \
+	perl -pi -e "s/dolphin-ai_0\.2\.9_linux/dolphin-ai_$${VERSION#v}_linux/g" docs/content/zh/docs/install.md && \
+	perl -pi -e "s/dolphin-ai_0\.2\.9_macOS/dolphin-ai_$${VERSION#v}_macOS/g" docs/content/en/docs/install.md && \
+	perl -pi -e "s/dolphin-ai_0\.2\.9_linux/dolphin-ai_$${VERSION#v}_linux/g" docs/content/en/docs/install.md && \
+	git add docs/content/zh/docs/install.md docs/content/en/docs/install.md && \
+	git commit -m "docs: update install docs to $(TAG)" && \
+	git tag -a "$(TAG)" -m "release $(TAG)" && \
 	git push origin "$(TAG)"
 
 release-snapshot:
