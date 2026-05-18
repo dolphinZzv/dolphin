@@ -57,7 +57,7 @@ nfpms:
     description: |
       dolphin is an AI agent platform with multi-agent coordination,
       MCP tool integration, skills, cron tasks, and multi-provider LLM support.
-    license: MIT
+    license: GPL-2.0
     formats:
       - deb
       - rpm
@@ -90,7 +90,7 @@ brews:
     description: |
       dolphin-ai is an AI agent platform with multi-agent coordination,
       MCP tool integration, skills, cron tasks, and multi-provider LLM support.
-    license: MIT
+    license: GPL-2.0
     dependencies:
       - name: git
     caveats: |

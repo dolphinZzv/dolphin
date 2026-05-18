@@ -118,16 +118,3 @@ make build                  # development build
 
 Documentation lives in `design/`.
 
-## Philosophy
-
-dolphin is built around a few beliefs about how AI agents should work:
-
-- **Meet people where they are.** The agent shouldn't require a special UI. It should plug into the tools and channels already in use.
-- **Progressive disclosure.** Show the most relevant tools and skills first. Let the LLM search for more when needed. Don't flood the context window.
-- **Local first, privacy respecting.** Career profile, SYSTEM.md, session files — all stored locally. Nothing gets sent anywhere except the LLM API calls you configure.
-- **Recoverable by design.** Sessions persist to disk. If the agent crashes or you shut down, you can resume where you left off. Logs rotate but don't disappear.
-- **Testable and observable.** Structured logging, Prometheus metrics, pprof endpoints, and a test suite that enforces race detection and coverage gates.
-
----
-
-**Contact:** [dolphin@siciv.space](mailto:dolphin@siciv.space)
