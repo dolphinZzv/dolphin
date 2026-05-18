@@ -47,10 +47,19 @@ All transports share the same agent instance, tools, and session state. Switch b
 ### Quick start
 
 ```bash
-go build -o dolphin .
+# One-line install (Linux / macOS)
+curl -fsSL https://raw.githubusercontent.com/dolphinZzv/dolphin/main/install.sh | sh
+
+# Or build from source
+# go build -o dolphin .
+```
+
+Set your API key and run:
+
+```bash
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="gpt-4o"          # model name
-export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpoints
+export DZ_LLM_MODEL="gpt-4o"
+export DZ_LLM_BASE_URL="https://api.openai.com/v1"
 ./dolphin
 ```
 

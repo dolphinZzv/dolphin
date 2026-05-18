@@ -47,34 +47,25 @@ dolphin 支持五种传输协议，可以同时启用：
 ### 一键启动
 
 ```bash
-go build -o dolphin .
+# 一键安装（Linux / macOS）
+curl -fsSL https://raw.githubusercontent.com/dolphinZzv/dolphin/main/install.sh | sh
 
+# 或者从源码编译
+# go build -o dolphin .
+```
+
+设置 API 密钥后运行：
+
+```bash
 # DeepSeek 示例（中国地区可直接访问）
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
 export DZ_LLM_BASE_URL="https://api.deepseek.com"
 export DZ_LLM_TYPE="openai"
-
-# MiniMax M2.7 示例
-# export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="MiniMax-M2.7"
-# export DZ_LLM_BASE_URL="https://api.minimax.chat/v1"
-# export DZ_LLM_TYPE="openai"
-
-# 智谱 GLM-5.1 示例
-# export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="glm-5.1"
-# export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-# export DZ_LLM_TYPE="openai"
-
-# 通义千问 Qwen3.6 示例
-# export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="qwen3.6-max-preview"
-# export DZ_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-# export DZ_LLM_TYPE="openai"
-
 ./dolphin
 ```
+
+其他中国地区推荐模型参考下方表格。<!-- 完整示例见 docs/zh/INSTALL.zh.md -->
 
 ### 环境变量
 
