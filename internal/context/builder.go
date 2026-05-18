@@ -4,11 +4,30 @@ package context
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+// Default section priorities (lower = earlier in prompt).
+const (
+	PrioritySoul              = 1
+	PriorityPreface           = 2
+	PriorityBuiltinSkills     = 3
+	PrioritySelfEvoSkills     = 4
+	PriorityAgents            = 5
+	PriorityRules             = 6
+	PriorityUser              = 7
+	PrioritySystem            = 8
+)
+
+// section holds a single prompt section with its priority.
+type section struct {
+	priority int
+	content  string
+}
 
 // cachedFile holds the cached content and modification time of a context file.
 type cachedFile struct {
@@ -28,6 +47,12 @@ type Builder struct {
 	// in the built prompt. When enabled, LLM tools for config CRUD, skill
 	// management, command management, reload, and context are documented.
 	SelfEvolution bool
+
+	// SectionPriority overrides default section priorities.
+	// Key is section name: "soul", "preface", "builtin_skills",
+	// "self_evo_skills", "agents", "rules", "user", "system".
+	// Value is the priority (lower = earlier in prompt).
+	SectionPriority map[string]int
 }
 
 func NewBuilder() *Builder {
@@ -53,62 +78,109 @@ func (b *Builder) Build() (string, error) {
 	return b.BuildForAgent("")
 }
 
+// sectionPriority returns the effective priority for a named section,
+// using the user override if set, otherwise the default.
+func (b *Builder) sectionPriority(name string, defaultPriority int) int {
+	if b.SectionPriority != nil {
+		if p, ok := b.SectionPriority[name]; ok {
+			return p
+		}
+	}
+	return defaultPriority
+}
+
 // BuildForAgent builds a system prompt for a specific agent.
 // For each context file, agent-specific directory is checked first, then
 // the default locations: project > user > system.
 //
 //	agentDir = .dolphin/agents/<name>/
-	//	SOUL.md:	projectDir > userDir > systemDir (optional, loaded before PREFACE)
+//	SOUL.md:	projectDir > userDir > systemDir (optional)
 //	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
 //	order for RULES.md:  agentDir > projectDir > userDir > systemDir
 //	order for USER.md:   agentDir > projectDir > userDir > systemDir
-//	SYSTEM.md: user dir only — generated once, injected every session
+//	SYSTEM.md: user dir only — generated once, injected every startup
+//
+// Sections are ordered by priority (ascending). Default priorities can be
+// overridden via Builder.SectionPriority.
 func (b *Builder) BuildForAgent(agentName string) (string, error) {
 	var agentDir string
 	if agentName != "" {
 		agentDir = filepath.Join(b.projectDir, "agents", agentName)
 	}
 
-	var parts []string
+	var secs []section
 
-	// 1. SOUL.md (project > user > system, optional)
+	// SOUL.md (project > user > system, optional)
 	if soul := b.loadFileFallback("", "SOUL.md"); soul != "" {
-		parts = append(parts, "## Soul\n"+soul)
+		secs = append(secs, section{
+			priority: b.sectionPriority("soul", PrioritySoul),
+			content:  "## Soul\n" + soul,
+		})
 	}
 
-	// 2. PREFACE (embedded, always)
-	parts = append(parts, DefaultPreface)
+	// PREFACE (embedded, always)
+	secs = append(secs, section{
+		priority: b.sectionPriority("preface", PriorityPreface),
+		content:  DefaultPreface,
+	})
 
-	// 2. BUILTIN SKILLS (embedded, always)
+	// BUILTIN SKILLS (embedded, always)
 	if BuiltinSkills != "" {
-		parts = append(parts, BuiltinSkills)
+		secs = append(secs, section{
+			priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills),
+			content:  BuiltinSkills,
+		})
 	}
 
-	// 2b. SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
+	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
 	if b.SelfEvolution && SelfEvolutionSkills != "" {
-		parts = append(parts, SelfEvolutionSkills)
+		secs = append(secs, section{
+			priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills),
+			content:  SelfEvolutionSkills,
+		})
 	}
 
-	// 3. AGENTS.md (agent > project > user > system)
+	// AGENTS.md (agent > project > user > system)
 	if agents := b.loadFileFallback(agentDir, "AGENTS.md"); agents != "" {
-		parts = append(parts, "## Agent Definitions\n"+agents)
+		secs = append(secs, section{
+			priority: b.sectionPriority("agents", PriorityAgents),
+			content:  "## Agent Definitions\n" + agents,
+		})
 	}
 
-	// 4. RULES.md
+	// RULES.md
 	if rules := b.loadFileFallback(agentDir, "RULES.md"); rules != "" {
-		parts = append(parts, "## Rules\n"+rules)
+		secs = append(secs, section{
+			priority: b.sectionPriority("rules", PriorityRules),
+			content:  "## Rules\n" + rules,
+		})
 	}
 
-	// 5. USER.md
+	// USER.md
 	if user := b.loadFileFallback(agentDir, "USER.md"); user != "" {
-		parts = append(parts, "## User Context\n"+user)
+		secs = append(secs, section{
+			priority: b.sectionPriority("user", PriorityUser),
+			content:  "## User Context\n" + user,
+		})
 	}
 
-	// 6. SYSTEM.md (user dir only — generated once, injected every startup)
+	// SYSTEM.md (user dir only — generated once, injected every startup)
 	if sys := b.loadSystemMD(); sys != "" {
-		parts = append(parts, "## System\n"+sys)
+		secs = append(secs, section{
+			priority: b.sectionPriority("system", PrioritySystem),
+			content:  "## System\n" + sys,
+		})
 	}
 
+	// Sort by priority ascending
+	sort.Slice(secs, func(i, j int) bool {
+		return secs[i].priority < secs[j].priority
+	})
+
+	parts := make([]string, len(secs))
+	for i, s := range secs {
+		parts[i] = s.content
+	}
 	return strings.Join(parts, "\n\n"), nil
 }
 
