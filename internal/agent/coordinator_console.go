@@ -592,7 +592,11 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 		io.WriteLine(i18n.TL(i18n.KeyContextSectionsHd))
 		for _, s := range loaded {
 			size := formatSize(s.Size)
-			io.WriteLine(fmt.Sprintf("  %-20s %d  %s", s.Name, s.Priority, size))
+			path := s.Path
+			if path == "" {
+				path = "(embedded)"
+			}
+			io.WriteLine(fmt.Sprintf("  %-20s %d  %s  %s", s.Name, s.Priority, size, path))
 		}
 		io.WriteLine("")
 	}

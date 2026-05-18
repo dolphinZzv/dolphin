@@ -672,8 +672,8 @@ func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 	coord.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "Unknown command") {
-		t.Error("expected unknown command message, got:", output)
+	if !strings.Contains(output, "I don't know this command") {
+		t.Error("expected LLM response for unknown slash command, got:", output)
 	}
 }
 

@@ -62,7 +62,8 @@ type Builder struct {
 type SectionInfo struct {
 	Name     string
 	Priority int
-	Size     int // content length in bytes
+	Size     int    // content length in bytes
+	Path     string // file path on disk, or "embedded" if from embedded content
 }
 
 // LoadedSections returns info about sections included in the last build.
@@ -122,13 +123,13 @@ func (b *Builder) sectionPriority(name string, defaultPriority int) int {
 
 // BuildForAgent builds a system prompt for a specific agent.
 // For each context file, agent-specific directory is checked first, then
-// the default locations: project > user > system.
+// the default locations: current > project > user > system.
 //
 //	agentDir = .dolphin/agents/<name>/
-//	SOUL.md:	projectDir > userDir > systemDir (optional)
-//	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
-//	order for RULES.md:  agentDir > projectDir > userDir > systemDir
-//	order for USER.md:   agentDir > projectDir > userDir > systemDir
+//	SOUL.md:	./ > projectDir > userDir > systemDir (optional)
+//	order for AGENTS.md: agentDir > ./ > projectDir > userDir > systemDir
+//	order for RULES.md:  agentDir > ./ > projectDir > userDir > systemDir
+//	order for USER.md:   agentDir > ./ > projectDir > userDir > systemDir
 //	SYSTEM.md: user dir only — generated once, injected every startup
 //
 // Sections are ordered by priority (ascending). Default priorities can be
@@ -149,7 +150,8 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("soul", PrioritySoul),
 			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul), Size: len(content)})
+		secPath := b.resolveFileFallback("", "SOUL.md")
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul), Size: len(content), Path: secPath})
 	}
 
 	// PREFACE (embedded, always)
@@ -187,7 +189,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("agents", PriorityAgents),
 			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents), Size: len(content)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents), Size: len(content), Path: b.resolveFileFallback(agentDir, "AGENTS.md")})
 	}
 
 	// RULES.md
@@ -197,7 +199,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("rules", PriorityRules),
 			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules), Size: len(content)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules), Size: len(content), Path: b.resolveFileFallback(agentDir, "RULES.md")})
 	}
 
 	// USER.md
@@ -207,7 +209,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("user", PriorityUser),
 			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser), Size: len(content)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser), Size: len(content), Path: b.resolveFileFallback(agentDir, "USER.md")})
 	}
 
 	// SYSTEM.md (user dir only — generated once, injected every startup)
@@ -217,7 +219,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("system", PrioritySystem),
 			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem), Size: len(content)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem), Size: len(content), Path: filepath.Join(b.userDir, "SYSTEM.md")})
 	}
 
 	// Sort by priority ascending
@@ -245,14 +247,14 @@ func (b *Builder) loadSystemMD() string {
 }
 
 // loadFileFallback loads a context file with cascading fallback.
-// If agentDir is non-empty, checks agentDir first, then falls back to the
-// default project > user > system chain.
+// If agentDir is non-empty, checks agentDir first, then falls back to
+// current dir > project > user > system chain.
 func (b *Builder) loadFileFallback(agentDir, name string) string {
-	dirs := make([]string, 0, 4)
+	dirs := make([]string, 0, 5)
 	if agentDir != "" {
 		dirs = append(dirs, agentDir)
 	}
-	dirs = append(dirs, b.projectDir, b.userDir, b.systemDir)
+	dirs = append(dirs, ".", b.projectDir, b.userDir, b.systemDir)
 
 	for _, dir := range dirs {
 		path := filepath.Join(dir, name)
@@ -263,6 +265,24 @@ func (b *Builder) loadFileFallback(agentDir, name string) string {
 		if content != "" {
 			zap.S().Debugw("loaded context file", "file", path)
 			return content
+		}
+	}
+	return ""
+}
+
+// resolveFileFallback returns the first existing file path matching name
+// using the same fallback chain as loadFileFallback.
+func (b *Builder) resolveFileFallback(agentDir, name string) string {
+	dirs := make([]string, 0, 5)
+	if agentDir != "" {
+		dirs = append(dirs, agentDir)
+	}
+	dirs = append(dirs, ".", b.projectDir, b.userDir, b.systemDir)
+
+	for _, dir := range dirs {
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			return path
 		}
 	}
 	return ""

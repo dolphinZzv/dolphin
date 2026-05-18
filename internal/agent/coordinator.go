@@ -388,8 +388,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		if matchedUserCmd {
 			// Will fall through to LLM processing below
 		} else if strings.HasPrefix(line, "/") {
-			io.WriteLine(fmt.Sprintf("Unknown command: %s. Type /help for available commands.", strings.Fields(line)[0]))
-			continue
+			line = strings.TrimPrefix(line, "/")
 		}
 
 		state.Turn++
