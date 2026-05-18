@@ -123,6 +123,7 @@ var zhMessages = map[string]string{
 
 	// /context
 	KeyHelpReload:        "  /reload       - 重新加载（重启）代理",
+	KeyHelpConfig:        "  /config       - 列出所有配置  |  /config get <路径>  |  /config set <路径> <值>",
 	KeyHelpContext:       "  /context       - 显示当前上下文摘要；/context <名称> 查看章节内容",
 	KeyContextSummaryHd:  "=== 上下文摘要 ===",
 	KeyContextSectionNF:  "章节 %q 未找到。",

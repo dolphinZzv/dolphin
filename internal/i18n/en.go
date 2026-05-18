@@ -123,6 +123,7 @@ var enMessages = map[string]string{
 
 	// /context
 	KeyHelpReload:        "  /reload       - Reload (restart) the agent",
+	KeyHelpConfig:        "  /config       - List all config settings  |  /config get <path>  |  /config set <path> <value>",
 	KeyHelpContext:       "  /context       - Show current context summary; /context <name> to view section",
 	KeyContextSummaryHd:  "=== Context Summary ===",
 	KeyContextSectionNF:  "Section %q not found.",

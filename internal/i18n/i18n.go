@@ -139,6 +139,8 @@ const (
 	KeyNoSessions     = "no_sessions"
 	KeySessionRow     = "session_row"
 
+	KeyHelpConfig = "help_config"
+
 	// /context
 	KeyHelpContext       = "help_context"
 	KeyHelpReload        = "help_reload"

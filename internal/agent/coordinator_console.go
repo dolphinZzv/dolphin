@@ -8,15 +8,18 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"dolphin/internal/agent/console"
+	"dolphin/internal/config"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 // onboardConsole registers all built-in console commands.
@@ -87,6 +90,14 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.printTransport(io) },
 	})
 	con.Add(&console.Command{
+		Name: "config", Desc: i18n.TL(i18n.KeyHelpConfig),
+		Children: []*console.Command{
+			{Name: "get", Desc: "Get a config value by path (e.g. llm.temperature)", Handler: func(args []string, io transport.UserIO) { c.handleConfigGetCmd(args, io) }},
+			{Name: "set", Desc: "Set a config value by path (e.g. llm.temperature 0.8)", Handler: func(args []string, io transport.UserIO) { c.handleConfigSetCmd(args, io) }},
+		},
+		Handler: func(args []string, io transport.UserIO) { c.handleConfigListCmd(io) },
+	})
+	con.Add(&console.Command{
 		Name: "reload", Desc: i18n.TL(i18n.KeyHelpReload),
 		Handler: func(args []string, io transport.UserIO) {
 			c.reloadRequested = true
@@ -102,6 +113,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpHelp))
 	io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
 	io.WriteLine(i18n.TL(i18n.KeyHelpContext))
+	io.WriteLine(i18n.TL(i18n.KeyHelpConfig))
 	io.WriteLine(i18n.TL(i18n.KeyHelpExit))
 	io.WriteLine(i18n.TL(i18n.KeyHelpReload))
 	io.WriteLine("")
@@ -767,6 +779,130 @@ func (c *Coordinator) printTransport(io transport.UserIO) {
 	}
 	if !tc.Stdio.Enabled && !tc.SSH.Enabled && !tc.MQTT.Enabled && !tc.Email.Enabled && !tc.DingTalk.Enabled {
 		io.WriteLine("  (none enabled)")
+	}
+}
+
+func (c *Coordinator) handleConfigListCmd(io transport.UserIO) {
+	var lastSection string
+	for _, entry := range configurablePaths {
+		section := sectionOf(entry.path)
+		if section != lastSection {
+			if lastSection != "" {
+				io.WriteLine("")
+			}
+			io.WriteLine(fmt.Sprintf("── %s ──", section))
+			lastSection = section
+		}
+		val := entry.get(c.cfg)
+		io.WriteLine(fmt.Sprintf("  %s = %v", entry.path, formatValue(val)))
+		io.WriteLine(fmt.Sprintf("    %s", entry.description))
+	}
+	io.WriteLine("")
+	io.WriteLine("Use /config get <path> to read a value, /config set <path> <value> to modify.")
+}
+
+func (c *Coordinator) handleConfigGetCmd(args []string, io transport.UserIO) {
+	if len(args) == 0 {
+		io.WriteLine("Usage: /config get <path>")
+		io.WriteLine("Example: /config get llm.temperature")
+		io.WriteLine("Use /config to see all available paths.")
+		return
+	}
+	path := args[0]
+	entry := findConfigEntry(path)
+	if entry == nil {
+		children := findConfigChildren(path)
+		if len(children) == 0 {
+			io.WriteLine(fmt.Sprintf("Unknown path %q — use /config to see all paths", path))
+			return
+		}
+		for _, ch := range children {
+			val := ch.get(c.cfg)
+			io.WriteLine(fmt.Sprintf("%s = %v", ch.path, formatValue(val)))
+			io.WriteLine(fmt.Sprintf("  %s", ch.description))
+		}
+		return
+	}
+	val := entry.get(c.cfg)
+	io.WriteLine(fmt.Sprintf("%s = %v", entry.path, formatValue(val)))
+	io.WriteLine(fmt.Sprintf("  %s", entry.description))
+}
+
+func (c *Coordinator) handleConfigSetCmd(args []string, io transport.UserIO) {
+	if len(args) < 2 {
+		io.WriteLine("Usage: /config set <path> <value>")
+		io.WriteLine("Example: /config set llm.temperature 0.8")
+		io.WriteLine("Use /config to see all available paths.")
+		return
+	}
+	path := args[0]
+	valueStr := args[1]
+
+	entry := findConfigEntry(path)
+	if entry == nil {
+		io.WriteLine(fmt.Sprintf("Unknown path %q — use /config to see all paths", path))
+		return
+	}
+
+	oldVal := entry.get(c.cfg)
+	coerced, err := coerceValue(valueStr, oldVal)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Invalid value for %s: %v", path, err))
+		return
+	}
+
+	if err := entry.set(c.cfg, coerced); err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to set %s: %v", path, err))
+		return
+	}
+
+	if entry.needsSync {
+		c.rebuildCompressor()
+		zap.S().Infow("config changed: compressor rebuilt", "path", path)
+	}
+
+	filePath := filepath.Join(config.ProjectConfigDir, config.ConfigFileName+".yaml")
+	existing := make(map[string]any)
+	if data, err := os.ReadFile(filePath); err == nil {
+		if err := yaml.Unmarshal(data, &existing); err != nil {
+			zap.S().Warnw("failed to parse existing config", "path", filePath, "error", err)
+		}
+	}
+	overlayConfig(existing, c.cfg)
+	data, err := yaml.Marshal(existing)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Set %s = %v (was: %v). WARN: failed to persist: %v", path, formatValue(coerced), formatValue(oldVal), err))
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+		io.WriteLine(fmt.Sprintf("Set %s = %v (was: %v). WARN: failed to create config dir: %v", path, formatValue(coerced), formatValue(oldVal), err))
+		return
+	}
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		io.WriteLine(fmt.Sprintf("Set %s = %v (was: %v). WARN: failed to write config: %v", path, formatValue(coerced), formatValue(oldVal), err))
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf("Set %s = %v (was: %v) and saved to %s", path, formatValue(coerced), formatValue(oldVal), filePath))
+}
+
+func coerceValue(s string, current any) (any, error) {
+	switch current.(type) {
+	case bool:
+		return strconv.ParseBool(s)
+	case int:
+		return strconv.Atoi(s)
+	case float64:
+		return strconv.ParseFloat(s, 64)
+	case string:
+		return s, nil
+	case []string:
+		if s == "" || s == "[]" {
+			return []string{}, nil
+		}
+		return strings.Split(s, ","), nil
+	default:
+		return s, nil
 	}
 }
 
