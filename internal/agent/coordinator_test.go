@@ -1731,9 +1731,10 @@ func TestPrintContextConsole(t *testing.T) {
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
 		Agent: &Agent{
-			cfg:     cfg,
-			provider: &mockProvider{},
-			toolReg: mcp.NewRegistry(cfg),
+			cfg:       cfg,
+			provider:  &mockProvider{},
+			toolReg:   mcp.NewRegistry(cfg),
+			ctxBuilder: NewContextBuilder(),
 		},
 		pool: NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
 	}

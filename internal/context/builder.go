@@ -53,6 +53,20 @@ type Builder struct {
 	// "self_evo_skills", "agents", "rules", "user", "system".
 	// Value is the priority (lower = earlier in prompt).
 	SectionPriority map[string]int
+
+	// loadedSections tracks which sections were included in the last BuildForAgent call.
+	loadedSections []SectionInfo
+}
+
+// SectionInfo describes a loaded section for reporting purposes.
+type SectionInfo struct {
+	Name     string
+	Priority int
+}
+
+// LoadedSections returns info about sections included in the last build.
+func (b *Builder) LoadedSections() []SectionInfo {
+	return b.loadedSections
 }
 
 func NewBuilder() *Builder {
@@ -109,6 +123,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 	}
 
 	var secs []section
+	b.loadedSections = nil
 
 	// SOUL.md (project > user > system, optional)
 	if soul := b.loadFileFallback("", "SOUL.md"); soul != "" {
@@ -116,6 +131,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("soul", PrioritySoul),
 			content:  "## Soul\n" + soul,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul)})
 	}
 
 	// PREFACE (embedded, always)
@@ -123,6 +139,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 		priority: b.sectionPriority("preface", PriorityPreface),
 		content:  DefaultPreface,
 	})
+	b.loadedSections = append(b.loadedSections, SectionInfo{Name: "PREFACE.md", Priority: b.sectionPriority("preface", PriorityPreface)})
 
 	// BUILTIN SKILLS (embedded, always)
 	if BuiltinSkills != "" {
@@ -130,6 +147,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills),
 			content:  BuiltinSkills,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "BUILTIN_SKILLS.md", Priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills)})
 	}
 
 	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
@@ -138,6 +156,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills),
 			content:  SelfEvolutionSkills,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SELF_EVOLUTION.md", Priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills)})
 	}
 
 	// AGENTS.md (agent > project > user > system)
@@ -146,6 +165,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("agents", PriorityAgents),
 			content:  "## Agent Definitions\n" + agents,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents)})
 	}
 
 	// RULES.md
@@ -154,6 +174,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("rules", PriorityRules),
 			content:  "## Rules\n" + rules,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules)})
 	}
 
 	// USER.md
@@ -162,6 +183,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("user", PriorityUser),
 			content:  "## User Context\n" + user,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser)})
 	}
 
 	// SYSTEM.md (user dir only — generated once, injected every startup)
@@ -170,6 +192,7 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 			priority: b.sectionPriority("system", PrioritySystem),
 			content:  "## System\n" + sys,
 		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem)})
 	}
 
 	// Sort by priority ascending

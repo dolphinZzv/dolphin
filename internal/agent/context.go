@@ -32,3 +32,8 @@ func (b *ContextBuilder) SetRenderData(cfg *config.Config) {
 func (b *ContextBuilder) SetSelfEvolution(enabled bool) {
 	b.b.SelfEvolution = enabled
 }
+
+// LoadedSections returns info about sections included in the last build.
+func (b *ContextBuilder) LoadedSections() []ctx.SectionInfo {
+	return b.b.LoadedSections()
+}
