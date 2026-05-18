@@ -1,5 +1,7 @@
 # dolphin
 
+> **Status: Alpha** — breaking changes may occur. Not yet production-ready.
+
 <p align="center">
   <strong>Docs:</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
   <br>

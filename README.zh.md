@@ -1,5 +1,7 @@
 # dolphin
 
+> **状态：Alpha** — 可能存在不兼容变更，尚未生产就绪。
+
 <p align="center">
   <strong>文档：</strong> <a href="README.md">English</a> · <a href="README.zh.md">中文</a>
   <br>
