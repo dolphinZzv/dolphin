@@ -109,33 +109,61 @@ func (c *Coordinator) registerCoordinatorTools() {
 		},
 		c.handleLoadSkill,
 	)
+	// Always-available tools for creating/updating skills and commands
+	c.registerCoordTool("create_skill",
+		"Create a new skill with the given name, description, and markdown content. Use this to teach the agent new capabilities that can be reused across sessions. If a skill with the same name already exists, it will be overwritten.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "description": "Unique skill name"},
+				"description": map[string]any{"type": "string", "description": "Brief description of the skill's purpose"},
+				"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions, examples, and guidelines"},
+			},
+			"required": []string{"name", "description", "content"},
+		},
+		c.handleCreateSkill,
+	)
+	c.registerCoordTool("update_skill",
+		"Update an existing skill's description and content. Use this to improve or correct a skill. If the skill does not exist, it will be created.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "description": "Skill name to update"},
+				"description": map[string]any{"type": "string", "description": "Updated description"},
+				"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
+			},
+			"required": []string{"name", "description", "content"},
+		},
+		c.handleUpdateSkill,
+	)
+	c.registerCoordTool("create_command",
+		"Create a new user-defined /command with the given name, description, and markdown content. The command will be invocable by typing /<name> in future conversations.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "description": "Command name (used as /<name>)"},
+				"description": map[string]any{"type": "string", "description": "Brief description of what the command does"},
+				"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions sent to the LLM when /<name> is invoked"},
+			},
+			"required": []string{"name", "description", "content"},
+		},
+		c.handleCreateCommand,
+	)
+	c.registerCoordTool("update_command",
+		"Update an existing /command's description and content. If the command does not exist, it will be created.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name":        map[string]any{"type": "string", "description": "Command name to update"},
+				"description": map[string]any{"type": "string", "description": "Updated description"},
+				"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
+			},
+			"required": []string{"name", "description", "content"},
+		},
+		c.handleUpdateCommand,
+	)
+	// Self-evolution only: destructive operations
 	if c.cfg.Flags.SelfEvolution {
-		c.registerCoordTool("create_skill",
-			"Create a new skill with the given name, description, and markdown content. Use this to teach the agent new capabilities that can be reused across sessions. If a skill with the same name already exists, it will be overwritten.",
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":        map[string]any{"type": "string", "description": "Unique skill name"},
-					"description": map[string]any{"type": "string", "description": "Brief description of the skill's purpose"},
-					"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions, examples, and guidelines"},
-				},
-				"required": []string{"name", "description", "content"},
-			},
-			c.handleCreateSkill,
-		)
-		c.registerCoordTool("update_skill",
-			"Update an existing skill's description and content. Use this to improve or correct a skill. If the skill does not exist, it will be created.",
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":        map[string]any{"type": "string", "description": "Skill name to update"},
-					"description": map[string]any{"type": "string", "description": "Updated description"},
-					"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
-				},
-				"required": []string{"name", "description", "content"},
-			},
-			c.handleUpdateSkill,
-		)
 		c.registerCoordTool("delete_skill",
 			"Permanently delete a skill by name. Use this to remove outdated or incorrect skills.",
 			map[string]any{
@@ -146,32 +174,6 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"required": []string{"name"},
 			},
 			c.handleDeleteSkill,
-		)
-		c.registerCoordTool("create_command",
-			"Create a new user-defined /command with the given name, description, and markdown content. The command will be invocable by typing /<name> in future conversations.",
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":        map[string]any{"type": "string", "description": "Command name (used as /<name>)"},
-					"description": map[string]any{"type": "string", "description": "Brief description of what the command does"},
-					"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions sent to the LLM when /<name> is invoked"},
-				},
-				"required": []string{"name", "description", "content"},
-			},
-			c.handleCreateCommand,
-		)
-		c.registerCoordTool("update_command",
-			"Update an existing /command's description and content. If the command does not exist, it will be created.",
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"name":        map[string]any{"type": "string", "description": "Command name to update"},
-					"description": map[string]any{"type": "string", "description": "Updated description"},
-					"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
-				},
-				"required": []string{"name", "description", "content"},
-			},
-			c.handleUpdateCommand,
 		)
 		c.registerCoordTool("delete_command",
 			"Permanently delete a user-defined /command by name.",
@@ -191,14 +193,6 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"properties": map[string]any{},
 			},
 			c.handleReload,
-		)
-		c.registerCoordTool("context",
-			"Show the full agent context including system prompt, available agents, tools, skills, pending results, and config settings. Use this to understand the current execution environment.",
-			map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
-			},
-			c.handleContextTool,
 		)
 	}
 	c.registerCoordTool("context",
