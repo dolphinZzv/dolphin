@@ -139,6 +139,23 @@ const (
 	KeyNoSessions     = "no_sessions"
 	KeySessionRow     = "session_row"
 
+	// /context
+	KeyHelpContext       = "help_context"
+	KeyContextSummaryHd  = "context_summary_hd"
+	KeyContextSectionNF  = "context_section_nf"
+	KeyContextSectionHd  = "context_section_hd"
+	KeyContextProvider   = "context_provider"
+	KeyContextConfigPath = "context_config_path"
+	KeyContextMCPTools   = "context_mcp_tools"
+	KeyContextAgents     = "context_agents"
+	KeyContextSkills     = "context_skills"
+	KeyContextSkillsNA   = "context_skills_na"
+	KeyContextCommands   = "context_commands"
+	KeyContextCommandsNA = "context_commands_na"
+	KeyContextCron       = "context_cron"
+	KeyContextSelfEvolve = "context_self_evolve"
+	KeyContextSectionsHd = "context_sections_hd"
+
 	// pprof
 	KeyPprofBanner = "pprof_banner"
 	KeyPprofURL    = "pprof_url"

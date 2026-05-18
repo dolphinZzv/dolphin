@@ -121,6 +121,23 @@ var enMessages = map[string]string{
 	KeyNoSessions:     "No past sessions found.",
 	KeySessionRow:     "  %s  %4d turns  %s",
 
+	// /context
+	KeyHelpContext:       "  /context       - Show current context summary; /context <name> to view section",
+	KeyContextSummaryHd:  "=== Context Summary ===",
+	KeyContextSectionNF:  "Section %q not found.",
+	KeyContextSectionHd:  "=== %s ===",
+	KeyContextProvider:   "Provider:     %s (%s)",
+	KeyContextConfigPath: "Config Paths: %d total",
+	KeyContextMCPTools:   "MCP Tools:    %d registered",
+	KeyContextAgents:     "Agents:       %d (%d busy)",
+	KeyContextSkills:     "Skills:       %d available",
+	KeyContextSkillsNA:   "Skills:       not available",
+	KeyContextCommands:   "Commands:     %d available",
+	KeyContextCommandsNA: "Commands:     not available",
+	KeyContextCron:       "Cron Tasks:   %d scheduled",
+	KeyContextSelfEvolve: "Self-Evolve:  %v",
+	KeyContextSectionsHd: "--- Context Sections (priority) ---",
+
 	// pprof
 	KeyPprofBanner: "\n=== pprof server on %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",

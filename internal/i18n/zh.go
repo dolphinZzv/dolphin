@@ -121,6 +121,23 @@ var zhMessages = map[string]string{
 	KeyNoSessions:     "未找到历史会话。",
 	KeySessionRow:     "  %s  %4d 轮  %s",
 
+	// /context
+	KeyHelpContext:       "  /context       - 显示当前上下文摘要；/context <名称> 查看章节内容",
+	KeyContextSummaryHd:  "=== 上下文摘要 ===",
+	KeyContextSectionNF:  "章节 %q 未找到。",
+	KeyContextSectionHd:  "=== %s ===",
+	KeyContextProvider:   "提供商：      %s（%s）",
+	KeyContextConfigPath: "配置路径：    %d 个",
+	KeyContextMCPTools:   "MCP 工具：    %d 个已注册",
+	KeyContextAgents:     "代理：        %d（%d 忙碌）",
+	KeyContextSkills:     "技能：        %d 个可用",
+	KeyContextSkillsNA:   "技能：        不可用",
+	KeyContextCommands:   "命令：        %d 个可用",
+	KeyContextCommandsNA: "命令：        不可用",
+	KeyContextCron:       "定时任务：    %d 个已调度",
+	KeyContextSelfEvolve: "自进化：      %v",
+	KeyContextSectionsHd: "--- 上下文章节（优先级）---",
+
 	// pprof
 	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",

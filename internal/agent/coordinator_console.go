@@ -70,7 +70,7 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
 	})
 	con.Add(&console.Command{
-		Name: "context", Desc: "Show current context summary; /context <name> to view a section (e.g. /context SYSTEM.md)",
+		Name: "context", Desc: i18n.TL(i18n.KeyHelpContext),
 		Handler: func(args []string, io transport.UserIO) { c.printContext(args, io) },
 	})
 
@@ -89,7 +89,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
-	io.WriteLine("  /context - Show current context summary")
+	io.WriteLine(i18n.TL(i18n.KeyHelpContext))
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
 	stats := c.toolReg.ToolStats()
@@ -503,24 +503,24 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 		}
 		content := c.ctxBuilder.LoadSection(sectionName)
 		if content == "" {
-			io.WriteLine(fmt.Sprintf("Section %q not found.", sectionName))
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSectionNF), sectionName))
 			return
 		}
-		io.WriteLine(fmt.Sprintf("=== %s ===\n", strings.ToUpper(sectionName)))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSectionHd)+"\n", strings.ToUpper(sectionName)))
 		io.WriteLine(content)
 		return
 	}
 
-	io.WriteLine("=== Context Summary ===\n")
+	io.WriteLine(i18n.TL(i18n.KeyContextSummaryHd) + "\n")
 
 	sessionID := "none"
 	if c.currentSess != nil {
 		sessionID = string(c.currentSess.ID)
 	}
 	io.WriteLine(fmt.Sprintf("Session:      %s", sessionID))
-	io.WriteLine(fmt.Sprintf("Provider:     %s (%s)", c.cfg.LLM.Model, c.provider.Name()))
-	io.WriteLine(fmt.Sprintf("Config Paths: %d total", len(configurablePaths)))
-	io.WriteLine(fmt.Sprintf("MCP Tools:    %d registered", len(c.toolReg.List())))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextProvider), c.cfg.LLM.Model, c.provider.Name()))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextConfigPath), len(configurablePaths)))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextMCPTools), len(c.toolReg.List())))
 
 	agents := c.pool.List()
 	busyCount := 0
@@ -529,29 +529,29 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 			busyCount++
 		}
 	}
-	io.WriteLine(fmt.Sprintf("Agents:       %d (%d busy)", len(agents), busyCount))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextAgents), len(agents), busyCount))
 
 	if c.skills != nil {
-		io.WriteLine(fmt.Sprintf("Skills:       %d available", len(c.skills.List())))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSkills), len(c.skills.List())))
 	} else {
-		io.WriteLine("Skills:       not available")
+		io.WriteLine(i18n.TL(i18n.KeyContextSkillsNA))
 	}
 	if c.commands != nil {
-		io.WriteLine(fmt.Sprintf("Commands:     %d available", len(c.commands.List())))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextCommands), len(c.commands.List())))
 	} else {
-		io.WriteLine("Commands:     not available")
+		io.WriteLine(i18n.TL(i18n.KeyContextCommandsNA))
 	}
 	if c.cronMgr != nil {
-		io.WriteLine(fmt.Sprintf("Cron Tasks:   %d scheduled", len(c.cronMgr.List())))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextCron), len(c.cronMgr.List())))
 	}
 
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	io.WriteLine(fmt.Sprintf("Memory:       %d MB used", m.Alloc/1024/1024))
-	io.WriteLine(fmt.Sprintf("Self-Evolve:  %v", c.cfg.Flags.SelfEvolution))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSelfEvolve), c.cfg.Flags.SelfEvolution))
 	io.WriteLine("")
 	if loaded := c.ctxBuilder.LoadedSections(); len(loaded) > 0 {
-		io.WriteLine("--- Context Sections (priority) ---")
+		io.WriteLine(i18n.TL(i18n.KeyContextSectionsHd))
 		for _, s := range loaded {
 			io.WriteLine(fmt.Sprintf("  %-20s %d", s.Name, s.Priority))
 		}
