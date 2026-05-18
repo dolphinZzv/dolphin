@@ -69,6 +69,12 @@ func (b *Builder) LoadedSections() []SectionInfo {
 	return b.loadedSections
 }
 
+// LoadSection loads a single context section by filename (e.g. "SYSTEM.md")
+// using the standard fallback chain: project > user > system.
+func (b *Builder) LoadSection(name string) string {
+	return b.loadFileFallback("", name)
+}
+
 func NewBuilder() *Builder {
 	home, err := os.UserHomeDir()
 	if err != nil {

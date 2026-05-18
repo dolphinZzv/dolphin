@@ -70,8 +70,8 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
 	})
 	con.Add(&console.Command{
-		Name: "context", Desc: "Show current context summary",
-		Handler: func(args []string, io transport.UserIO) { c.printContext(io) },
+		Name: "context", Desc: "Show current context summary; /context <name> to view a section (e.g. /context SYSTEM.md)",
+		Handler: func(args []string, io transport.UserIO) { c.printContext(args, io) },
 	})
 
 	c.console = con
@@ -494,7 +494,23 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 	io.WriteLine("")
 }
 
-func (c *Coordinator) printContext(io transport.UserIO) {
+func (c *Coordinator) printContext(args []string, io transport.UserIO) {
+	// If a section name is given, display its content
+	if len(args) > 0 {
+		sectionName := args[0]
+		if !strings.HasSuffix(sectionName, ".md") {
+			sectionName += ".md"
+		}
+		content := c.ctxBuilder.LoadSection(sectionName)
+		if content == "" {
+			io.WriteLine(fmt.Sprintf("Section %q not found.", sectionName))
+			return
+		}
+		io.WriteLine(fmt.Sprintf("=== %s ===\n", strings.ToUpper(sectionName)))
+		io.WriteLine(content)
+		return
+	}
+
 	io.WriteLine("=== Context Summary ===\n")
 
 	sessionID := "none"

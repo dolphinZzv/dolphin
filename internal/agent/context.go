@@ -37,3 +37,8 @@ func (b *ContextBuilder) SetSelfEvolution(enabled bool) {
 func (b *ContextBuilder) LoadedSections() []ctx.SectionInfo {
 	return b.b.LoadedSections()
 }
+
+// LoadSection loads a single context section by filename (e.g. "SYSTEM.md").
+func (b *ContextBuilder) LoadSection(name string) string {
+	return b.b.LoadSection(name)
+}

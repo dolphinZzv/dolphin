@@ -1740,7 +1740,7 @@ func TestPrintContextConsole(t *testing.T) {
 	}
 	c.currentSess = &session.Session{ID: "test"}
 	c.basePrompt = "test prompt"
-	c.printContext(io)
+	c.printContext(nil, io)
 	output := io.writes.String()
 	if !strings.Contains(output, "Context Summary") && !strings.Contains(output, "Session") {
 		t.Errorf("output should contain context heading, got: %s", output)
