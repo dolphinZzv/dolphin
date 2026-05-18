@@ -8,7 +8,8 @@ build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
 
 latest:
-	go build -ldflags="-X 'dolphin/cmd.Version=latest'" -o dolphin .
+	git pull gitea main
+	$(MAKE) build
 
 run: build
 	./dolphin
