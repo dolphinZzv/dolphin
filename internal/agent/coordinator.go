@@ -12,8 +12,8 @@ import (
 
 	"dolphin/internal/agent/buildin"
 	"dolphin/internal/agent/compressor"
-	"dolphin/internal/agent/provider"
 	"dolphin/internal/agent/console"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -43,7 +43,7 @@ type Coordinator struct {
 	buildinRegistry  *buildin.BuildinRegistry
 	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
 	currentSess      *session.Session    // current session for buildin logging
-	reloadRequested bool                // set by reload tool to trigger clean exit
+	reloadRequested  bool                // set by reload tool to trigger clean exit
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -118,7 +118,6 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 func (c *Coordinator) SetStartupRecommend(rec *config.Recommendation) {
 	c.startupRecommend = rec
 }
-
 
 // initBuildinAgents initializes all registered built-in agents. It wires
 // dispatch, session logging, and telemetry span creation into each agent's
@@ -626,7 +625,6 @@ You are a coordinator agent. Your job:
 	return strings.Join(parts, "\n\n")
 }
 
-
 // parseCommandName extracts the command name from a /command line.
 // "/analyze-competitor" -> "analyze-competitor"
 // "/dev-run" -> "dev-run"
@@ -873,4 +871,3 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 		}
 	}
 }
-

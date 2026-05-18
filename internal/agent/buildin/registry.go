@@ -118,4 +118,3 @@ func (r *BuildinRegistry) List() []BuildinAgent {
 	}
 	return list
 }
-

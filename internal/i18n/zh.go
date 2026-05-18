@@ -122,7 +122,7 @@ var zhMessages = map[string]string{
 	KeySessionRow:     "  %s  %4d 轮  %s",
 
 	// /context
-	KeyHelpReload:      "  /reload       - 重新加载（重启）代理",
+	KeyHelpReload:        "  /reload       - 重新加载（重启）代理",
 	KeyHelpContext:       "  /context       - 显示当前上下文摘要；/context <名称> 查看章节内容",
 	KeyContextSummaryHd:  "=== 上下文摘要 ===",
 	KeyContextSectionNF:  "章节 %q 未找到。",

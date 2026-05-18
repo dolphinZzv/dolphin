@@ -19,7 +19,6 @@ func ExtractText(content json.RawMessage) string {
 	return buf.String()
 }
 
-
 func EstimateTokens(content string) int {
 	cjk := 0
 	for _, r := range content {
@@ -34,7 +33,6 @@ func EstimateTokens(content string) int {
 	}
 	return cjk + nonCJKTokens
 }
-
 
 func ExtractToolCallID(content json.RawMessage) string {
 	var blocks []map[string]any

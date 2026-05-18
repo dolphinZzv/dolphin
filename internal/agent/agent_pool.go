@@ -12,8 +12,8 @@ import (
 	"dolphin/internal/mcp/shell"
 	"dolphin/internal/session"
 
-	"go.uber.org/zap"
 	"dolphin/internal/agent/compressor"
+	"go.uber.org/zap"
 )
 
 // AgentInstance is a live agent managed by the pool.

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
-	"dolphin/internal/agent/provider"
 )
 
 func TestRunFullSessionWelcomeAndExit(t *testing.T) {

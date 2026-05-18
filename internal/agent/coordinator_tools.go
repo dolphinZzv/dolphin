@@ -630,9 +630,9 @@ func (c *Coordinator) handleLoadSkill(ctx context.Context, input json.RawMessage
 		})
 	}
 
-		result := fmt.Sprintf("# Skill: %s\n\n%s\n\n---\nLoaded skill %q. Use these instructions to guide your work.", s.Name, s.Content, s.Name)
-		return &mcp.ToolResult{Content: result}, nil
-	}
+	result := fmt.Sprintf("# Skill: %s\n\n%s\n\n---\nLoaded skill %q. Use these instructions to guide your work.", s.Name, s.Content, s.Name)
+	return &mcp.ToolResult{Content: result}, nil
+}
 
 func (c *Coordinator) handleCreateSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	if c.skills == nil {

@@ -20,9 +20,9 @@ import (
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 
-	"go.uber.org/zap"
-	"dolphin/internal/agent/provider"
 	"dolphin/internal/agent/compressor"
+	"dolphin/internal/agent/provider"
+	"go.uber.org/zap"
 )
 
 // Agent is the core agent that runs the agent loop.
@@ -136,8 +136,8 @@ func (a *Agent) switchToProvider(name string) bool {
 	return false
 }
 
-func (a *Agent) SetVersion(v string)   { a.version = v }
-func (a *Agent) SetBuildTime(t string) { a.buildTime = t }
+func (a *Agent) SetVersion(v string)    { a.version = v }
+func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
 func (a *Agent) SetCommitHash(h string) { a.commitHash = h }
 
 func (a *Agent) rebuildCompressor() {

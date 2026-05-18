@@ -283,94 +283,94 @@ var configurablePaths = []configEntry{
 			return nil
 		},
 	},
-		{
-			path: "mcp.shell.allow_unrestricted", description: "Allow unrestricted shell access when no command whitelist",
-			get: func(c *config.Config) any { return c.MCP.Shell.AllowUnrestricted },
-			set: func(c *config.Config, v any) error {
-				b, err := toBool(v)
-				if err != nil {
-					return err
-				}
-				c.MCP.Shell.AllowUnrestricted = b
-				return nil
-			},
+	{
+		path: "mcp.shell.allow_unrestricted", description: "Allow unrestricted shell access when no command whitelist",
+		get: func(c *config.Config) any { return c.MCP.Shell.AllowUnrestricted },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.Shell.AllowUnrestricted = b
+			return nil
 		},
-		// Session
-		{
-			path: "session.max_age", description: "Session max age (e.g. 24h, 7d)",
-			get: func(c *config.Config) any { return c.Session.MaxAge },
-			set: func(c *config.Config, v any) error {
-				s, err := toString(v)
-				if err != nil {
-					return err
-				}
-				c.Session.MaxAge = s
-				return nil
-			},
+	},
+	// Session
+	{
+		path: "session.max_age", description: "Session max age (e.g. 24h, 7d)",
+		get: func(c *config.Config) any { return c.Session.MaxAge },
+		set: func(c *config.Config, v any) error {
+			s, err := toString(v)
+			if err != nil {
+				return err
+			}
+			c.Session.MaxAge = s
+			return nil
 		},
-		{
-			path: "session.resume", description: "Auto-resume last session on interactive transports",
-			get: func(c *config.Config) any { return c.Session.Resume },
-			set: func(c *config.Config, v any) error {
-				b, err := toBool(v)
-				if err != nil {
-					return err
-				}
-				c.Session.Resume = b
-				return nil
-			},
+	},
+	{
+		path: "session.resume", description: "Auto-resume last session on interactive transports",
+		get: func(c *config.Config) any { return c.Session.Resume },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.Session.Resume = b
+			return nil
 		},
-		// Skills
-		{
-			path: "skills.max_top", description: "Max skills shown in system prompt (default: 10)",
-			get: func(c *config.Config) any { return c.Skills.MaxTop },
-			set: func(c *config.Config, v any) error {
-				n, err := toInt(v)
-				if err != nil {
-					return err
-				}
-				c.Skills.MaxTop = n
-				return nil
-			},
+	},
+	// Skills
+	{
+		path: "skills.max_top", description: "Max skills shown in system prompt (default: 10)",
+		get: func(c *config.Config) any { return c.Skills.MaxTop },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.Skills.MaxTop = n
+			return nil
 		},
-		// Resource monitor
-		{
-			path: "resource.enabled", description: "Enable periodic resource monitoring",
-			get: func(c *config.Config) any { return c.Resource.Enabled },
-			set: func(c *config.Config, v any) error {
-				b, err := toBool(v)
-				if err != nil {
-					return err
-				}
-				c.Resource.Enabled = b
-				return nil
-			},
+	},
+	// Resource monitor
+	{
+		path: "resource.enabled", description: "Enable periodic resource monitoring",
+		get: func(c *config.Config) any { return c.Resource.Enabled },
+		set: func(c *config.Config, v any) error {
+			b, err := toBool(v)
+			if err != nil {
+				return err
+			}
+			c.Resource.Enabled = b
+			return nil
 		},
-		{
-			path: "resource.interval", description: "Resource sampling interval (e.g. 30s, 1m)",
-			get: func(c *config.Config) any { return c.Resource.Interval },
-			set: func(c *config.Config, v any) error {
-				s, err := toString(v)
-				if err != nil {
-					return err
-				}
-				c.Resource.Interval = s
-				return nil
-			},
+	},
+	{
+		path: "resource.interval", description: "Resource sampling interval (e.g. 30s, 1m)",
+		get: func(c *config.Config) any { return c.Resource.Interval },
+		set: func(c *config.Config, v any) error {
+			s, err := toString(v)
+			if err != nil {
+				return err
+			}
+			c.Resource.Interval = s
+			return nil
 		},
-		// Logging
-		{
-			path: "log_level", description: "Log level (debug, info, warn, error)",
-			get: func(c *config.Config) any { return c.LogLevel },
-			set: func(c *config.Config, v any) error {
-				s, err := toString(v)
-				if err != nil {
-					return err
-				}
-				c.LogLevel = s
-				return nil
-			},
+	},
+	// Logging
+	{
+		path: "log_level", description: "Log level (debug, info, warn, error)",
+		get: func(c *config.Config) any { return c.LogLevel },
+		set: func(c *config.Config, v any) error {
+			s, err := toString(v)
+			if err != nil {
+				return err
+			}
+			c.LogLevel = s
+			return nil
 		},
+	},
 }
 
 func findConfigEntry(path string) *configEntry {

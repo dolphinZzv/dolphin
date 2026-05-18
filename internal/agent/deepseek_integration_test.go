@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
 // findConfigPath looks for .dolphin/config.yaml by walking up from CWD.
@@ -92,10 +92,10 @@ func testProvider(t *testing.T) (*provider.OpenAIProvider, string) {
 		t.Skip("no openai-type provider with API key configured")
 	}
 	return provider.NewOpenAIProvider(&config.ProviderConfig{
-		Name:     "integration-test",
-		BaseURL:  baseURL,
-		APIKey:   apiKey,
-		Model:    model,
+		Name:      "integration-test",
+		BaseURL:   baseURL,
+		APIKey:    apiKey,
+		Model:     model,
 		MaxTokens: 2048,
 	}), model
 }

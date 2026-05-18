@@ -207,7 +207,6 @@ func (c *Coordinator) handleSkillNew(args []string, io transport.UserIO) {
 		return
 	}
 
-
 	if len(args) == 0 {
 		io.WriteLine(i18n.TL(i18n.KeySkillNewUsage))
 		return
@@ -230,10 +229,10 @@ func (c *Coordinator) handleSkillDelete(args []string, io transport.UserIO) {
 		return
 	}
 
-		name := ""
-		if len(args) > 0 {
-			name = args[0]
-		}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
 		return
@@ -258,10 +257,10 @@ func (c *Coordinator) handleSkillShow(args []string, io transport.UserIO) {
 		return
 	}
 
-		name := ""
-		if len(args) > 0 {
-			name = args[0]
-		}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
 		return
@@ -335,10 +334,10 @@ func (c *Coordinator) handleCmdDelete(args []string, io transport.UserIO) {
 		return
 	}
 
-			name := ""
-		if len(args) > 0 {
-			name = args[0]
-		}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
 		return
@@ -363,10 +362,10 @@ func (c *Coordinator) handleCmdShow(args []string, io transport.UserIO) {
 		return
 	}
 
-			name := ""
-		if len(args) > 0 {
-			name = args[0]
-		}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
 		return

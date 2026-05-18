@@ -22,7 +22,7 @@ func NewInstrumentedProvider(p provider.Provider) provider.Provider {
 }
 
 func (p *InstrumentedProvider) Type() provider.ProviderType { return p.inner.Type() }
-func (p *InstrumentedProvider) Name() string             { return p.inner.Name() }
+func (p *InstrumentedProvider) Name() string                { return p.inner.Name() }
 
 func (p *InstrumentedProvider) HealthCheck(ctx context.Context) error {
 	return p.inner.HealthCheck(ctx)

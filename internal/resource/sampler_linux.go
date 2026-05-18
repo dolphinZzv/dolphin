@@ -14,12 +14,12 @@ import (
 
 // LinuxSampler collects resource stats from /proc.
 type LinuxSampler struct {
-	mu         sync.Mutex
-	closed     bool
+	mu     sync.Mutex
+	closed bool
 
 	// CPU: previous sample values for delta calculation
-	prevCPUIdle   uint64
-	prevCPUTotal  uint64
+	prevCPUIdle  uint64
+	prevCPUTotal uint64
 
 	// Network: previous sample values
 	prevNetTime time.Time

@@ -320,11 +320,11 @@ type FlagsConfig struct {
 
 // ResourceConfig configures the system resource monitor.
 type ResourceConfig struct {
-	Enabled      bool      `mapstructure:"enabled"`        // enable periodic resource monitoring
-	Interval     string    `mapstructure:"interval"`       // sampling interval, e.g. "30s" (default 30s)
-	DiskPaths    []string  `mapstructure:"disk_paths"`     // filesystem paths to monitor (e.g. ["/", "/data"])
-	MaxBandwidth uint64    `mapstructure:"max_bandwidth"`  // max network bandwidth in bytes/sec for % calculation (default 125MB/s = 1Gbps)
-	Thresholds   []float64 `mapstructure:"thresholds"`     // percentage thresholds to monitor, sorted ascending (default [20, 40, 60, 80])
+	Enabled      bool      `mapstructure:"enabled"`       // enable periodic resource monitoring
+	Interval     string    `mapstructure:"interval"`      // sampling interval, e.g. "30s" (default 30s)
+	DiskPaths    []string  `mapstructure:"disk_paths"`    // filesystem paths to monitor (e.g. ["/", "/data"])
+	MaxBandwidth uint64    `mapstructure:"max_bandwidth"` // max network bandwidth in bytes/sec for % calculation (default 125MB/s = 1Gbps)
+	Thresholds   []float64 `mapstructure:"thresholds"`    // percentage thresholds to monitor, sorted ascending (default [20, 40, 60, 80])
 }
 
 // TelemetryConfig holds OpenTelemetry tracing configuration.

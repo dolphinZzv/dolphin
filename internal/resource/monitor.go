@@ -14,18 +14,18 @@ import (
 // Monitor periodically samples system resources and emits events when usage
 // crosses the defined thresholds (20%/40%/60%/80%) in either direction.
 type Monitor struct {
-	cfg    Config
+	cfg     Config
 	sampler Sampler
-	events *event.EventBus
+	events  *event.EventBus
 
-	mu        sync.Mutex
-	closed    bool
+	mu     sync.Mutex
+	closed bool
 
 	// Current bracket index for each resource (-1 = below all thresholds)
-	cpuBracket     int
-	memBracket     int
-	diskBrackets   map[string]int
-	netBracket     int
+	cpuBracket   int
+	memBracket   int
+	diskBrackets map[string]int
+	netBracket   int
 
 	// Network bandwidth percentage requires max_bandwidth config
 	maxBandwidth uint64

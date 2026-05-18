@@ -13,14 +13,14 @@ import (
 
 // Default section priorities (lower = earlier in prompt).
 const (
-	PrioritySoul              = 1
-	PriorityPreface           = 2
-	PriorityBuiltinSkills     = 3
-	PrioritySelfEvoSkills     = 4
-	PriorityAgents            = 5
-	PriorityRules             = 6
-	PriorityUser              = 7
-	PrioritySystem            = 8
+	PrioritySoul          = 1
+	PriorityPreface       = 2
+	PriorityBuiltinSkills = 3
+	PrioritySelfEvoSkills = 4
+	PriorityAgents        = 5
+	PriorityRules         = 6
+	PriorityUser          = 7
+	PrioritySystem        = 8
 )
 
 // section holds a single prompt section with its priority.

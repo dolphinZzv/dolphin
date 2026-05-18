@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
-	"dolphin/internal/agent/provider"
 )
 
 // mockProvider implements Provider for testing.
@@ -24,7 +24,7 @@ type mockProvider struct {
 	callIndex int
 }
 
-func (m *mockProvider) Type() provider.ProviderType                  { return "openai" }
+func (m *mockProvider) Type() provider.ProviderType         { return "openai" }
 func (m *mockProvider) Name() string                        { return "mock" }
 func (m *mockProvider) HealthCheck(_ context.Context) error { return nil }
 func (m *mockProvider) Complete(_ context.Context, _ provider.ProviderRequest) (*provider.ProviderResponse, error) {

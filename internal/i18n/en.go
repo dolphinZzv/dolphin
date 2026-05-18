@@ -122,7 +122,7 @@ var enMessages = map[string]string{
 	KeySessionRow:     "  %s  %4d turns  %s",
 
 	// /context
-	KeyHelpReload:      "  /reload       - Reload (restart) the agent",
+	KeyHelpReload:        "  /reload       - Reload (restart) the agent",
 	KeyHelpContext:       "  /context       - Show current context summary; /context <name> to view section",
 	KeyContextSummaryHd:  "=== Context Summary ===",
 	KeyContextSectionNF:  "Section %q not found.",

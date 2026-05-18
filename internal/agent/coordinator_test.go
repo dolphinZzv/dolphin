@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/agent/compressor"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -17,8 +19,6 @@ import (
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
-	"dolphin/internal/agent/provider"
-	"dolphin/internal/agent/compressor"
 )
 
 func TestMain(m *testing.M) {
@@ -1731,9 +1731,9 @@ func TestPrintContextConsole(t *testing.T) {
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
 		Agent: &Agent{
-			cfg:       cfg,
-			provider:  &mockProvider{},
-			toolReg:   mcp.NewRegistry(cfg),
+			cfg:        cfg,
+			provider:   &mockProvider{},
+			toolReg:    mcp.NewRegistry(cfg),
 			ctxBuilder: NewContextBuilder(),
 		},
 		pool: NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
