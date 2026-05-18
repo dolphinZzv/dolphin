@@ -201,6 +201,14 @@ func (c *Coordinator) registerCoordinatorTools() {
 			c.handleContextTool,
 		)
 	}
+	c.registerCoordTool("context",
+		"Show the full agent context including system prompt, available agents, tools, skills, pending results, and config settings. Use this to understand the current execution environment.",
+		map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		c.handleContextTool,
+	)
 	c.registerCoordTool("add_cron_task",
 		"Add a scheduled task that runs on a cron schedule.",
 		map[string]any{

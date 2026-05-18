@@ -38,8 +38,3 @@ The following tools let you modify the agent's own configuration, skills, comman
 - No parameters
 - Disconnects the current session and triggers a clean restart
 - Config changes that require a restart take effect after this
-
-### context — Show the full agent context
-- No parameters
-- Returns the complete system prompt including agent definitions, available tools, pending task results, and all configuration
-- Use this to understand the current execution environment and plan your next actions
