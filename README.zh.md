@@ -52,7 +52,7 @@ go build -o dolphin-ai .
 # DeepSeek 示例（中国地区可直接访问）
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
-export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_BASE_URL="https://api.deepseek.com"
 export DZ_LLM_TYPE="openai"
 
 # MiniMax M2.7 示例
@@ -82,14 +82,14 @@ export DZ_LLM_TYPE="openai"
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **是** | — | LLM API 密钥 |
 | `DZ_LLM_MODEL` | **是** | — | 模型名称（如 `deepseek-v4-flash`、`glm-5.1`、`MiniMax-M2.7`、`qwen3.6-max-preview`、`kimi-k2.6`） |
-| `DZ_LLM_BASE_URL` | **是** | — | API 基础地址（如 `https://api.deepseek.com/v1`、`https://open.bigmodel.cn/api/paas/v4`） |
-| `DZ_LLM_TYPE` | **是** | — | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
+| `DZ_LLM_BASE_URL` | **是** | — | API 基础地址（如 `https://api.deepseek.com`、`https://open.bigmodel.cn/api/paas/v4`） |
+| `DZ_LLM_TYPE` | **是** | `openai` | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
 
 ### 中国地区推荐模型
 
 | 服务商 | 模型 | 接口地址 | 接入方式 |
 |--------|------|----------|----------|
-| **DeepSeek** | `deepseek-v4-flash` | `https://api.deepseek.com/v1` | OpenAI 兼容 |
+| **DeepSeek** | `deepseek-v4-flash` | `https://api.deepseek.com` | OpenAI 兼容 |
 | **MiniMax** | `MiniMax-M2.7` | `https://api.minimax.chat/v1` | OpenAI 兼容 |
 | **智谱 GLM** | `glm-5.1` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
 | **通义千问** | `qwen3.6-max-preview` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
@@ -117,15 +117,8 @@ export DZ_LLM_TYPE="openai"
 # DeepSeek（中国推荐）
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
-export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_BASE_URL="https://api.deepseek.com"
 ./dolphin-ai
-```
-
-手动初始化：
-
-```bash
-cp docs/en/config.example.yaml .dolphin/config.yaml      # 英文
-cp docs/zh/config.example.zh.yaml .dolphin/config.yaml   # 中文
 ```
 
 ## 源码编译

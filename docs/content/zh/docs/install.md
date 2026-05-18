@@ -129,7 +129,7 @@ dolphin-ai dev
 # DeepSeek
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
-export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_BASE_URL="https://api.deepseek.com"
 export DZ_LLM_TYPE="openai"
 
 ./dolphin-ai
@@ -140,7 +140,7 @@ export DZ_LLM_TYPE="openai"
 ### 中国地区推荐模型
 
 #### DeepSeek
-`deepseek-v4-flash` → `https://api.deepseek.com/v1`
+`deepseek-v4-flash` → `https://api.deepseek.com`
 
 #### MiniMax
 `MiniMax-M2.7` → `https://api.minimax.chat/v1`

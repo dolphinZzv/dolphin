@@ -60,8 +60,8 @@ export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpo
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **yes** | — | LLM API key |
 | `DZ_LLM_MODEL` | **yes** | — | Model name (e.g. `gpt-5.5-instant`, `claude-sonnet-4-6`, `deepseek-v4-flash`) |
-| `DZ_LLM_BASE_URL` | **yes** | — | API base URL (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1`) |
-| `DZ_LLM_TYPE` | **yes** | — | Provider type: `openai` or `anthropic` |
+| `DZ_LLM_BASE_URL` | **yes** | — | API base URL (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com`) |
+| `DZ_LLM_TYPE` | **yes** | `openai` | Provider type: `openai` or `anthropic` |
 
 ### First-run flow
 

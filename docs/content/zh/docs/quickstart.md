@@ -42,7 +42,7 @@ Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.e
 ```bash
 export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_BASE_URL="https://api.deepseek.com"
 export DZ_LLM_MODEL="deepseek-v4-flash"
 ```
 {{< /tab >}}

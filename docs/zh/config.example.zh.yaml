@@ -8,7 +8,7 @@
 llm:
   # 单 provider（兼容原有配置和 DZ_LLM_* 环境变量）：
   type: openai                # "openai" 或 "anthropic"
-  base_url: https://api.deepseek.com/v1
+  base_url: https://api.deepseek.com
   model: deepseek-v4-flash
   api_key: ""                 # 建议通过环境变量 DZ_LLM_API_KEY 设置
   max_tokens: 4096
@@ -23,7 +23,7 @@ llm:
   #   - name: deepseek
   #     type: openai
   #     api_key: ""
-  #     base_url: https://api.deepseek.com/v1
+  #     base_url: https://api.deepseek.com
   #     model: deepseek-v4-flash
   #   - name: minimax
   #     type: openai

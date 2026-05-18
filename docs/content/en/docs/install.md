@@ -66,7 +66,7 @@ dolphin-ai --version
 `claude-sonnet-4-6` → `https://api.anthropic.com/v1`
 
 #### DeepSeek
-`deepseek-v4-flash` → `https://api.deepseek.com/v1`
+`deepseek-v4-flash` → `https://api.deepseek.com`
 
 #### MiniMax
 `MiniMax-M2.7` → `https://api.minimax.chat/v1`

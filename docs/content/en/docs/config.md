@@ -65,7 +65,7 @@ llm:
     - name: deepseek
       type: openai
       api_key: ""
-      base_url: https://api.deepseek.com/v1
+      base_url: https://api.deepseek.com
       model: deepseek-v4-flash
 ```
 

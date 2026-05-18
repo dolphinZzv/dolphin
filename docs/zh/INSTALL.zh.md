@@ -178,7 +178,7 @@ dolphin 运行至少需要一个 API 密钥。通过环境变量设置：
 # DeepSeek
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="deepseek-v4-flash"
-export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
+export DZ_LLM_BASE_URL="https://api.deepseek.com"
 export DZ_LLM_TYPE="openai"
 
 ./dolphin
@@ -190,7 +190,7 @@ export DZ_LLM_TYPE="openai"
 
 | 服务商 | 模型 | 接口地址 |
 |--------|------|----------|
-| **DeepSeek** | `deepseek-v4-flash` | `https://api.deepseek.com/v1` |
+| **DeepSeek** | `deepseek-v4-flash` | `https://api.deepseek.com` |
 | **MiniMax** | `MiniMax-M2.7` | `https://api.minimax.chat/v1` |
 | **智谱 GLM** | `glm-5` | `https://open.bigmodel.cn/api/paas/v4` |
 | **通义千问** | `qwen3.6-max-preview` | `https://dashscope.aliyuncs.com/compatible-mode/v1` |

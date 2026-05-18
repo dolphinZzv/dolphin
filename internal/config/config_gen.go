@@ -29,7 +29,7 @@ llm:
     - name: deepseek
       type: openai
       api_key: ""
-      base_url: https://api.deepseek.com/v1
+      base_url: https://api.deepseek.com
       model: deepseek-v4-flash
 
   # Legacy single-provider fields (fallback when providers: is not set).
@@ -226,7 +226,7 @@ llm:
     - name: deepseek
       type: openai
       api_key: ""
-      base_url: https://api.deepseek.com/v1
+      base_url: https://api.deepseek.com
       model: deepseek-v4-flash
 
   # 单 provider 遗留字段（未设置 providers: 时使用）。
