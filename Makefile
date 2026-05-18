@@ -2,10 +2,13 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt lint init-hooks llm-smoke docs-smoke app app-clean distribute
+.PHONY: build run clean test fmt check-fmt lint init-hooks llm-smoke docs-smoke app app-clean distribute latest
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
+
+latest:
+	go build -ldflags="-X 'dolphin/cmd.Version=latest'" -o dolphin .
 
 run: build
 	./dolphin
