@@ -629,8 +629,12 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 
 func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 	if len(args) == 0 {
-		io.WriteLine("Usage: /sessions dump <session-id>")
+		io.WriteLine("Usage: /sessions dump <session-id> [list|mermaid]")
 		return
+	}
+	formatType := "list"
+	if len(args) > 1 {
+		formatType = args[1]
 	}
 	sessionPath := filepath.Join(c.sessMgr.Dir(), args[0]+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
@@ -638,7 +642,16 @@ func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
 		return
 	}
-	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", args[0], len(events)))
+	switch formatType {
+	case "mermaid":
+		c.dumpSessionMermaid(events, args[0], io)
+	default:
+		c.dumpSessionList(events, args[0], io)
+	}
+}
+
+func (c *Coordinator) dumpSessionList(events []session.SessionEvent, id string, io transport.UserIO) {
+	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", id, len(events)))
 	for _, evt := range events {
 		line := fmt.Sprintf("[T%d %s] %s", evt.Turn, evt.Timestamp.Format("15:04:05"), evt.Type)
 		if evt.Role != "" {
@@ -655,6 +668,67 @@ func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 			line += ": " + content
 		}
 		io.WriteLine(line)
+	}
+	io.WriteLine("")
+}
+
+func (c *Coordinator) dumpSessionMermaid(events []session.SessionEvent, id string, io transport.UserIO) {
+	io.WriteLine("sequenceDiagram")
+	io.WriteLine(fmt.Sprintf("    participant User as User"))
+	io.WriteLine(fmt.Sprintf("    participant Agent as Agent"))
+	toolNames := make(map[string]bool)
+	for _, evt := range events {
+		if evt.ToolName != "" {
+			toolNames[evt.ToolName] = true
+		}
+	}
+	for name := range toolNames {
+		io.WriteLine(fmt.Sprintf("    participant %s as %s", strings.ReplaceAll(name, "-", "_"), name))
+	}
+	io.WriteLine("")
+	var lastTurn int
+	for _, evt := range events {
+		if evt.Turn != lastTurn {
+			io.WriteLine(fmt.Sprintf("    Note over User,Agent: Turn %d", evt.Turn))
+			lastTurn = evt.Turn
+		}
+		switch evt.Role {
+		case "user":
+			content := string(evt.Content)
+			if len(content) > 80 {
+				content = content[:80] + "..."
+			}
+			io.WriteLine(fmt.Sprintf("    User->>Agent: %s", content))
+		case "assistant":
+			if evt.ToolName != "" {
+				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
+				input := string(evt.ToolInput)
+				if len(input) > 60 {
+					input = input[:60] + "..."
+				}
+				io.WriteLine(fmt.Sprintf("    Agent->>+%s: %s", toolName, input))
+			} else {
+				content := string(evt.Content)
+				if len(content) > 80 {
+					content = content[:80] + "..."
+				}
+				io.WriteLine(fmt.Sprintf("    Agent-->>User: %s", content))
+			}
+		default:
+			// Tool result events
+			if evt.ToolName != "" && evt.Type == "tool_result" {
+				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
+				result := string(evt.Content)
+				if len(result) > 80 {
+					result = result[:80] + "..."
+				}
+				prefix := "-->>-"
+				if evt.IsError {
+					prefix = "-x->-"
+				}
+				io.WriteLine(fmt.Sprintf("    %s%sAgent: %s", toolName, prefix, result))
+			}
+		}
 	}
 	io.WriteLine("")
 }

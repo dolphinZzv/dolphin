@@ -197,11 +197,12 @@ func (c *Coordinator) registerCoordinatorTools() {
 			c.handleReload,
 		)
 		c.registerCoordTool("session_dump",
-			"Dump all events from a session by ID. Returns timestamped events with role, tool calls, and content. Use /sessions to find session IDs.",
+			"Dump all events from a session by ID. Supports list format (default) or mermaid sequence diagram. Use /sessions to find session IDs.",
 			map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id": map[string]any{"type": "string", "description": "Session ID to dump"},
+					"id":     map[string]any{"type": "string", "description": "Session ID to dump"},
+					"format": map[string]any{"type": "string", "description": "Output format: list (default) or mermaid", "enum": []string{"list", "mermaid"}},
 				},
 				"required": []string{"id"},
 			},
@@ -900,10 +901,14 @@ func (c *Coordinator) handleContextTool(_ context.Context, _ json.RawMessage) (*
 
 func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
-		ID string `json:"id"`
+		ID     string `json:"id"`
+		Format string `json:"format,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	if params.Format == "" {
+		params.Format = "list"
 	}
 	sessionPath := filepath.Join(c.sessMgr.Dir(), params.ID+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
@@ -911,7 +916,17 @@ func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMes
 		return &mcp.ToolResult{Content: "Failed to read session: " + err.Error(), IsError: true}, nil
 	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Session: %s (%d events)\n", params.ID, len(events))
+	switch params.Format {
+	case "mermaid":
+		c.dumpSessionMermaidTo(events, params.ID, &sb)
+	default:
+		c.dumpSessionListTo(events, params.ID, &sb)
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) dumpSessionListTo(events []session.SessionEvent, id string, sb *strings.Builder) {
+	fmt.Fprintf(sb, "Session: %s (%d events)\n", id, len(events))
 	for _, evt := range events {
 		line := fmt.Sprintf("[T%d %s] %s", evt.Turn, evt.Timestamp.Format("15:04:05"), evt.Type)
 		if evt.Role != "" {
@@ -929,7 +944,65 @@ func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMes
 		}
 		sb.WriteString(line + "\n")
 	}
-	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) dumpSessionMermaidTo(events []session.SessionEvent, id string, sb *strings.Builder) {
+	fmt.Fprintf(sb, "sequenceDiagram\n")
+	fmt.Fprintf(sb, "    participant User as User\n")
+	fmt.Fprintf(sb, "    participant Agent as Agent\n")
+	toolNames := make(map[string]bool)
+	for _, evt := range events {
+		if evt.ToolName != "" {
+			toolNames[evt.ToolName] = true
+		}
+	}
+	for name := range toolNames {
+		fmt.Fprintf(sb, "    participant %s as %s\n", strings.ReplaceAll(name, "-", "_"), name)
+	}
+	fmt.Fprintf(sb, "\n")
+	var lastTurn int
+	for _, evt := range events {
+		if evt.Turn != lastTurn {
+			fmt.Fprintf(sb, "    Note over User,Agent: Turn %d\n", evt.Turn)
+			lastTurn = evt.Turn
+		}
+		switch evt.Role {
+		case "user":
+			content := string(evt.Content)
+			if len(content) > 80 {
+				content = content[:80] + "..."
+			}
+			fmt.Fprintf(sb, "    User->>Agent: %s\n", content)
+		case "assistant":
+			if evt.ToolName != "" {
+				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
+				input := string(evt.ToolInput)
+				if len(input) > 60 {
+					input = input[:60] + "..."
+				}
+				fmt.Fprintf(sb, "    Agent->>+%s: %s\n", toolName, input)
+			} else {
+				content := string(evt.Content)
+				if len(content) > 80 {
+					content = content[:80] + "..."
+				}
+				fmt.Fprintf(sb, "    Agent-->>User: %s\n", content)
+			}
+		default:
+			if evt.ToolName != "" && evt.Type == "tool_result" {
+				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
+				result := string(evt.Content)
+				if len(result) > 80 {
+					result = result[:80] + "..."
+				}
+				prefix := "-->>-"
+				if evt.IsError {
+					prefix = "-x->-"
+				}
+				fmt.Fprintf(sb, "    %s%sAgent: %s\n", toolName, prefix, result)
+			}
+		}
+	}
 }
 
 // handlerTool wraps a function as an MCP Tool.
