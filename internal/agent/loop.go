@@ -45,15 +45,17 @@ type Agent struct {
 
 // LoopState holds state for a single agent run.
 type LoopState struct {
-	Sess             *session.Session
-	Messages         []provider.Message
-	Turn             int
-	StopReason       string
-	ToolCallCount    int
-	ErrorCount       int
-	CompressionCount int
-	SummaryGenerated bool
-	SummaryTexts     []string
+	Sess              *session.Session
+	Messages          []provider.Message
+	Turn              int
+	StopReason        string
+	ToolCallCount     int
+	ErrorCount        int
+	CompressionCount  int
+	SummaryGenerated  bool
+	SummaryTexts      []string
+	TotalInputTokens  int // cumulative input tokens in current turn
+	TotalOutputTokens int // cumulative output tokens in current turn
 }
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
@@ -961,6 +963,8 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 		state.Sess.LogToolCall(tc.Name, tc.Arguments)
 	}
 	if usage != nil {
+		state.TotalInputTokens += usage.InputTokens
+		state.TotalOutputTokens += usage.OutputTokens
 		zap.S().Debugw("llm response",
 			"turn", state.Turn,
 			"sub_turn", subTurn,
@@ -970,7 +974,9 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 			"tool_calls", len(toolCalls),
 		)
 		if io != nil {
-			io.WriteLine(fmt.Sprintf("  tokens: in=%d out=%d", usage.InputTokens, usage.OutputTokens))
+			io.WriteLine(fmt.Sprintf("  tokens: in=%d out=%d  (total: in=%d out=%d)",
+				usage.InputTokens, usage.OutputTokens,
+				state.TotalInputTokens, state.TotalOutputTokens))
 		}
 	} else if io != nil {
 		io.WriteLine("  tokens: -")
