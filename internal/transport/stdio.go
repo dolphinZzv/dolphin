@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"dolphin/internal/config"
 
@@ -18,8 +19,10 @@ const defaultPrompt = "Dolphin > "
 
 // StdioTransport provides stdio-based interactive I/O using readline.
 type StdioTransport struct {
-	rl *readline.Instance
-	md *glamour.TermRenderer // markdown renderer, nil when disabled
+	rl     *readline.Instance
+	md     *glamour.TermRenderer // markdown renderer, nil when disabled
+	mdBuf  strings.Builder        // buffer for accumulating streaming content
+	rawOut bool                    // when true, WriteString bypasses markdown buffer
 }
 
 func NewStdioTransport(cfg *config.Config) *StdioTransport {
@@ -105,17 +108,36 @@ func (t *StdioTransport) ReadLine() (string, error) {
 
 func (t *StdioTransport) WriteString(s string) error {
 	msgsSent.Inc()
+	if t.md != nil {
+		t.mdBuf.WriteString(s)
+		// Render and flush complete paragraphs (separated by blank lines)
+		content := t.mdBuf.String()
+		if idx := strings.LastIndex(content, "\n\n"); idx >= 0 {
+			block := content[:idx+2]
+			t.mdBuf.Reset()
+			t.mdBuf.WriteString(content[idx+2:])
+			rendered, err := t.md.Render(block)
+			if err == nil {
+				_, err = fmt.Print(rendered)
+				return err
+			}
+		}
+		return nil
+	}
 	_, err := fmt.Print(s)
 	return err
 }
 
 func (t *StdioTransport) WriteLine(s string) error {
 	msgsSent.Inc()
-	if t.md != nil && s != "" {
-		rendered, err := t.md.Render(s)
+	// If markdown is enabled and we have buffered content, flush it rendered
+	if t.md != nil && t.mdBuf.Len() > 0 {
+		t.mdBuf.WriteString("\n")
+		rendered, err := t.md.Render(t.mdBuf.String())
+		t.mdBuf.Reset()
 		if err == nil {
-			_, err = fmt.Print(rendered)
-			return err
+			fmt.Print(rendered)
+			return nil
 		}
 	}
 	_, err := fmt.Println(s)

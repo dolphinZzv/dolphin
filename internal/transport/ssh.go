@@ -204,6 +204,7 @@ type SSHSession struct {
 	remote  string // remote address
 	user    string // SSH user
 	md      *glamour.TermRenderer // markdown renderer, nil when disabled
+	mdBuf   strings.Builder       // buffer for accumulating streaming content
 }
 
 func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string, md *glamour.TermRenderer) *SSHSession {
@@ -408,11 +409,14 @@ func (s *SSHSession) Capabilities() Capabilities {
 
 func (s *SSHSession) WriteLine(text string) error {
 	msgsSent.Inc()
-	if s.md != nil && text != "" {
-		rendered, err := s.md.Render(text)
+	// If markdown is enabled and we have buffered content, flush it rendered
+	if s.md != nil && s.mdBuf.Len() > 0 {
+		s.mdBuf.WriteString("\n")
+		rendered, err := s.md.Render(s.mdBuf.String())
+		s.mdBuf.Reset()
 		if err == nil {
-			_, err = fmt.Fprint(s.ch, strings.ReplaceAll(rendered, "\n", "\r\n"))
-			return err
+			fmt.Fprint(s.ch, strings.ReplaceAll(rendered, "\n", "\r\n"))
+			return nil
 		}
 	}
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"), "\r\n")
@@ -421,6 +425,22 @@ func (s *SSHSession) WriteLine(text string) error {
 
 func (s *SSHSession) WriteString(text string) error {
 	msgsSent.Inc()
+	if s.md != nil {
+		s.mdBuf.WriteString(text)
+		// Render and flush complete paragraphs (separated by blank lines)
+		content := s.mdBuf.String()
+		if idx := strings.LastIndex(content, "\n\n"); idx >= 0 {
+			block := content[:idx+2]
+			s.mdBuf.Reset()
+			s.mdBuf.WriteString(content[idx+2:])
+			rendered, err := s.md.Render(block)
+			if err == nil {
+				_, err = fmt.Fprint(s.ch, strings.ReplaceAll(rendered, "\n", "\r\n"))
+				return err
+			}
+		}
+		return nil
+	}
 	// Don't add trailing \r\n, but ensure embedded newlines are CRLF
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"))
 	return err

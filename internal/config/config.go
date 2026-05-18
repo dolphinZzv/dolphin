@@ -767,7 +767,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("session.summary", true)
 
 	v.SetDefault("transport.stdio.enabled", true)
+	v.SetDefault("transport.stdio.markdown_render", true)
 	v.SetDefault("transport.ssh.enabled", false)
+	v.SetDefault("transport.ssh.markdown_render", true)
 	v.SetDefault("transport.ssh.addr", ":2222")
 	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
 	v.SetDefault("transport.ssh.username", "dolphin")
