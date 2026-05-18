@@ -974,12 +974,12 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 			"output_tokens", usage.OutputTokens,
 			"tool_calls", len(toolCalls),
 		)
-		if io != nil {
+		if a.cfg.LogLevel == "debug" && io != nil {
 			io.WriteLine(fmt.Sprintf("  tokens: in=%d out=%d  (total: in=%d out=%d)",
 				usage.InputTokens, usage.OutputTokens,
 				state.TotalInputTokens, state.TotalOutputTokens))
 		}
-	} else if io != nil {
+	} else if a.cfg.LogLevel == "debug" && io != nil {
 		io.WriteLine("  tokens: -")
 	}
 	if a.hooks != nil {
