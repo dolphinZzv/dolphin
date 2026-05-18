@@ -1,10 +1,11 @@
-package agent
+package compressor
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"dolphin/internal/agent/provider"
 	"go.uber.org/zap"
 )
 
@@ -13,22 +14,22 @@ import (
 // completed topic group is independently summarized via an LLM call. The current
 // (incomplete) topic stays raw.
 type TopicCompressor struct {
-	provider Provider
+	provider provider.Provider
 }
 
 // NewTopicCompressor creates a TopicCompressor with an LLM provider.
-func NewTopicCompressor(provider Provider) *TopicCompressor {
+func NewTopicCompressor(provider provider.Provider) *TopicCompressor {
 	return &TopicCompressor{provider: provider}
 }
 
 // topicGroup holds messages belonging to one topic.
 type topicGroup struct {
-	messages   []Message
+	messages   []provider.Message
 	userTurns  int
 	totalChars int
 }
 
-func (tc *TopicCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+func (tc *TopicCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
 	pre := compressPreamble(messages, maxTokens)
 	if !pre.CanDrop {
 		return nil, nil
@@ -46,13 +47,13 @@ func (tc *TopicCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 			sb.WriteString(itoa(groups[0].userTurns))
 			sb.WriteString(" 组] ")
 			sb.WriteString(summary)
-			result := []Message{{Role: "user", Content: TextContent(sb.String())}}
+			result := []provider.Message{{Role: "user", Content: provider.TextContent(sb.String())}}
 			result = append(result, messages[keepStart:]...)
 			tokensSaved := 0
 			for _, m := range groups[0].messages {
-				tokensSaved += estimateTokens(string(m.Content))
+				tokensSaved += provider.EstimateTokens(string(m.Content))
 			}
-			tokensSaved -= estimateTokens(summary)
+			tokensSaved -= provider.EstimateTokens(summary)
 			return result, &CompressReport{
 				DroppedCount: len(groups[0].messages),
 				TokensSaved:  max(tokensSaved, 0),
@@ -62,7 +63,7 @@ func (tc *TopicCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 		return nil, nil
 	}
 
-	var result []Message
+	var result []provider.Message
 	tokensSaved := 0
 	droppedCount := 0
 
@@ -78,12 +79,12 @@ func (tc *TopicCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 		sb.WriteString(itoa(g.userTurns))
 		sb.WriteString(" 组] ")
 		sb.WriteString(summary)
-		result = append(result, Message{Role: "user", Content: TextContent(sb.String())})
+		result = append(result, provider.Message{Role: "user", Content: provider.TextContent(sb.String())})
 		droppedCount += len(g.messages)
 		for _, m := range g.messages {
-			tokensSaved += estimateTokens(string(m.Content))
+			tokensSaved += provider.EstimateTokens(string(m.Content))
 		}
-		tokensSaved -= estimateTokens(summary)
+		tokensSaved -= provider.EstimateTokens(summary)
 	}
 
 	result = append(result, messages[keepStart:]...)
@@ -102,7 +103,7 @@ func (tc *TopicCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 // partitionTopics splits messages into topic groups using heuristics.
 // A new topic starts when a user message is significantly longer than the
 // running average (2x), suggesting a new detailed request.
-func (tc *TopicCompressor) partitionTopics(messages []Message) []topicGroup {
+func (tc *TopicCompressor) partitionTopics(messages []provider.Message) []topicGroup {
 	if len(messages) == 0 {
 		return nil
 	}
@@ -159,7 +160,7 @@ func (tc *TopicCompressor) partitionTopics(messages []Message) []topicGroup {
 	return groups
 }
 
-func (tc *TopicCompressor) buildGroup(messages []Message) topicGroup {
+func (tc *TopicCompressor) buildGroup(messages []provider.Message) topicGroup {
 	g := topicGroup{messages: messages}
 	for _, m := range messages {
 		if m.Role == "user" {
@@ -171,10 +172,10 @@ func (tc *TopicCompressor) buildGroup(messages []Message) topicGroup {
 }
 
 // summarizeTopic calls the LLM to summarize a single topic group.
-func (tc *TopicCompressor) summarizeTopic(messages []Message) string {
+func (tc *TopicCompressor) summarizeTopic(messages []provider.Message) string {
 	texts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		txt := extractText(m.Content)
+		txt := provider.ExtractText(m.Content)
 		if txt != "" {
 			texts = append(texts, m.Role+": "+txt)
 		}
@@ -193,8 +194,8 @@ func (tc *TopicCompressor) summarizeTopic(messages []Message) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp, err := tc.provider.Complete(ctx, ProviderRequest{
-		Messages:  []Message{{Role: "user", Content: TextContent(userContent)}},
+	resp, err := tc.provider.Complete(ctx, provider.ProviderRequest{
+		Messages:  []provider.Message{{Role: "user", Content: provider.TextContent(userContent)}},
 		System:    systemPrompt,
 		MaxTokens: 300,
 	})
@@ -203,7 +204,7 @@ func (tc *TopicCompressor) summarizeTopic(messages []Message) string {
 		return strings.Join(texts, " | ")
 	}
 
-	summary := extractText(resp.Content)
+	summary := provider.ExtractText(resp.Content)
 	if summary == "" {
 		return strings.Join(texts, " | ")
 	}

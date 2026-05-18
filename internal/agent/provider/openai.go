@@ -1,4 +1,4 @@
-package agent
+package provider
 
 import (
 	"bufio"
@@ -334,7 +334,7 @@ func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any 
 		})
 	}
 
-	messages := sanitizeToolPairing(req.Messages)
+	messages := SanitizeToolPairing(req.Messages)
 	for _, m := range messages {
 		switch m.Role {
 		case "user":
@@ -395,8 +395,8 @@ func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any 
 			msgs = append(msgs, msg)
 
 		case "tool":
-			tcID := extractToolCallID(m.Content)
-			content := extractToolResult(m.Content)
+			tcID := ExtractToolCallID(m.Content)
+			content := ExtractToolResult(m.Content)
 			msgs = append(msgs, map[string]any{
 				"role":         "tool",
 				"tool_call_id": tcID,
@@ -427,44 +427,4 @@ func (p *OpenAIProvider) buildTools(defs []ToolDef) []openai.Tool {
 		})
 	}
 	return tools
-}
-
-// extractToolCallID extracts the tool_call_id from tool result content.
-func extractToolCallID(content json.RawMessage) string {
-	var blocks []map[string]any
-	if err := json.Unmarshal(content, &blocks); err != nil {
-		return ""
-	}
-	for _, b := range blocks {
-		if id, ok := b["tool_use_id"].(string); ok {
-			return id
-		}
-	}
-	return ""
-}
-
-// extractToolResult extracts text content from tool result blocks.
-func extractToolResult(content json.RawMessage) string {
-	var blocks []map[string]any
-	if err := json.Unmarshal(content, &blocks); err != nil {
-		return string(content)
-	}
-	for _, b := range blocks {
-		if b["type"] == "tool_result" {
-			switch v := b["content"].(type) {
-			case string:
-				return v
-			case []any:
-				// Anthropic format: [{type: "text", text: "..."}]
-				for _, item := range v {
-					if m, ok := item.(map[string]any); ok {
-						if t, ok := m["text"].(string); ok {
-							return t
-						}
-					}
-				}
-			}
-		}
-	}
-	return string(content)
 }

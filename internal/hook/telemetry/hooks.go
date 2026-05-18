@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/agent"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/hook"
 	"dolphin/internal/mcp"
 
@@ -163,7 +163,7 @@ func beforeLLMHook(ctx context.Context, hc *hook.Context) error {
 	)
 
 	model := ""
-	if req, ok := hc.Request.(*agent.ProviderRequest); ok {
+	if req, ok := hc.Request.(*provider.ProviderRequest); ok {
 		model = req.Model
 		span.SetAttributes(
 			attribute.String("gen_ai.request.model", model),
@@ -212,7 +212,7 @@ func afterLLMHook(ctx context.Context, hc *hook.Context) error {
 		model = v.(string)
 	}
 	var inputTokens, outputTokens int64
-	if resp, ok := hc.Response.(*agent.ProviderResponse); ok {
+	if resp, ok := hc.Response.(*provider.ProviderResponse); ok {
 		if resp.Usage != nil {
 			inputTokens = int64(resp.Usage.InputTokens)
 			outputTokens = int64(resp.Usage.OutputTokens)

@@ -1,26 +1,27 @@
-package agent
+package compressor
 
 import (
 	"context"
 	"strings"
 	"time"
 
+	"dolphin/internal/agent/provider"
 	"go.uber.org/zap"
 )
 
 // TieredCompressor implements strategy B: a three-tier cache.
 // [L2 远历史] [L1 中期] [原文 最近N轮]
 type TieredCompressor struct {
-	provider Provider
+	provider provider.Provider
 	rawKeep  int // number of recent user+assistant pairs to keep raw (default 3)
 }
 
 // NewTieredCompressor creates a TieredCompressor with an LLM provider.
-func NewTieredCompressor(provider Provider) *TieredCompressor {
+func NewTieredCompressor(provider provider.Provider) *TieredCompressor {
 	return &TieredCompressor{provider: provider, rawKeep: 3}
 }
 
-func (t *TieredCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+func (t *TieredCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
 	pre := compressPreamble(messages, maxTokens)
 	if !pre.CanDrop {
 		return nil, nil
@@ -49,8 +50,8 @@ func (t *TieredCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 
 	// Split: [old...rawStart-1] [rawStart...keepStart-1] [keepStart...]
 	// If rawStart==keepStart, all messages before keepStart are candidates for compression
-	var oldMessages []Message
-	var l1Messages []Message
+	var oldMessages []provider.Message
+	var l1Messages []provider.Message
 	if rawStart < keepStart {
 		// Split the middle section: oldest part → L2, middle → L1
 		midStart := rawStart
@@ -63,30 +64,30 @@ func (t *TieredCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 		oldMessages = messages[:keepStart]
 	}
 
-	var result []Message
+	var result []provider.Message
 	tokensSaved := 0
 	droppedCount := 0
 
 	// Generate L2 summary from oldest messages
 	if len(oldMessages) > 0 {
 		l2Summary := t.summarize(oldMessages, 2)
-		result = append(result, Message{Role: "user", Content: TextContent(l2Summary)})
+		result = append(result, provider.Message{Role: "user", Content: provider.TextContent(l2Summary)})
 		droppedCount += len(oldMessages)
 		for _, m := range oldMessages {
-			tokensSaved += estimateTokens(string(m.Content))
+			tokensSaved += provider.EstimateTokens(string(m.Content))
 		}
-		tokensSaved -= estimateTokens(l2Summary)
+		tokensSaved -= provider.EstimateTokens(l2Summary)
 	}
 
 	// Generate L1 summaries from middle messages
 	if len(l1Messages) > 0 {
 		l1Summary := t.summarize(l1Messages, 1)
-		result = append(result, Message{Role: "user", Content: TextContent(l1Summary)})
+		result = append(result, provider.Message{Role: "user", Content: provider.TextContent(l1Summary)})
 		droppedCount += len(l1Messages)
 		for _, m := range l1Messages {
-			tokensSaved += estimateTokens(string(m.Content))
+			tokensSaved += provider.EstimateTokens(string(m.Content))
 		}
-		tokensSaved -= estimateTokens(l1Summary)
+		tokensSaved -= provider.EstimateTokens(l1Summary)
 	}
 
 	result = append(result, messages[keepStart:]...)
@@ -104,10 +105,10 @@ func (t *TieredCompressor) Compress(messages []Message, maxTokens int) ([]Messag
 
 // summarize calls the LLM to generate a summary of the given messages.
 // level is the summary tier (1 or 2).
-func (t *TieredCompressor) summarize(messages []Message, level int) string {
+func (t *TieredCompressor) summarize(messages []provider.Message, level int) string {
 	texts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		txt := extractText(m.Content)
+		txt := provider.ExtractText(m.Content)
 		if txt != "" {
 			texts = append(texts, m.Role+": "+txt)
 		}
@@ -123,8 +124,8 @@ func (t *TieredCompressor) summarize(messages []Message, level int) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp, err := t.provider.Complete(ctx, ProviderRequest{
-		Messages:  []Message{{Role: "user", Content: TextContent(userContent)}},
+	resp, err := t.provider.Complete(ctx, provider.ProviderRequest{
+		Messages:  []provider.Message{{Role: "user", Content: provider.TextContent(userContent)}},
 		System:    systemPrompt,
 		MaxTokens: 300,
 	})
@@ -133,7 +134,7 @@ func (t *TieredCompressor) summarize(messages []Message, level int) string {
 		return "[L" + itoa(level) + " 摘要] " + strings.Join(texts, " | ")
 	}
 
-	summary := extractText(resp.Content)
+	summary := provider.ExtractText(resp.Content)
 	if summary == "" {
 		return "[L" + itoa(level) + " 摘要] " + strings.Join(texts, " | ")
 	}

@@ -14,36 +14,37 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
+	"dolphin/internal/agent/provider"
 )
 
 // mockProvider implements Provider for testing.
 type mockProvider struct {
 	mu        sync.Mutex
-	responses []*ProviderResponse
+	responses []*provider.ProviderResponse
 	callIndex int
 }
 
-func (m *mockProvider) Type() ProviderType                  { return "openai" }
+func (m *mockProvider) Type() provider.ProviderType                  { return "openai" }
 func (m *mockProvider) Name() string                        { return "mock" }
 func (m *mockProvider) HealthCheck(_ context.Context) error { return nil }
-func (m *mockProvider) Complete(_ context.Context, _ ProviderRequest) (*ProviderResponse, error) {
+func (m *mockProvider) Complete(_ context.Context, _ provider.ProviderRequest) (*provider.ProviderResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.callIndex >= len(m.responses) {
-		return &ProviderResponse{
-			Content: TextContent("done"),
+		return &provider.ProviderResponse{
+			Content: provider.TextContent("done"),
 		}, nil
 	}
 	resp := m.responses[m.callIndex]
 	m.callIndex++
 	return resp, nil
 }
-func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-chan StreamChunk, error) {
+func (m *mockProvider) CompleteStream(_ context.Context, _ provider.ProviderRequest) (<-chan provider.StreamChunk, error) {
 	m.mu.Lock()
 	if m.callIndex >= len(m.responses) {
 		m.mu.Unlock()
-		ch := make(chan StreamChunk, 1)
-		ch <- StreamChunk{Done: true}
+		ch := make(chan provider.StreamChunk, 1)
+		ch <- provider.StreamChunk{Done: true}
 		close(ch)
 		return ch, nil
 	}
@@ -51,7 +52,7 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 	m.callIndex++
 	m.mu.Unlock()
 
-	ch := make(chan StreamChunk, 10)
+	ch := make(chan provider.StreamChunk, 10)
 	go func() {
 		defer close(ch)
 
@@ -60,25 +61,25 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 		if err := json.Unmarshal(resp.Content, &blocks); err == nil {
 			for _, b := range blocks {
 				if t, ok := b["text"].(string); ok && t != "" {
-					ch <- StreamChunk{Content: TextContent(t)}
+					ch <- provider.StreamChunk{Content: provider.TextContent(t)}
 				}
 			}
 		}
 
 		// Stream tool calls
 		for _, tc := range resp.ToolCalls {
-			ch <- StreamChunk{
-				ToolCallBegin: &ToolCallBegin{ID: tc.ID, Name: tc.Name},
+			ch <- provider.StreamChunk{
+				ToolCallBegin: &provider.ToolCallBegin{ID: tc.ID, Name: tc.Name},
 			}
 			if len(tc.Arguments) > 0 {
-				ch <- StreamChunk{ToolCallDelta: string(tc.Arguments)}
+				ch <- provider.StreamChunk{ToolCallDelta: string(tc.Arguments)}
 			}
 		}
 
 		if resp.Usage != nil {
-			ch <- StreamChunk{Usage: resp.Usage}
+			ch <- provider.StreamChunk{Usage: resp.Usage}
 		}
-		ch <- StreamChunk{Done: true}
+		ch <- provider.StreamChunk{Done: true}
 	}()
 
 	return ch, nil
@@ -137,7 +138,7 @@ func (t *mockTool) Execute(_ context.Context, _ json.RawMessage) (*mcp.ToolResul
 	return &mcp.ToolResult{Content: "mock result"}, nil
 }
 
-func newTestAgent(cfg *config.Config, provider Provider) *Agent {
+func newTestAgent(cfg *config.Config, provider provider.Provider) *Agent {
 	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "test_tool"})
@@ -155,10 +156,10 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 	cfg.LLM.MaxContextTokens = 100000
 	config.SetSessionsDir(t.TempDir())
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
-				Content:    TextContent("hello from LLM"),
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				Content:    provider.TextContent("hello from LLM"),
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "end_turn",
 			},
 		},
@@ -169,8 +170,8 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
-		Messages: []Message{
-			{Role: "user", Content: TextContent("say hi")},
+		Messages: []provider.Message{
+			{Role: "user", Content: provider.TextContent("say hi")},
 		},
 		Turn: 1,
 	}
@@ -198,16 +199,16 @@ func TestRunTurnWithToolCall(t *testing.T) {
 
 	// First response: tool call, second: final text
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
 				Content:    json.RawMessage(`[{"type":"text","text":"calling tool"},{"type":"tool_use","id":"tu_1","name":"test_tool","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 			{
-				Content:    TextContent("tool result received"),
-				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				Content:    provider.TextContent("tool result received"),
+				Usage:      &provider.Usage{InputTokens: 20, OutputTokens: 10},
 				StopReason: "end_turn",
 			},
 		},
@@ -218,8 +219,8 @@ func TestRunTurnWithToolCall(t *testing.T) {
 	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
-		Messages: []Message{
-			{Role: "user", Content: TextContent("do something")},
+		Messages: []provider.Message{
+			{Role: "user", Content: provider.TextContent("do something")},
 		},
 		Turn: 1,
 	}
@@ -247,11 +248,11 @@ func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
 				Content:    json.RawMessage(`[{"type":"text","text":"calling"},{"type":"tool_use","id":"tu_1","name":"test_tool","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 		},
@@ -265,8 +266,8 @@ func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
-		Messages: []Message{
-			{Role: "user", Content: TextContent("big result")},
+		Messages: []provider.Message{
+			{Role: "user", Content: provider.TextContent("big result")},
 		},
 		Turn: 1,
 	}
@@ -428,7 +429,7 @@ func TestNewWithOpenAIProvider(t *testing.T) {
 	if agt == nil {
 		t.Fatal("New returned nil")
 	}
-	if agt.provider.Type() != ProviderOpenAI {
+	if agt.provider.Type() != provider.ProviderOpenAI {
 		t.Errorf("expected openai provider, got %v", agt.provider.Type())
 	}
 }
@@ -445,14 +446,14 @@ func TestNewWithDefaultProvider(t *testing.T) {
 		t.Fatal("New returned nil")
 	}
 	// Default should be openai
-	if agt.provider.Type() != ProviderOpenAI {
+	if agt.provider.Type() != provider.ProviderOpenAI {
 		t.Errorf("expected openai provider, got %v", agt.provider.Type())
 	}
 }
 
 func TestExtractFinalResponse(t *testing.T) {
-	msgs := []Message{
-		{Role: "user", Content: TextContent("hello")},
+	msgs := []provider.Message{
+		{Role: "user", Content: provider.TextContent("hello")},
 		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"hi there"}]`)},
 	}
 	result := extractFinalResponse(msgs)
@@ -462,7 +463,7 @@ func TestExtractFinalResponse(t *testing.T) {
 }
 
 func TestExtractFinalResponseNoAssistant(t *testing.T) {
-	msgs := []Message{
+	msgs := []provider.Message{
 		{Role: "user", Content: json.RawMessage(`"hello"`)},
 	}
 	result := extractFinalResponse(msgs)
@@ -484,10 +485,10 @@ func TestRunTaskBasic(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
-				Content:    TextContent("task result"),
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				Content:    provider.TextContent("task result"),
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "end_turn",
 			},
 		},
@@ -677,23 +678,23 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 
 	// Simulate a multi-turn conversation with tool calls
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			// Turn 1: tool call
 			{
 				Content:    json.RawMessage(`[{"type":"text","text":"let me check"},{"type":"tool_use","id":"tu_1","name":"test_tool","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "tu_1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 			{
-				Content:    TextContent("the result is 42"),
-				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				Content:    provider.TextContent("the result is 42"),
+				Usage:      &provider.Usage{InputTokens: 20, OutputTokens: 10},
 				StopReason: "end_turn",
 			},
 			// Turn 2: text only
 			{
-				Content:    TextContent("goodbye"),
-				Usage:      &Usage{InputTokens: 30, OutputTokens: 5},
+				Content:    provider.TextContent("goodbye"),
+				Usage:      &provider.Usage{InputTokens: 30, OutputTokens: 5},
 				StopReason: "end_turn",
 			},
 		},
@@ -704,8 +705,8 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
-		Messages: []Message{
-			{Role: "user", Content: TextContent("what is the answer")},
+		Messages: []provider.Message{
+			{Role: "user", Content: provider.TextContent("what is the answer")},
 		},
 		Turn: 1,
 	}
@@ -718,7 +719,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	}
 
 	// Run turn 2
-	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent("thanks")})
+	state.Messages = append(state.Messages, provider.Message{Role: "user", Content: provider.TextContent("thanks")})
 	state.Turn = 2
 	sess.Turn = 2
 	err = agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
@@ -789,7 +790,7 @@ func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
 // ── Exit confirmation tests ───────────────────────────────────────────
 
 // newTestAgentWithProvider creates a test agent with a given provider for Run() tests.
-func newTestAgentWithProvider(cfg *config.Config, prov Provider) *Agent {
+func newTestAgentWithProvider(cfg *config.Config, prov provider.Provider) *Agent {
 	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	return &Agent{
@@ -807,8 +808,8 @@ func TestRunStdioExitConfirmed(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -831,8 +832,8 @@ func TestRunStdioExitConfirmedWithYes(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -852,8 +853,8 @@ func TestRunStdioExitCancelled(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -873,8 +874,8 @@ func TestRunStdioExitConfirmError(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -895,8 +896,8 @@ func TestRunStdioSlashExitConfirmed(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -916,8 +917,8 @@ func TestRunNonStdioExitIsMessage(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("got it"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -939,8 +940,8 @@ func TestRunNonStdioSlashExitIsMessage(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("got it"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -961,8 +962,8 @@ func TestRunNonStdioQuitIsMessage(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("got it"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -982,8 +983,8 @@ func TestRunStdioExitCancelledThenMessage(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
 		},
 	}
 	agt := newTestAgentWithProvider(cfg, prov)
@@ -1004,10 +1005,10 @@ func TestRunTaskWithParentSession(t *testing.T) {
 	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
-				Content:    TextContent("parent linked result"),
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				Content:    provider.TextContent("parent linked result"),
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "end_turn",
 			},
 		},

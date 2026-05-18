@@ -16,6 +16,8 @@ import (
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
+	"dolphin/internal/agent/provider"
+	"dolphin/internal/agent/compressor"
 )
 
 func TestMain(m *testing.M) {
@@ -141,7 +143,7 @@ func TestSanitizeToolPairingOrphanedToolUse(t *testing.T) {
 		// call_B result is missing — session was interrupted
 	})
 
-	messages := []Message{
+	messages := []provider.Message{
 		{Role: "user", Content: json.RawMessage(`"do stuff"`)},
 		{Role: "assistant", Content: assistantContent},
 		{Role: "tool", Content: toolContent},
@@ -184,7 +186,7 @@ func TestSanitizeToolPairingAllMatched(t *testing.T) {
 		{"type": "tool_result", "tool_use_id": "call_1", "content": "done"},
 	})
 
-	messages := []Message{
+	messages := []provider.Message{
 		{Role: "user", Content: json.RawMessage(`"hi"`)},
 		{Role: "assistant", Content: assistantContent},
 		{Role: "tool", Content: toolContent},
@@ -209,7 +211,7 @@ func TestSanitizeToolPairingAllMatched(t *testing.T) {
 func TestSanitizeToolPairingNoToolUse(t *testing.T) {
 	// Assistant without tool_use shouldn't be modified
 	content := json.RawMessage(`[{"type":"text","text":"hello"}]`)
-	messages := []Message{
+	messages := []provider.Message{
 		{Role: "user", Content: json.RawMessage(`"hi"`)},
 		{Role: "assistant", Content: content},
 	}
@@ -601,8 +603,8 @@ func TestCoordinatorRunCustomCommandDispatchedToLLM(t *testing.T) {
 
 	toolReg := mcp.NewRegistry(cfg)
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("Code review results here"), Usage: &Usage{InputTokens: 10, OutputTokens: 20}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("Code review results here"), Usage: &provider.Usage{InputTokens: 10, OutputTokens: 20}},
 		},
 	}
 
@@ -648,8 +650,8 @@ func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 
 	toolReg := mcp.NewRegistry(cfg)
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("I don't know this command"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("I don't know this command"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}},
 		},
 	}
 
@@ -1227,10 +1229,10 @@ func TestE2ERunTaskGeneratesSummary(t *testing.T) {
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
-				Content:    TextContent("sub-agent result"),
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				Content:    provider.TextContent("sub-agent result"),
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "end_turn",
 			},
 		},
@@ -1273,8 +1275,8 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 	cfg.LLM.MaxContextTokens = 100000
 
 	agt := newTestAgent(cfg, &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("child done"), Usage: &Usage{InputTokens: 5, OutputTokens: 3}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("child done"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 3}, StopReason: "end_turn"},
 		},
 	})
 
@@ -1461,7 +1463,7 @@ func TestConfigToolSetBool(t *testing.T) {
 func TestConfigToolSetString(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.CompressMode = "drop"
-	c := &Coordinator{Agent: &Agent{cfg: cfg, compressor: &DropCompressor{}}}
+	c := &Coordinator{Agent: &Agent{cfg: cfg, compressor: &compressor.DropCompressor{}}}
 
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",

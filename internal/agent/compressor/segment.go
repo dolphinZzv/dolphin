@@ -1,9 +1,11 @@
-package agent
+package compressor
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"dolphin/internal/agent/provider"
 )
 
 // SegmentCompressor implements strategy A: each compression round generates an L1
@@ -21,7 +23,7 @@ func NewSegmentCompressor(mergeLimit int) *SegmentCompressor {
 	return &SegmentCompressor{MergeLimit: mergeLimit}
 }
 
-func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+func (s *SegmentCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
 	pre := compressPreamble(messages, maxTokens)
 	if !pre.CanDrop {
 		return nil, nil
@@ -29,7 +31,7 @@ func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Messa
 	keepStart := pre.KeepStart
 
 	// Collect the raw messages being dropped (non-summary, non-synthetic).
-	var droppedRaw []Message
+	var droppedRaw []provider.Message
 	i := 0
 	for i < keepStart {
 		if messages[i].Role != "user" {
@@ -52,10 +54,10 @@ func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Messa
 	}
 
 	// Build result: existing summary segments (before keepStart) + new L1 from dropped raw + remaining
-	var result []Message
+	var result []provider.Message
 
 	// Collect existing summary segments (messages with "[LX 摘要" prefix before keepStart)
-	var segments []*segmentSummary
+	var segments []*SegmentSummary
 	for j := 0; j < keepStart; {
 		if messages[j].Role != "user" {
 			j++
@@ -75,7 +77,7 @@ func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Messa
 	}
 
 	// Create new L1 segment from dropped raw messages
-	newSeg := &segmentSummary{
+	newSeg := &SegmentSummary{
 		Content:      summarizeRawMessages(droppedRaw),
 		Level:        1,
 		CoveredCount: len(droppedRaw),
@@ -95,10 +97,10 @@ func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Messa
 	// Estimate tokens saved
 	tokensSaved := 0
 	for j := 0; j < droppedCount && j < len(messages); j++ {
-		tokensSaved += estimateTokens(string(messages[j].Content))
+		tokensSaved += provider.EstimateTokens(string(messages[j].Content))
 	}
 	for _, seg := range segments {
-		tokensSaved -= estimateTokens(string(seg.toMessage().Content))
+		tokensSaved -= provider.EstimateTokens(string(seg.toMessage().Content))
 	}
 
 	return result, &CompressReport{
@@ -109,7 +111,7 @@ func (s *SegmentCompressor) Compress(messages []Message, maxTokens int) ([]Messa
 }
 
 // mergeLevels recursively merges segments at any level that exceed the limit.
-func (s *SegmentCompressor) mergeLevels(segments []*segmentSummary) []*segmentSummary {
+func (s *SegmentCompressor) mergeLevels(segments []*SegmentSummary) []*SegmentSummary {
 	for {
 		// Count segments per level
 		levelCounts := make(map[int][]int) // level → indices
@@ -133,7 +135,7 @@ func (s *SegmentCompressor) mergeLevels(segments []*segmentSummary) []*segmentSu
 					totalCovered += segments[idx].CoveredCount
 				}
 
-				mergedSeg := &segmentSummary{
+				mergedSeg := &SegmentSummary{
 					Content:      "[合并 " + strconv.Itoa(len(indices)) + " 段 L" + strconv.Itoa(level) + "] " + mergedContent,
 					Level:        level + 1,
 					CoveredCount: totalCovered,
@@ -159,11 +161,11 @@ func (s *SegmentCompressor) mergeLevels(segments []*segmentSummary) []*segmentSu
 }
 
 // parseSegment checks if messages form a summary segment and returns it.
-func parseSegment(messages []Message) *segmentSummary {
+func parseSegment(messages []provider.Message) *SegmentSummary {
 	if len(messages) == 0 || messages[0].Role != "user" {
 		return nil
 	}
-	text := extractText(messages[0].Content)
+	text := provider.ExtractText(messages[0].Content)
 	// Match "[LX 摘要, 覆盖 N 组] content"
 	if !strings.HasPrefix(text, "[L") {
 		return nil
@@ -194,7 +196,7 @@ func parseSegment(messages []Message) *segmentSummary {
 	}
 
 	content := text[prefixEnd+2:]
-	return &segmentSummary{
+	return &SegmentSummary{
 		Content:      content,
 		Level:        level,
 		CoveredCount: max(covered, 1),
@@ -203,13 +205,13 @@ func parseSegment(messages []Message) *segmentSummary {
 
 // summarizeRawMessages returns a placeholder summary of raw messages.
 // When LLM integration is added, this calls the provider.
-func summarizeRawMessages(messages []Message) string {
+func summarizeRawMessages(messages []provider.Message) string {
 	if len(messages) == 0 {
 		return ""
 	}
 	texts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		t := extractText(m.Content)
+		t := provider.ExtractText(m.Content)
 		if t != "" {
 			texts = append(texts, t)
 		}

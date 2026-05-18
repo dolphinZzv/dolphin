@@ -3,10 +3,12 @@ package agent
 import (
 	"encoding/json"
 	"testing"
+
+	"dolphin/internal/agent/provider"
 )
 
 func TestTextContent(t *testing.T) {
-	raw := TextContent("hello world")
+	raw := provider.TextContent("hello world")
 	var blocks []map[string]any
 	if err := json.Unmarshal(raw, &blocks); err != nil {
 		t.Fatalf("TextContent produced invalid JSON: %v", err)
@@ -24,7 +26,7 @@ func TestTextContent(t *testing.T) {
 }
 
 func TestTextContentEmpty(t *testing.T) {
-	raw := TextContent("")
+	raw := provider.TextContent("")
 	var blocks []map[string]any
 	json.Unmarshal(raw, &blocks)
 	if len(blocks) != 1 {
@@ -36,15 +38,15 @@ func TestTextContentEmpty(t *testing.T) {
 }
 
 func TestMessageJSON(t *testing.T) {
-	msg := Message{
+	msg := provider.Message{
 		Role:    "user",
-		Content: TextContent("hi"),
+		Content: provider.TextContent("hi"),
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
 	}
-	var decoded Message
+	var decoded provider.Message
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("Unmarshal error: %v", err)
 	}
@@ -57,7 +59,7 @@ func TestMessageJSON(t *testing.T) {
 }
 
 func TestToolCallJSON(t *testing.T) {
-	tc := ToolCall{
+	tc := provider.ToolCall{
 		ID:        "call_123",
 		Name:      "shell",
 		Arguments: json.RawMessage(`{"command":"ls"}`),
@@ -71,8 +73,8 @@ func TestToolCallJSON(t *testing.T) {
 }
 
 func TestProviderResponseText(t *testing.T) {
-	resp := &ProviderResponse{
-		Content: TextContent("response text"),
+	resp := &provider.ProviderResponse{
+		Content: provider.TextContent("response text"),
 	}
 	var blocks []map[string]any
 	json.Unmarshal(resp.Content, &blocks)
@@ -82,9 +84,9 @@ func TestProviderResponseText(t *testing.T) {
 }
 
 func TestProviderResponseWithToolCalls(t *testing.T) {
-	resp := &ProviderResponse{
-		Content: TextContent("I'll help"),
-		ToolCalls: []ToolCall{
+	resp := &provider.ProviderResponse{
+		Content: provider.TextContent("I'll help"),
+		ToolCalls: []provider.ToolCall{
 			{ID: "tc1", Name: "shell", Arguments: json.RawMessage(`{"command":"ls"}`)},
 		},
 	}

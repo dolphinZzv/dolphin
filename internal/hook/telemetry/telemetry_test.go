@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphin/internal/agent"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/hook"
 	"dolphin/internal/mcp"
@@ -101,10 +101,10 @@ func TestFullTraceLifecycle(t *testing.T) {
 	}
 
 	// 3. LLM call
-	req := &agent.ProviderRequest{
+	req := &provider.ProviderRequest{
 		Model:     "test-model",
 		MaxTokens: 1024,
-		Messages:  []agent.Message{{Role: "user", Content: agent.TextContent("hi")}},
+		Messages:  []provider.Message{{Role: "user", Content: provider.TextContent("hi")}},
 	}
 	if err := reg.Fire(ctx, hook.PointBeforeLLM, &hook.Context{
 		SessionID: sid,
@@ -125,9 +125,9 @@ func TestFullTraceLifecycle(t *testing.T) {
 	}
 
 	// 5. LLM response
-	resp := &agent.ProviderResponse{
-		Content:    agent.TextContent("It's sunny!"),
-		Usage:      &agent.Usage{InputTokens: 10, OutputTokens: 5},
+	resp := &provider.ProviderResponse{
+		Content:    provider.TextContent("It's sunny!"),
+		Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 		StopReason: "end_turn",
 	}
 	if err := reg.Fire(ctx, hook.PointAfterLLM, &hook.Context{
@@ -159,9 +159,9 @@ func TestFullTraceLifecycle(t *testing.T) {
 		t.Fatalf("llm:before turn 2 error: %v", err)
 	}
 
-	resp2 := &agent.ProviderResponse{
-		Content:    agent.TextContent("You're welcome!"),
-		Usage:      &agent.Usage{InputTokens: 15, OutputTokens: 3},
+	resp2 := &provider.ProviderResponse{
+		Content:    provider.TextContent("You're welcome!"),
+		Usage:      &provider.Usage{InputTokens: 15, OutputTokens: 3},
 		StopReason: "end_turn",
 	}
 	if err := reg.Fire(ctx, hook.PointAfterLLM, &hook.Context{
@@ -217,7 +217,7 @@ func TestTurnWithToolExecution(t *testing.T) {
 	// Sub-turn 1: LLM decides to call tool
 	reg.Fire(ctx, hook.PointBeforeLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Request: &agent.ProviderRequest{Model: "test", MaxTokens: 512},
+		Request: &provider.ProviderRequest{Model: "test", MaxTokens: 512},
 		Values:  make(map[string]any),
 	})
 
@@ -227,9 +227,9 @@ func TestTurnWithToolExecution(t *testing.T) {
 
 	reg.Fire(ctx, hook.PointAfterLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Response: &agent.ProviderResponse{
+		Response: &provider.ProviderResponse{
 			StopReason: "tool_use",
-			Usage:      &agent.Usage{InputTokens: 20, OutputTokens: 8},
+			Usage:      &provider.Usage{InputTokens: 20, OutputTokens: 8},
 		},
 		Values: make(map[string]any),
 	})
@@ -255,7 +255,7 @@ func TestTurnWithToolExecution(t *testing.T) {
 	// Sub-turn 2: LLM with final response
 	reg.Fire(ctx, hook.PointBeforeLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Request: &agent.ProviderRequest{Model: "test", MaxTokens: 512},
+		Request: &provider.ProviderRequest{Model: "test", MaxTokens: 512},
 		Values:  make(map[string]any),
 	})
 
@@ -265,10 +265,10 @@ func TestTurnWithToolExecution(t *testing.T) {
 
 	reg.Fire(ctx, hook.PointAfterLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Response: &agent.ProviderResponse{
-			Content:    agent.TextContent("The date is May 17."),
+		Response: &provider.ProviderResponse{
+			Content:    provider.TextContent("The date is May 17."),
 			StopReason: "end_turn",
-			Usage:      &agent.Usage{InputTokens: 30, OutputTokens: 12},
+			Usage:      &provider.Usage{InputTokens: 30, OutputTokens: 12},
 		},
 		Values: make(map[string]any),
 	})
@@ -311,7 +311,7 @@ func TestErrorHookMarksAllActiveSpans(t *testing.T) {
 	// Start LLM and tool spans
 	reg.Fire(ctx, hook.PointBeforeLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Request: &agent.ProviderRequest{Model: "test"},
+		Request: &provider.ProviderRequest{Model: "test"},
 		Values:  make(map[string]any),
 	})
 
@@ -338,7 +338,7 @@ func TestErrorHookMarksAllActiveSpans(t *testing.T) {
 
 	reg.Fire(ctx, hook.PointAfterLLM, &hook.Context{
 		SessionID: sid, Turn: 1,
-		Response: &agent.ProviderResponse{},
+		Response: &provider.ProviderResponse{},
 		Error:    context.DeadlineExceeded,
 		Values:   make(map[string]any),
 	})

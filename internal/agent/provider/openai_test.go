@@ -1,12 +1,10 @@
-package agent
+package provider
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"dolphin/internal/config"
-	"dolphin/internal/mcp"
 )
 
 func TestNewOpenAIProvider(t *testing.T) {
@@ -309,25 +307,13 @@ func TestOpenAIBuildMessagesRawPlainTextFallback(t *testing.T) {
 	}
 }
 
-func TestHandlerToolDefinition(t *testing.T) {
-	def := mcp.ToolDefinition{Name: "test-tool"}
-	tool := &handlerTool{def: def}
-	if d := tool.Definition(); d.Name != "test-tool" {
-		t.Errorf("got %q", d.Name)
+func TestBuildToolsFromDefs(t *testing.T) {
+	p := &OpenAIProvider{client: nil}
+	defs := []ToolDef{
+		{Name: "test-tool", Description: "A test", InputSchema: json.RawMessage(`{"type":"object"}`)},
 	}
-}
-
-func TestHandlerToolExecute(t *testing.T) {
-	tool := &handlerTool{
-		handler: func(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
-			return &mcp.ToolResult{Content: "handled"}, nil
-		},
-	}
-	result, err := tool.Execute(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("Execute error: %v", err)
-	}
-	if result.Content != "handled" {
-		t.Errorf("got %q", result.Content)
+	tools := p.buildTools(defs)
+	if len(tools) == 0 {
+		t.Error("expected at least one tool")
 	}
 }

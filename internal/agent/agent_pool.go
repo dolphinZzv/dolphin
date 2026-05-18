@@ -13,6 +13,7 @@ import (
 	"dolphin/internal/session"
 
 	"go.uber.org/zap"
+	"dolphin/internal/agent/compressor"
 )
 
 // AgentInstance is a live agent managed by the pool.
@@ -124,7 +125,7 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	// Create a sub-agent with the filtered tools
 	comp := agent.compressor
 	if comp == nil {
-		comp = &DropCompressor{}
+		comp = &compressor.DropCompressor{}
 	}
 	subAgent := &Agent{
 		cfg:        agent.cfg.Clone(),

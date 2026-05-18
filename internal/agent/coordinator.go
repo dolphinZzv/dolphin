@@ -25,6 +25,8 @@ import (
 
 	"github.com/rs/xid"
 	"go.uber.org/zap"
+	"dolphin/internal/agent/provider"
+	"dolphin/internal/agent/compressor"
 )
 
 // Coordinator wraps an Agent with multi-agent coordination capabilities.
@@ -50,7 +52,7 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 	coordReg := agent.toolReg.Clone()
 	comp := agent.compressor
 	if comp == nil {
-		comp = &DropCompressor{}
+		comp = &compressor.DropCompressor{}
 	}
 	coordAgent := &Agent{
 		cfg:                agent.cfg.Clone(),
@@ -392,8 +394,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		dynamicPrompt := c.buildDynamicPrompt()
 
 		// Add user message
-		userContent := TextContent(line)
-		state.Messages = append(state.Messages, Message{Role: "user", Content: userContent})
+		userContent := provider.TextContent(line)
+		state.Messages = append(state.Messages, provider.Message{Role: "user", Content: userContent})
 		sess.LogMessage("user", userContent)
 
 		// Run agent sub-loop
@@ -440,9 +442,9 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 
 			// Run a follow-up turn to synthesize the results
 			dynamicPrompt := c.buildDynamicPrompt()
-			state.Messages = append(state.Messages, Message{
+			state.Messages = append(state.Messages, provider.Message{
 				Role:    "user",
-				Content: TextContent("[Agent task results are now available. Synthesize them into your response.]"),
+				Content: provider.TextContent("[Agent task results are now available. Synthesize them into your response.]"),
 			})
 
 			if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
@@ -484,9 +486,9 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 	if len(collected) > 0 {
 		c.pending = append(c.pending, collected...)
 		dynamicPrompt := c.buildDynamicPrompt()
-		state.Messages = append(state.Messages, Message{
+		state.Messages = append(state.Messages, provider.Message{
 			Role:    "user",
-			Content: TextContent("[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"),
+			Content: provider.TextContent("[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"),
 		})
 		c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools)
 	}
@@ -1751,7 +1753,7 @@ func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 	if c.switchToProvider(name) {
 		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.provider.Name()))
 	} else {
-		io.WriteLine(fmt.Sprintf("Provider %q not found or unhealthy", name))
+		io.WriteLine(fmt.Sprintf("provider.Provider %q not found or unhealthy", name))
 	}
 }
 
@@ -1968,15 +1970,15 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 }
 
 // replayMessages reconstructs the conversation Message list from session events.
-func replayMessages(events []session.SessionEvent) []Message {
-	var msgs []Message
+func replayMessages(events []session.SessionEvent) []provider.Message {
+	var msgs []provider.Message
 	for _, evt := range events {
 		switch evt.Type {
 		case session.EventMessage:
 			if evt.Role == "" || len(evt.Content) == 0 {
 				continue
 			}
-			msgs = append(msgs, Message{
+			msgs = append(msgs, provider.Message{
 				Role:    evt.Role,
 				Content: evt.Content,
 			})
@@ -1984,7 +1986,7 @@ func replayMessages(events []session.SessionEvent) []Message {
 			if len(evt.ToolResult) == 0 {
 				continue
 			}
-			msgs = append(msgs, Message{
+			msgs = append(msgs, provider.Message{
 				Role:    "tool",
 				Content: evt.ToolResult,
 			})
@@ -1998,8 +2000,8 @@ func replayMessages(events []session.SessionEvent) []Message {
 // assistant message was logged but some tool results were not. Without this fix,
 // the Anthropic API rejects the request with: "tool_use ids were found without
 // tool_result blocks immediately after".
-func sanitizeToolPairing(messages []Message) []Message {
-	cleaned := make([]Message, len(messages))
+func sanitizeToolPairing(messages []provider.Message) []provider.Message {
+	cleaned := make([]provider.Message, len(messages))
 	copy(cleaned, messages)
 
 	for i := 0; i < len(cleaned); i++ {

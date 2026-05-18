@@ -1,4 +1,4 @@
-package agent
+package compressor
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"dolphin/internal/agent/provider"
 	"go.uber.org/zap"
 )
 
@@ -13,7 +14,7 @@ import (
 // incrementally updated every updateInterval turns by merging new messages into
 // the existing summary via an LLM call.
 type IncrementalCompressor struct {
-	provider       Provider
+	provider       provider.Provider
 	updateInterval int // merge new turns into summary every N turns (default 5)
 
 	mu               sync.Mutex
@@ -23,11 +24,11 @@ type IncrementalCompressor struct {
 }
 
 // NewIncrementalCompressor creates an IncrementalCompressor with an LLM provider.
-func NewIncrementalCompressor(provider Provider) *IncrementalCompressor {
+func NewIncrementalCompressor(provider provider.Provider) *IncrementalCompressor {
 	return &IncrementalCompressor{provider: provider, updateInterval: 5}
 }
 
-func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+func (ic *IncrementalCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
 	pre := compressPreamble(messages, maxTokens)
 	if !pre.CanDrop {
 		return nil, nil
@@ -58,7 +59,7 @@ func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]
 	covered := ic.coveredCount
 	ic.mu.Unlock()
 
-	var result []Message
+	var result []provider.Message
 	tokensSaved := 0
 	droppedCount := keepStart
 
@@ -69,28 +70,28 @@ func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]
 		sb.WriteString(itoa(covered))
 		sb.WriteString(" 组] ")
 		sb.WriteString(summary)
-		result = append(result, Message{Role: "user", Content: TextContent(sb.String())})
+		result = append(result, provider.Message{Role: "user", Content: provider.TextContent(sb.String())})
 	} else {
 		// Fallback: concatenate old messages as plain text
 		var parts []string
 		for _, m := range messages[:keepStart] {
-			txt := extractText(m.Content)
+			txt := provider.ExtractText(m.Content)
 			if txt != "" {
 				parts = append(parts, m.Role+": "+txt)
 			}
 		}
 		if len(parts) > 0 {
-			result = append(result, Message{Role: "user", Content: TextContent("[L1 摘要] " + strings.Join(parts, " | "))})
+			result = append(result, provider.Message{Role: "user", Content: provider.TextContent("[L1 摘要] " + strings.Join(parts, " | "))})
 		}
 	}
 
 	result = append(result, messages[keepStart:]...)
 
 	for _, m := range messages[:keepStart] {
-		tokensSaved += estimateTokens(string(m.Content))
+		tokensSaved += provider.EstimateTokens(string(m.Content))
 	}
 	if summary != "" {
-		tokensSaved -= estimateTokens(summary)
+		tokensSaved -= provider.EstimateTokens(summary)
 	}
 
 	if droppedCount == 0 {
@@ -105,10 +106,10 @@ func (ic *IncrementalCompressor) Compress(messages []Message, maxTokens int) ([]
 }
 
 // mergeIntoSummary calls the LLM to merge new messages into the existing summary.
-func (ic *IncrementalCompressor) mergeIntoSummary(messages []Message, newTurns int) (string, int) {
+func (ic *IncrementalCompressor) mergeIntoSummary(messages []provider.Message, newTurns int) (string, int) {
 	texts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		txt := extractText(m.Content)
+		txt := provider.ExtractText(m.Content)
 		if txt != "" {
 			texts = append(texts, m.Role+": "+txt)
 		}
@@ -124,8 +125,8 @@ func (ic *IncrementalCompressor) mergeIntoSummary(messages []Message, newTurns i
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp, err := ic.provider.Complete(ctx, ProviderRequest{
-		Messages:  []Message{{Role: "user", Content: TextContent(userContent)}},
+	resp, err := ic.provider.Complete(ctx, provider.ProviderRequest{
+		Messages:  []provider.Message{{Role: "user", Content: provider.TextContent(userContent)}},
 		System:    systemPrompt,
 		MaxTokens: 400,
 	})
@@ -134,7 +135,7 @@ func (ic *IncrementalCompressor) mergeIntoSummary(messages []Message, newTurns i
 		return "", 0
 	}
 
-	summary := extractText(resp.Content)
+	summary := provider.ExtractText(resp.Content)
 	if summary == "" {
 		return "", 0
 	}

@@ -4,31 +4,31 @@ import (
 	"context"
 	"fmt"
 
-	"dolphin/internal/agent"
+	"dolphin/internal/agent/provider"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// InstrumentedProvider wraps an agent.Provider with OTel tracing.
+// InstrumentedProvider wraps an provider.Provider with OTel tracing.
 type InstrumentedProvider struct {
-	inner agent.Provider
+	inner provider.Provider
 }
 
 // NewInstrumentedProvider creates an OTel-instrumented wrapper around a provider.
-func NewInstrumentedProvider(p agent.Provider) agent.Provider {
+func NewInstrumentedProvider(p provider.Provider) provider.Provider {
 	return &InstrumentedProvider{inner: p}
 }
 
-func (p *InstrumentedProvider) Type() agent.ProviderType { return p.inner.Type() }
+func (p *InstrumentedProvider) Type() provider.ProviderType { return p.inner.Type() }
 func (p *InstrumentedProvider) Name() string             { return p.inner.Name() }
 
 func (p *InstrumentedProvider) HealthCheck(ctx context.Context) error {
 	return p.inner.HealthCheck(ctx)
 }
 
-func (p *InstrumentedProvider) Complete(ctx context.Context, req agent.ProviderRequest) (*agent.ProviderResponse, error) {
+func (p *InstrumentedProvider) Complete(ctx context.Context, req provider.ProviderRequest) (*provider.ProviderResponse, error) {
 	tr := Tracer(tracerName)
 	ctx, span := tr.Start(ctx, "llm.complete",
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -58,7 +58,7 @@ func (p *InstrumentedProvider) Complete(ctx context.Context, req agent.ProviderR
 	return resp, nil
 }
 
-func (p *InstrumentedProvider) CompleteStream(ctx context.Context, req agent.ProviderRequest) (<-chan agent.StreamChunk, error) {
+func (p *InstrumentedProvider) CompleteStream(ctx context.Context, req provider.ProviderRequest) (<-chan provider.StreamChunk, error) {
 	tr := Tracer(tracerName)
 	ctx, span := tr.Start(ctx, "llm.complete_stream",
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -79,7 +79,7 @@ func (p *InstrumentedProvider) CompleteStream(ctx context.Context, req agent.Pro
 	}
 
 	// Wrap channel to detect completion and finalize span
-	out := make(chan agent.StreamChunk)
+	out := make(chan provider.StreamChunk)
 	go func() {
 		defer span.End()
 		defer close(out)

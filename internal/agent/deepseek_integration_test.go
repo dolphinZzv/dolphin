@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+	"dolphin/internal/agent/provider"
+	"dolphin/internal/config"
 )
 
 // findConfigPath looks for .dolphin/config.yaml by walking up from CWD.
@@ -84,33 +85,31 @@ func readDeepSeekConfig(t *testing.T) (apiKey, baseURL, model string) {
 	return "", "", ""
 }
 
-func testProvider(t *testing.T) (*OpenAIProvider, string) {
+func testProvider(t *testing.T) (*provider.OpenAIProvider, string) {
 	t.Helper()
 	apiKey, baseURL, model := readDeepSeekConfig(t)
 	if apiKey == "" {
 		t.Skip("no openai-type provider with API key configured")
 	}
-	return &OpenAIProvider{
-		model:    model,
-		maxTok:   2048,
-		name:     "integration-test",
-		temp:     0.7,
-		baseURL:  baseURL,
-		apiKey:   apiKey,
-		httpDoer: http.DefaultClient,
-	}, model
+	return provider.NewOpenAIProvider(&config.ProviderConfig{
+		Name:     "integration-test",
+		BaseURL:  baseURL,
+		APIKey:   apiKey,
+		Model:    model,
+		MaxTokens: 2048,
+	}), model
 }
 
 func TestDeepSeekIntegration(t *testing.T) {
-	provider, model := testProvider(t)
+	prov, model := testProvider(t)
 	t.Logf("model: %s", model)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	ch, err := provider.CompleteStream(ctx, ProviderRequest{
+	ch, err := prov.CompleteStream(ctx, provider.ProviderRequest{
 		System: "You are a helpful assistant. Keep responses very brief.",
-		Messages: []Message{
+		Messages: []provider.Message{
 			{Role: "user", Content: json.RawMessage(`"say hello in one word"`)},
 		},
 	})
@@ -126,7 +125,7 @@ func TestDeepSeekIntegration(t *testing.T) {
 		if c.Done {
 			break
 		}
-		if txt := extractText(c.Content); txt != "" {
+		if txt := provider.ExtractText(c.Content); txt != "" {
 			content.WriteString(txt)
 		}
 	}
@@ -138,7 +137,7 @@ func TestDeepSeekIntegration(t *testing.T) {
 }
 
 func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
-	provider, model := testProvider(t)
+	prov, model := testProvider(t)
 	t.Logf("model: %s", model)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -146,9 +145,9 @@ func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
 
 	// Turn 1
 	t.Log("--- turn 1 ---")
-	ch1, err := provider.CompleteStream(ctx, ProviderRequest{
+	ch1, err := prov.CompleteStream(ctx, provider.ProviderRequest{
 		System: "You are a helpful assistant. Keep responses very brief.",
-		Messages: []Message{
+		Messages: []provider.Message{
 			{Role: "user", Content: json.RawMessage(`"what is 2+2?"`)},
 		},
 	})
@@ -171,7 +170,7 @@ func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
 				"thinking": c.BlockDelta,
 			})
 		}
-		if txt := extractText(c.Content); txt != "" {
+		if txt := provider.ExtractText(c.Content); txt != "" {
 			textBuf.WriteString(txt)
 		}
 	}
@@ -191,9 +190,9 @@ func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
 	blocksJSON, _ := json.Marshal(blocks)
 	t.Log("--- turn 2 (reasoning_content round-trip) ---")
 
-	ch2, err := provider.CompleteStream(ctx, ProviderRequest{
+	ch2, err := prov.CompleteStream(ctx, provider.ProviderRequest{
 		System: "You are a helpful assistant. Keep responses very brief.",
-		Messages: []Message{
+		Messages: []provider.Message{
 			{Role: "user", Content: json.RawMessage(`"what is 2+2?"`)},
 			{Role: "assistant", Content: json.RawMessage(blocksJSON)},
 			{Role: "user", Content: json.RawMessage(`"and 3+3?"`)},
@@ -208,7 +207,7 @@ func TestDeepSeekIntegrationWithRoundTrip(t *testing.T) {
 		if c.Done {
 			break
 		}
-		if txt := extractText(c.Content); txt != "" {
+		if txt := provider.ExtractText(c.Content); txt != "" {
 			result.WriteString(txt)
 		}
 	}

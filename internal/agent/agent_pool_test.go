@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/agent/provider"
 )
 
 func TestAgentInstanceStatus(t *testing.T) {
@@ -148,8 +149,8 @@ func TestAgentPoolDispatchThenCollect(t *testing.T) {
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("task done"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("task done"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
 		},
 	}
 

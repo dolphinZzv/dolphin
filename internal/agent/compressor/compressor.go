@@ -1,8 +1,10 @@
-package agent
+package compressor
 
 import (
 	"fmt"
 	"strings"
+
+	"dolphin/internal/agent/provider"
 )
 
 // CompressReport holds statistics about a compression operation.
@@ -16,7 +18,7 @@ type CompressReport struct {
 // Returns the compressed message list and a report, or (nil, nil) if no
 // compression was needed.
 type Compressor interface {
-	Compress(messages []Message, maxTokens int) ([]Message, *CompressReport)
+	Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport)
 }
 
 // compressPreambleResult holds the common computation from compressPreamble.
@@ -30,14 +32,14 @@ type compressPreambleResult struct {
 // compressPreamble runs the shared token-estimation / keepStart logic that
 // every Compress implementation repeats. Returns zero-valued result when no
 // compression is needed (caller should return nil, nil).
-func compressPreamble(messages []Message, maxTokens int) compressPreambleResult {
+func compressPreamble(messages []provider.Message, maxTokens int) compressPreambleResult {
 	if maxTokens <= 0 {
 		return compressPreambleResult{}
 	}
 
 	est := 0
 	for _, m := range messages {
-		est += estimateTokens(string(m.Content))
+		est += provider.EstimateTokens(string(m.Content))
 		if m.Role == "assistant" {
 			est += 20
 		}
@@ -76,7 +78,7 @@ func compressPreamble(messages []Message, maxTokens int) compressPreambleResult 
 // This is the default strategy — identical to the pre-interface behavior.
 type DropCompressor struct{}
 
-func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message, *CompressReport) {
+func (d *DropCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
 	pre := compressPreamble(messages, maxTokens)
 	if !pre.CanDrop {
 		return nil, nil
@@ -85,7 +87,7 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 	est := pre.Estimated
 
 	// Walk from the front, dropping complete user+response turn groups.
-	result := make([]Message, len(messages))
+	result := make([]provider.Message, len(messages))
 	copy(result, messages)
 	dropped := 0
 	for i := 0; i < keepStart; {
@@ -101,7 +103,7 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 			break
 		}
 		for j := i; j < end; j++ {
-			est -= estimateTokens(string(result[j].Content))
+			est -= provider.EstimateTokens(string(result[j].Content))
 		}
 		dropped += end - i
 		result = append(result[:i], result[end:]...)
@@ -114,7 +116,7 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 
 	tokensSaved := 0
 	for j := 0; j < dropped && j < len(messages); j++ {
-		tokensSaved += estimateTokens(string(messages[j].Content))
+		tokensSaved += provider.EstimateTokens(string(messages[j].Content))
 	}
 
 	return result, &CompressReport{
@@ -124,16 +126,16 @@ func (d *DropCompressor) Compress(messages []Message, maxTokens int) ([]Message,
 	}
 }
 
-// segmentSummary holds a summary segment with its level.
-type segmentSummary struct {
+// SegmentSummary holds a summary segment with its level.
+type SegmentSummary struct {
 	Content      string // the summary text
 	Level        int    // 1 = original summary, 2 = merged, etc.
 	CoveredCount int    // how many original message groups this covers
 }
 
 // extractSummarySegments returns all summary segments found in the message list.
-func extractSummarySegments(messages []Message) []segmentSummary {
-	var out []segmentSummary
+func ExtractSummarySegments(messages []provider.Message) []SegmentSummary {
+	var out []SegmentSummary
 	for i := 0; i < len(messages); {
 		if messages[i].Role != "user" {
 			i++
@@ -152,7 +154,7 @@ func extractSummarySegments(messages []Message) []segmentSummary {
 }
 
 // toMessage returns the summary as a synthetic user message.
-func (s *segmentSummary) toMessage() Message {
+func (s *SegmentSummary) toMessage() provider.Message {
 	var sb strings.Builder
 	sb.WriteString("[L")
 	fmt.Fprint(&sb, s.Level)
@@ -160,5 +162,5 @@ func (s *segmentSummary) toMessage() Message {
 	fmt.Fprint(&sb, s.CoveredCount)
 	sb.WriteString(" 组] ")
 	sb.WriteString(s.Content)
-	return Message{Role: "user", Content: TextContent(sb.String())}
+	return provider.Message{Role: "user", Content: provider.TextContent(sb.String())}
 }

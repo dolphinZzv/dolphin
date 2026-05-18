@@ -11,6 +11,7 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
+	"dolphin/internal/agent/provider"
 )
 
 func TestRunFullSessionWelcomeAndExit(t *testing.T) {
@@ -26,8 +27,8 @@ func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 	toolReg.Register(&mockTool{name: "test_tool"})
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("hello from LLM"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("hello from LLM"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}},
 		},
 	}
 
@@ -108,9 +109,9 @@ func TestRunMaxLoopGeneratesSummary(t *testing.T) {
 	toolReg := mcp.NewRegistry(cfg)
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("response 1"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
-			{Content: TextContent("response 2"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("response 1"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}},
+			{Content: provider.TextContent("response 2"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}},
 		},
 	}
 
@@ -147,8 +148,8 @@ func TestRunEmptyInputSkipped(t *testing.T) {
 	toolReg := mcp.NewRegistry(cfg)
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("hi"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("hi"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}},
 		},
 	}
 
@@ -184,16 +185,16 @@ func TestRunToolCallAndStreaming(t *testing.T) {
 	toolReg.Register(&mockTool{name: "test_tool"})
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
 				Content:    jsonContent(`[{"type":"text","text":"calling tool"},{"type":"tool_use","id":"tu1","name":"test_tool","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "tu1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "tu1", Name: "test_tool", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 			{
-				Content:    TextContent("tool done"),
-				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				Content:    provider.TextContent("tool done"),
+				Usage:      &provider.Usage{InputTokens: 20, OutputTokens: 10},
 				StopReason: "end_turn",
 			},
 		},
@@ -236,8 +237,8 @@ func TestRunContextCompressionTriggered(t *testing.T) {
 
 	// Pre-populate many messages to exceed context limit
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("compressed response"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("compressed response"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
 		},
 	}
 
@@ -275,22 +276,22 @@ func TestRunMultiToolChain(t *testing.T) {
 	toolReg.Register(&mockTool{name: "tool_b"})
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
 				Content:    jsonContent(`[{"type":"text","text":"calling tool_a"},{"type":"tool_use","id":"t1","name":"tool_a","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "t1", Name: "tool_a", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "t1", Name: "tool_a", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 			{
 				Content:    jsonContent(`[{"type":"text","text":"calling tool_b"},{"type":"tool_use","id":"t2","name":"tool_b","input":{}}]`),
-				ToolCalls:  []ToolCall{{ID: "t2", Name: "tool_b", Arguments: json.RawMessage(`{}`)}},
-				Usage:      &Usage{InputTokens: 15, OutputTokens: 5},
+				ToolCalls:  []provider.ToolCall{{ID: "t2", Name: "tool_b", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &provider.Usage{InputTokens: 15, OutputTokens: 5},
 				StopReason: "tool_use",
 			},
 			{
-				Content:    TextContent("all tools done"),
-				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				Content:    provider.TextContent("all tools done"),
+				Usage:      &provider.Usage{InputTokens: 20, OutputTokens: 10},
 				StopReason: "end_turn",
 			},
 		},
@@ -333,10 +334,10 @@ func TestRunErrorRecovery(t *testing.T) {
 	// No tools registered — if LLM tries to call one, it won't be found
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
-				Content:    TextContent("simple response"),
-				Usage:      &Usage{InputTokens: 5, OutputTokens: 10},
+				Content:    provider.TextContent("simple response"),
+				Usage:      &provider.Usage{InputTokens: 5, OutputTokens: 10},
 				StopReason: "end_turn",
 			},
 		},
@@ -372,8 +373,8 @@ func TestRunTurnContextCancelled(t *testing.T) {
 	toolReg := mcp.NewRegistry(cfg)
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("response"), Usage: &Usage{}, StopReason: "end_turn"},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("response"), Usage: &provider.Usage{}, StopReason: "end_turn"},
 		},
 	}
 
@@ -412,10 +413,10 @@ func TestRunTurnWithThinking(t *testing.T) {
 	// Response with thinking block + text block
 	content := json.RawMessage(`[{"type":"thinking","thinking":"let me think about this"},{"type":"text","text":"final answer"}]`)
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
+		responses: []*provider.ProviderResponse{
 			{
 				Content:    content,
-				Usage:      &Usage{InputTokens: 10, OutputTokens: 20},
+				Usage:      &provider.Usage{InputTokens: 10, OutputTokens: 20},
 				StopReason: "end_turn",
 			},
 		},
@@ -452,8 +453,8 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{
-		responses: []*ProviderResponse{
-			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 5, OutputTokens: 2}},
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("ok"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 2}},
 		},
 	}
 

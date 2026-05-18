@@ -21,6 +21,8 @@ import (
 	"dolphin/internal/transport"
 
 	"go.uber.org/zap"
+	"dolphin/internal/agent/provider"
+	"dolphin/internal/agent/compressor"
 )
 
 // Agent is the core agent that runs the agent loop.
@@ -28,9 +30,9 @@ type Agent struct {
 	cfg                *config.Config
 	sessMgr            *session.Manager
 	toolReg            *mcp.Registry
-	provider           Provider
+	provider           provider.Provider
 	ctxBuilder         *ContextBuilder
-	compressor         Compressor
+	compressor         compressor.Compressor
 	hooks              *hook.Registry
 	events             *event.EventBus
 	heartbeatInterval  int // emit heartbeat event every N turns, 0=off
@@ -43,7 +45,7 @@ type Agent struct {
 // LoopState holds state for a single agent run.
 type LoopState struct {
 	Sess             *session.Session
-	Messages         []Message
+	Messages         []provider.Message
 	Turn             int
 	StopReason       string
 	ToolCallCount    int
@@ -75,7 +77,7 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 func (a *Agent) switchToNextProvider() bool {
 	for i := a.providerIndex + 1; i < len(a.availableProviders); i++ {
 		pc := a.availableProviders[i]
-		p := NewProviderFromConfig(&pc)
+		p := provider.NewProviderFromConfig(&pc)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := p.HealthCheck(ctx)
@@ -110,7 +112,7 @@ func (a *Agent) switchToProvider(name string) bool {
 		if pc.Name != name {
 			continue
 		}
-		p := NewProviderFromConfig(&pc)
+		p := provider.NewProviderFromConfig(&pc)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err := p.HealthCheck(ctx)
 		cancel()
@@ -139,22 +141,22 @@ func (a *Agent) SetBuildTime(t string) { a.buildTime = t }
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
 	case "segment":
-		a.compressor = NewSegmentCompressor(a.cfg.LLM.SegmentMergeLimit)
+		a.compressor = compressor.NewSegmentCompressor(a.cfg.LLM.SegmentMergeLimit)
 	case "tiered":
-		a.compressor = NewTieredCompressor(a.provider)
+		a.compressor = compressor.NewTieredCompressor(a.provider)
 	case "incremental":
-		a.compressor = NewIncrementalCompressor(a.provider)
+		a.compressor = compressor.NewIncrementalCompressor(a.provider)
 	case "topic":
-		a.compressor = NewTopicCompressor(a.provider)
+		a.compressor = compressor.NewTopicCompressor(a.provider)
 	default:
-		a.compressor = &DropCompressor{}
+		a.compressor = &compressor.DropCompressor{}
 	}
 }
 
 // selectProvider runs health checks on all configured providers concurrently,
 // then picks the first available one in configured order.
 // Returns the selected Provider and its index in the providers list.
-func selectProvider(cfg *config.Config) (Provider, int) {
+func selectProvider(cfg *config.Config) (provider.Provider, int) {
 	providers := cfg.LLM.EffectiveProviders()
 	if len(providers) == 0 {
 		zap.S().Fatal("no LLM providers configured")
@@ -162,7 +164,7 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 
 	type jobResult struct {
 		idx      int
-		provider Provider
+		provider provider.Provider
 		pc       config.ProviderConfig
 		ok       bool
 		ms       int64
@@ -177,7 +179,7 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 		wg.Add(1)
 		go func(idx int, pcfg config.ProviderConfig) {
 			defer wg.Done()
-			p := NewProviderFromConfig(&pcfg)
+			p := provider.NewProviderFromConfig(&pcfg)
 
 			// Skip health check for placeholder/test API keys.
 			if isPlaceholderKey(pcfg.APIKey) {
@@ -260,7 +262,7 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 
 	// All failed.
 	printProviderHelp(providers)
-	return NewProviderFromConfig(&providers[0]), 0 // fall back to first
+	return provider.NewProviderFromConfig(&providers[0]), 0 // fall back to first
 }
 
 func printProviderHelp(providers []config.ProviderConfig) {
@@ -503,8 +505,8 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		sess.Turn = state.Turn
 
 		// Add user message
-		userContent := TextContent(line)
-		state.Messages = append(state.Messages, Message{Role: "user", Content: userContent})
+		userContent := provider.TextContent(line)
+		state.Messages = append(state.Messages, provider.Message{Role: "user", Content: userContent})
 		sess.LogMessage("user", userContent)
 
 		// Emit user:message event
@@ -572,7 +574,7 @@ func (a *Agent) handleProviderCommand(line string, io transport.UserIO) {
 					io.WriteLine(fmt.Sprintf("Already using %s.", pc.Name))
 					return
 				}
-				p := NewProviderFromConfig(&pc)
+				p := provider.NewProviderFromConfig(&pc)
 				checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				err := p.HealthCheck(checkCtx)
 				cancel()
@@ -636,7 +638,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		)
 
 		// Build LLM request
-		req := &ProviderRequest{
+		req := &provider.ProviderRequest{
 			Messages:  state.Messages,
 			System:    systemPrompt,
 			Tools:     toolDefs,
@@ -666,7 +668,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 
 		// Build assistant message content blocks from stream result
 		content, toolCalls := a.buildAssistantMessage(result, state)
-		state.Messages = append(state.Messages, Message{Role: "assistant", Content: content})
+		state.Messages = append(state.Messages, provider.Message{Role: "assistant", Content: content})
 
 		// Logging, hooks, events
 		a.logLLMResponse(ctx, state, i, llmDuration, content, toolCalls, result.usage)
@@ -689,8 +691,8 @@ type streamResult struct {
 	text              string
 	thinking          string
 	thinkingSignature string
-	toolCalls         []ToolCall
-	usage             *Usage
+	toolCalls         []provider.ToolCall
+	usage             *provider.Usage
 	err               error
 }
 
@@ -717,14 +719,14 @@ func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
 
 	comp := a.compressor
 	if comp == nil {
-		comp = &DropCompressor{}
+		comp = &compressor.DropCompressor{}
 	}
 	compressed, report := comp.Compress(state.Messages, a.cfg.LLM.MaxContextTokens)
 	if report == nil || report.DroppedCount == 0 {
 		return
 	}
 	state.Messages = compressed
-	for _, seg := range extractSummarySegments(compressed) {
+	for _, seg := range compressor.ExtractSummarySegments(compressed) {
 		state.Sess.LogCompression(session.CompressMeta{
 			Level:        seg.Level,
 			CoveredCount: seg.CoveredCount,
@@ -753,7 +755,7 @@ func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
 	}
 }
 
-func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Registry) []ToolDef {
+func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Registry) []provider.ToolDef {
 	var mcpDefs []mcp.ToolDefinition
 	nameSet := map[string]bool{"search_mcp_tools": true}
 	for name := range extraTools {
@@ -764,9 +766,9 @@ func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Regis
 			mcpDefs = append(mcpDefs, t.Definition())
 		}
 	}
-	toolDefs := make([]ToolDef, len(mcpDefs))
+	toolDefs := make([]provider.ToolDef, len(mcpDefs))
 	for j, d := range mcpDefs {
-		toolDefs[j] = ToolDef{
+		toolDefs[j] = provider.ToolDef{
 			Name:        d.Name,
 			Description: d.Description,
 			InputSchema: d.InputSchema,
@@ -775,7 +777,7 @@ func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Regis
 	return toolDefs
 }
 
-func (a *Agent) fireBeforeLLM(ctx context.Context, state *LoopState, req *ProviderRequest) error {
+func (a *Agent) fireBeforeLLM(ctx context.Context, state *LoopState, req *provider.ProviderRequest) error {
 	if a.hooks == nil {
 		return nil
 	}
@@ -788,13 +790,13 @@ func (a *Agent) fireBeforeLLM(ctx context.Context, state *LoopState, req *Provid
 	if err := a.hooks.Fire(ctx, hook.PointBeforeLLM, hc); err != nil {
 		return fmt.Errorf("llm call blocked: %w", err)
 	}
-	if modified, ok := hc.Request.(*ProviderRequest); ok {
+	if modified, ok := hc.Request.(*provider.ProviderRequest); ok {
 		state.Messages = modified.Messages
 	}
 	return nil
 }
 
-func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh <-chan StreamChunk, caps transport.Capabilities, turn int, sessionID string) *streamResult {
+func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh <-chan provider.StreamChunk, caps transport.Capabilities, turn int, sessionID string) *streamResult {
 	var textBuf strings.Builder
 	var thinkingBuf strings.Builder
 	var thinkingSignature string
@@ -805,7 +807,7 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	}
 	var tools []buildingTool
 	toolIdx := -1
-	var finalUsage *Usage
+	var finalUsage *provider.Usage
 
 	var blockBuf strings.Builder
 	const blockFlushThreshold = 1024
@@ -902,9 +904,9 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	}
 
 	// Build tool calls from accumulated buffers
-	var providerToolCalls []ToolCall
+	var providerToolCalls []provider.ToolCall
 	for _, tc := range tools {
-		providerToolCalls = append(providerToolCalls, ToolCall{
+		providerToolCalls = append(providerToolCalls, provider.ToolCall{
 			ID:        tc.ID,
 			Name:      tc.Name,
 			Arguments: json.RawMessage(tc.ArgsBuf.String()),
@@ -920,7 +922,7 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	}
 }
 
-func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (json.RawMessage, []ToolCall) {
+func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (json.RawMessage, []provider.ToolCall) {
 	var outBlocks []map[string]any
 	if result.thinking != "" {
 		thinkingBlock := map[string]any{
@@ -947,7 +949,7 @@ func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (j
 	return content, result.toolCalls
 }
 
-func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []ToolCall, usage *Usage) {
+func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []provider.ToolCall, usage *provider.Usage) {
 	if usage != nil {
 		state.Sess.LogMessageWithUsage("assistant", content, usage.InputTokens, usage.OutputTokens)
 	} else {
@@ -970,7 +972,7 @@ func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn in
 		a.hooks.Fire(ctx, hook.PointAfterLLM, &hook.Context{
 			SessionID: string(state.Sess.ID),
 			Turn:      state.Turn,
-			Response:  &ProviderResponse{Content: content, ToolCalls: toolCalls, Usage: usage},
+			Response:  &provider.ProviderResponse{Content: content, ToolCalls: toolCalls, Usage: usage},
 		})
 	}
 	if a.events != nil {
@@ -988,7 +990,7 @@ func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn in
 	}
 }
 
-func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state *LoopState, toolCalls []ToolCall, toolReg *mcp.Registry, caps transport.Capabilities) {
+func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state *LoopState, toolCalls []provider.ToolCall, toolReg *mcp.Registry, caps transport.Capabilities) {
 	state.ToolCallCount += len(toolCalls)
 	for _, tc := range toolCalls {
 		zap.S().Debugw("executing tool",
@@ -1081,7 +1083,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 				"content":     json.RawMessage(innerContent),
 			},
 		})
-		state.Messages = append(state.Messages, Message{
+		state.Messages = append(state.Messages, provider.Message{
 			Role:    "tool",
 			Content: resultBlock,
 		})
@@ -1136,7 +1138,7 @@ func isPlaceholderKey(key string) bool {
 
 // callLLMWithRetry calls CompleteStream with exponential backoff retry.
 // On exhaustion, it fails over to the next available provider if any.
-func (a *Agent) callLLMWithRetry(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
+func (a *Agent) callLLMWithRetry(ctx context.Context, req provider.ProviderRequest) (<-chan provider.StreamChunk, error) {
 	maxRetries := 3
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		ch, err := a.provider.CompleteStream(ctx, req)
@@ -1254,7 +1256,7 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	}
 
 	state := &LoopState{Sess: sess}
-	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent(task)})
+	state.Messages = append(state.Messages, provider.Message{Role: "user", Content: provider.TextContent(task)})
 
 	// Ensure cleanup even on panic (recovered by pool.workerLoop).
 	defer func() {
@@ -1293,7 +1295,7 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 }
 
 // extractFinalResponse returns the text content of the last assistant message.
-func extractFinalResponse(messages []Message) string {
+func extractFinalResponse(messages []provider.Message) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].Role == "assistant" {
 			return extractText(messages[i].Content)

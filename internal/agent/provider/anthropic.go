@@ -1,4 +1,4 @@
-package agent
+package provider
 
 import (
 	"bufio"
@@ -386,7 +386,7 @@ func (p *AnthropicProvider) buildReq(req ProviderRequest, stream bool) anthroReq
 	// Defense: ensure tool_use/tool_result pairing before building the request.
 	// Session replay can introduce orphaned tool_use blocks when a previous
 	// session was interrupted mid-tool-execution.
-	msgs := sanitizeToolPairing(req.Messages)
+	msgs := SanitizeToolPairing(req.Messages)
 
 	for i := 0; i < len(msgs); i++ {
 		msg := msgs[i]
