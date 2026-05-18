@@ -285,6 +285,35 @@ func CountTurns(path string) (int, error) {
 	return maxTurn, nil
 }
 
+// CountTokens reads a session file and sums input/output token counts.
+func CountTokens(path string) (inputTokens, outputTokens int, err error) {
+	const maxSize = 10 * 1024 * 1024
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	if info.Size() > maxSize {
+		return 0, 0, fmt.Errorf("session file too large (%d bytes), exceeds limit (%d)", info.Size(), maxSize)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var evt SessionEvent
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+		inputTokens += evt.InputTokens
+		outputTokens += evt.OutputTokens
+	}
+	return inputTokens, outputTokens, nil
+}
+
 // ReadEvents reads all session events from a session file.
 func ReadEvents(path string) ([]SessionEvent, error) {
 	// Limit file size to 10MB to prevent OOM

@@ -585,9 +585,11 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 	}
 
 	type sessInfo struct {
-		id    string
-		turns int
-		mod   time.Time
+		id           string
+		turns        int
+		inputTokens  int
+		outputTokens int
+		mod          time.Time
 	}
 	var sessions []sessInfo
 	for _, entry := range entries {
@@ -600,8 +602,10 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 			continue
 		}
 		id := strings.TrimSuffix(name, ".jsonl")
-		turns, _ := session.CountTurns(filepath.Join(dir, name))
-		sessions = append(sessions, sessInfo{id: id, turns: turns, mod: info.ModTime()})
+		sessPath := filepath.Join(dir, name)
+		turns, _ := session.CountTurns(sessPath)
+		inTok, outTok, _ := session.CountTokens(sessPath)
+		sessions = append(sessions, sessInfo{id: id, turns: turns, inputTokens: inTok, outputTokens: outTok, mod: info.ModTime()})
 	}
 
 	if len(sessions) == 0 {
@@ -622,7 +626,7 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 			shortID = shortID[:12]
 		}
 		ago := time.Since(s.mod).Truncate(time.Second).String()
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago"))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago", s.inputTokens, s.outputTokens))
 	}
 	io.WriteLine("")
 }

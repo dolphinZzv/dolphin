@@ -119,7 +119,7 @@ var enMessages = map[string]string{
 	// /sessions command
 	KeySessionsHeader: "Sessions (%d):",
 	KeyNoSessions:     "No past sessions found.",
-	KeySessionRow:     "  %s  %4d turns  %s",
+	KeySessionRow:     "  %s  %4d turns  %s  in=%d out=%d",
 
 	// /context
 	KeyHelpReload:        "  /reload       - Reload (restart) the agent",

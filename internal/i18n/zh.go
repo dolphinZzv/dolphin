@@ -119,7 +119,7 @@ var zhMessages = map[string]string{
 	// /sessions 命令
 	KeySessionsHeader: "会话（%d）：",
 	KeyNoSessions:     "未找到历史会话。",
-	KeySessionRow:     "  %s  %4d 轮  %s",
+	KeySessionRow:     "  %s  %4d 轮  %s  入=%d 出=%d",
 
 	// /context
 	KeyHelpReload:        "  /reload       - 重新加载（重启）代理",
