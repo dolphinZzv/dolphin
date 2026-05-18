@@ -673,14 +673,14 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		state.Messages = append(state.Messages, provider.Message{Role: "assistant", Content: content})
 
 		// Logging, hooks, events
-		a.logLLMResponse(ctx, state, i, llmDuration, content, toolCalls, result.usage)
+		a.logLLMResponse(ctx, io, state, i, llmDuration, content, toolCalls, result.usage)
 
 		if len(toolCalls) == 0 {
 			return nil
 		}
 
 		// Execute tool calls
-		a.executeToolCalls(ctx, io, state, toolCalls, toolReg, caps)
+		a.executeToolCalls(ctx, io, state, toolCalls, toolReg, caps, i, maxSubTurns)
 	}
 
 	if a.cfg.LogLevel == "debug" {
@@ -951,7 +951,7 @@ func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (j
 	return content, result.toolCalls
 }
 
-func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []provider.ToolCall, usage *provider.Usage) {
+func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []provider.ToolCall, usage *provider.Usage) {
 	if usage != nil {
 		state.Sess.LogMessageWithUsage("assistant", content, usage.InputTokens, usage.OutputTokens)
 	} else {
@@ -969,6 +969,11 @@ func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn in
 			"output_tokens", usage.OutputTokens,
 			"tool_calls", len(toolCalls),
 		)
+		if io != nil {
+			io.WriteLine(fmt.Sprintf("  tokens: in=%d out=%d", usage.InputTokens, usage.OutputTokens))
+		}
+	} else if io != nil {
+		io.WriteLine("  tokens: -")
 	}
 	if a.hooks != nil {
 		a.hooks.Fire(ctx, hook.PointAfterLLM, &hook.Context{
@@ -992,7 +997,7 @@ func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn in
 	}
 }
 
-func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state *LoopState, toolCalls []provider.ToolCall, toolReg *mcp.Registry, caps transport.Capabilities) {
+func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state *LoopState, toolCalls []provider.ToolCall, toolReg *mcp.Registry, caps transport.Capabilities, subTurn, maxSubTurns int) {
 	state.ToolCallCount += len(toolCalls)
 	for _, tc := range toolCalls {
 		zap.S().Debugw("executing tool",
@@ -1072,7 +1077,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 		)
 		if a.cfg.LogLevel == "debug" && caps.ShowToolDetails && resultContent != "" {
 			argsCompact := compactJSON(tc.Arguments, 200)
-			io.WriteLine(fmt.Sprintf("[Calling tool: %s] %s", tc.Name, argsCompact))
+			io.WriteLine(fmt.Sprintf("[Calling tool: %s] (%d/%d) %s", tc.Name, subTurn+1, maxSubTurns, argsCompact))
 		}
 
 		innerContent, _ := json.Marshal([]map[string]any{
