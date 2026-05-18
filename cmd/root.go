@@ -35,6 +35,8 @@ import (
 	"dolphin/internal/transport"
 	"dolphin/internal/update"
 
+	appctx "dolphin/internal/context"
+
 	"github.com/oklog/run"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -404,6 +406,18 @@ func initSkillManager(cfg *config.Config) *skill.Manager {
 	if skills := mgr.List(); len(skills) > 0 {
 		zap.S().Infow("skills loaded", "dirs", skillDirs, "count", len(skills))
 	}
+
+	// Register built-in skills when self-evolution is enabled
+	if cfg.Flags.SelfEvolution {
+		if s := appctx.BuiltinSkills; s != "" {
+			if err := mgr.Register("self-evolution", "Built-in self-evolution capabilities enabling the agent to create, update, and delete skills and commands", s); err != nil {
+				zap.S().Warnw("register builtin skill failed", "error", err)
+			} else {
+				zap.S().Infow("self-evolution skill registered")
+			}
+		}
+	}
+
 	go mgr.WatchAndReload(context.Background(), 30*time.Second)
 	return mgr
 }

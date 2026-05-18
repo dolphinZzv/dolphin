@@ -69,6 +69,11 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		"cancel_task", "delete_agent", "search_skills", "load_skill",
 		"add_cron_task", "remove_cron_task", "list_cron_tasks", "toggle_cron_task",
 		"config", "load_mcp_tools", "search_mcp_tools"}
+	if agent.cfg.Flags.SelfEvolution {
+		coreTools = append(coreTools,
+			"create_skill", "update_skill", "delete_skill",
+			"create_command", "update_command", "delete_command")
+	}
 	loaded := make(map[string]bool, len(coreTools))
 	for _, name := range coreTools {
 		loaded[name] = true
@@ -269,12 +274,27 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case strings.HasPrefix(line, "/skills new"):
 			c.handleSkillNew(line, io)
 			continue
+		case strings.HasPrefix(line, "/skills delete"):
+			c.handleSkillDelete(line, io)
+			continue
+		case strings.HasPrefix(line, "/skills show"):
+			c.handleSkillShow(line, io)
+			continue
 		case line == "/skills":
 			c.printSkills(io)
 			continue
 		case line == "/new":
 			c.handleNew(sess, state, io)
 			sess = state.Sess
+			continue
+		case strings.HasPrefix(line, "/commands new"):
+			c.handleCmdNew(line, io)
+			continue
+		case strings.HasPrefix(line, "/commands delete"):
+			c.handleCmdDelete(line, io)
+			continue
+		case strings.HasPrefix(line, "/commands show"):
+			c.handleCmdShow(line, io)
 			continue
 		case line == "/commands":
 			c.printCommands(io)
@@ -634,6 +654,82 @@ func (c *Coordinator) registerCoordinatorTools() {
 		},
 		c.handleLoadSkill,
 	)
+	if c.cfg.Flags.SelfEvolution {
+		c.registerCoordTool("create_skill",
+			"Create a new skill with the given name, description, and markdown content. Use this to teach the agent new capabilities that can be reused across sessions. If a skill with the same name already exists, it will be overwritten.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "Unique skill name"},
+					"description": map[string]any{"type": "string", "description": "Brief description of the skill's purpose"},
+					"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions, examples, and guidelines"},
+				},
+				"required": []string{"name", "description", "content"},
+			},
+			c.handleCreateSkill,
+		)
+		c.registerCoordTool("update_skill",
+			"Update an existing skill's description and content. Use this to improve or correct a skill. If the skill does not exist, it will be created.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "Skill name to update"},
+					"description": map[string]any{"type": "string", "description": "Updated description"},
+					"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
+				},
+				"required": []string{"name", "description", "content"},
+			},
+			c.handleUpdateSkill,
+		)
+		c.registerCoordTool("delete_skill",
+			"Permanently delete a skill by name. Use this to remove outdated or incorrect skills.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Skill name to delete"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleDeleteSkill,
+		)
+		c.registerCoordTool("create_command",
+			"Create a new user-defined /command with the given name, description, and markdown content. The command will be invocable by typing /<name> in future conversations.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "Command name (used as /<name>)"},
+					"description": map[string]any{"type": "string", "description": "Brief description of what the command does"},
+					"content":     map[string]any{"type": "string", "description": "Full markdown content with instructions sent to the LLM when /<name> is invoked"},
+				},
+				"required": []string{"name", "description", "content"},
+			},
+			c.handleCreateCommand,
+		)
+		c.registerCoordTool("update_command",
+			"Update an existing /command's description and content. If the command does not exist, it will be created.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "Command name to update"},
+					"description": map[string]any{"type": "string", "description": "Updated description"},
+					"content":     map[string]any{"type": "string", "description": "Updated markdown content"},
+				},
+				"required": []string{"name", "description", "content"},
+			},
+			c.handleUpdateCommand,
+		)
+		c.registerCoordTool("delete_command",
+			"Permanently delete a user-defined /command by name.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Command name to delete"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleDeleteCommand,
+		)
+	}
 	c.registerCoordTool("add_cron_task",
 		"Add a scheduled task that runs on a cron schedule.",
 		map[string]any{
@@ -1026,8 +1122,150 @@ func (c *Coordinator) handleLoadSkill(ctx context.Context, input json.RawMessage
 		})
 	}
 
-	result := fmt.Sprintf("# Skill: %s\n\n%s\n\n---\nLoaded skill %q. Use these instructions to guide your work.", s.Name, s.Content, s.Name)
-	return &mcp.ToolResult{Content: result}, nil
+		result := fmt.Sprintf("# Skill: %s\n\n%s\n\n---\nLoaded skill %q. Use these instructions to guide your work.", s.Name, s.Content, s.Name)
+		return &mcp.ToolResult{Content: result}, nil
+	}
+
+func (c *Coordinator) handleCreateSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if params.Content == "" {
+		return &mcp.ToolResult{Content: "Skill content is required.", IsError: true}, nil
+	}
+	if err := c.skills.Register(params.Name, params.Description, params.Content); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to create skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q created successfully.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleUpdateSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if params.Content == "" {
+		return &mcp.ToolResult{Content: "Skill content is required.", IsError: true}, nil
+	}
+	if err := c.skills.Register(params.Name, params.Description, params.Content); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to update skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q updated successfully.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleDeleteSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if _, ok := c.skills.Get(params.Name); !ok {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q not found.", params.Name), IsError: true}, nil
+	}
+	if err := c.skills.Unregister(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to delete skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q deleted successfully.", params.Name)}, nil
+}
+
+// ---- Command handlers (LLM tools) ----
+
+func (c *Coordinator) handleCreateCommand(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.commands == nil {
+		return &mcp.ToolResult{Content: "Commands system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Command name is required.", IsError: true}, nil
+	}
+	if params.Content == "" {
+		return &mcp.ToolResult{Content: "Command content is required.", IsError: true}, nil
+	}
+	if err := c.commands.Register(params.Name, params.Description, params.Content); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to create command %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Command /%s created successfully. Users can now run it by typing /%s.", params.Name, params.Name)}, nil
+}
+
+func (c *Coordinator) handleUpdateCommand(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.commands == nil {
+		return &mcp.ToolResult{Content: "Commands system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Content     string `json:"content"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Command name is required.", IsError: true}, nil
+	}
+	if params.Content == "" {
+		return &mcp.ToolResult{Content: "Command content is required.", IsError: true}, nil
+	}
+	if err := c.commands.Register(params.Name, params.Description, params.Content); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to update command %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Command /%s updated successfully.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleDeleteCommand(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.commands == nil {
+		return &mcp.ToolResult{Content: "Commands system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Command name is required.", IsError: true}, nil
+	}
+	if _, ok := c.commands.Get(params.Name); !ok {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Command /%s not found.", params.Name), IsError: true}, nil
+	}
+	if err := c.commands.Unregister(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to delete command %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Command /%s deleted successfully.", params.Name)}, nil
 }
 
 // ---- Cron task handlers ----
@@ -1230,6 +1468,8 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 	}
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeySkillSearchHint))
+	io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
+	io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
 	io.WriteLine("")
 }
 
@@ -1259,6 +1499,54 @@ func (c *Coordinator) handleSkillNew(line string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewCreated), name, dir))
 }
 
+func (c *Coordinator) handleSkillDelete(line string, io transport.UserIO) {
+	if c.skills == nil {
+		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
+		return
+	}
+
+	name := strings.TrimSpace(strings.TrimPrefix(line, "/skills delete"))
+	if name == "" {
+		io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
+		return
+	}
+
+	if _, ok := c.skills.Get(name); !ok {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowFail), name))
+		return
+	}
+
+	if err := c.skills.Unregister(name); err != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillDeleteFail), name, err))
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillDeleteDone), name))
+}
+
+func (c *Coordinator) handleSkillShow(line string, io transport.UserIO) {
+	if c.skills == nil {
+		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
+		return
+	}
+
+	name := strings.TrimSpace(strings.TrimPrefix(line, "/skills show"))
+	if name == "" {
+		io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
+		return
+	}
+
+	s, ok := c.skills.Get(name)
+	if !ok {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowFail), name))
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowHeader), name))
+	io.WriteLine(s.Content)
+	io.WriteLine("")
+}
+
 func (c *Coordinator) printCommands(io transport.UserIO) {
 	if c.commands == nil {
 		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
@@ -1277,6 +1565,88 @@ func (c *Coordinator) printCommands(io transport.UserIO) {
 	}
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeyCommandRunHint))
+	io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
+	io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
+	io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
+	io.WriteLine("")
+}
+
+func (c *Coordinator) handleCmdNew(line string, io transport.UserIO) {
+	if c.commands == nil {
+		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
+		return
+	}
+
+	// Parse: "/commands new <name> [description]"
+	rest := strings.TrimPrefix(line, "/commands new")
+	rest = strings.TrimSpace(rest)
+
+	if rest == "" {
+		io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
+		return
+	}
+
+	parts := strings.SplitN(rest, " ", 2)
+	name := parts[0]
+	description := name
+	if len(parts) > 1 {
+		description = strings.TrimSpace(parts[1])
+	}
+
+	if err := c.commands.NewTemplate(name, description); err != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdNewError), err))
+		return
+	}
+
+	dir := c.commands.Dir()
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdNewCreated), name, dir))
+}
+
+func (c *Coordinator) handleCmdDelete(line string, io transport.UserIO) {
+	if c.commands == nil {
+		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
+		return
+	}
+
+	name := strings.TrimSpace(strings.TrimPrefix(line, "/commands delete"))
+	if name == "" {
+		io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
+		return
+	}
+
+	if _, ok := c.commands.Get(name); !ok {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowFail), name))
+		return
+	}
+
+	if err := c.commands.Unregister(name); err != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdDeleteFail), name, err))
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdDeleteDone), name))
+}
+
+func (c *Coordinator) handleCmdShow(line string, io transport.UserIO) {
+	if c.commands == nil {
+		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
+		return
+	}
+
+	name := strings.TrimSpace(strings.TrimPrefix(line, "/commands show"))
+	if name == "" {
+		io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
+		return
+	}
+
+	cmd, ok := c.commands.Get(name)
+	if !ok {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowFail), name))
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowHeader), name))
+	io.WriteLine(cmd.Content)
 	io.WriteLine("")
 }
 

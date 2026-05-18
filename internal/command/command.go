@@ -48,6 +48,14 @@ func NewManager(dirs ...string) *Manager {
 	}
 }
 
+// Dir returns the primary commands directory.
+func (m *Manager) Dir() string {
+	if len(m.dirs) > 0 {
+		return m.dirs[0]
+	}
+	return ""
+}
+
 // Dirs returns all configured commands directories.
 func (m *Manager) Dirs() []string { return m.dirs }
 
@@ -115,6 +123,67 @@ func (m *Manager) RecordUsage(name string) {
 	if c, ok := m.cmds[name]; ok {
 		c.CallCount++
 	}
+}
+
+// NewTemplate creates a new command file from a template in the primary commands directory.
+func (m *Manager) NewTemplate(name, description string) error {
+	if description == "" {
+		description = name
+	}
+	content := "# " + name + "\n\n" +
+		"## Task\n\n" +
+		"Describe what this command does. This content is sent to the LLM when /" + name + " is invoked.\n\n" +
+		"## Behavior\n\n" +
+		"- Define the command's behavior clearly.\n" +
+		"- Use step-by-step instructions where appropriate.\n\n" +
+		"## Notes\n\n" +
+		"Anything else the agent should know.\n"
+	return m.Register(name, description, content)
+}
+
+// Register adds or updates a command at runtime and persists it to the primary
+// commands directory as a markdown file.
+func (m *Manager) Register(name, description, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cmd := &Command{
+		Name:        name,
+		Description: description,
+		Content:     content,
+		Source:      m.dirs[0],
+		CallCount:   0,
+	}
+
+	m.cmds[name] = cmd
+
+	// Persist to disk
+	var sb strings.Builder
+	if description != "" {
+		fmt.Fprintf(&sb, "---\nname: %s\ndescription: %s\n---\n\n", name, description)
+	}
+	sb.WriteString(content)
+
+	cmdPath := filepath.Join(m.dirs[0], name+".md")
+	if err := os.MkdirAll(m.dirs[0], 0700); err != nil {
+		return fmt.Errorf("create commands dir: %w", err)
+	}
+	return os.WriteFile(cmdPath, []byte(sb.String()), 0600)
+}
+
+// Unregister removes a command from memory and deletes its file from the
+// primary commands directory.
+func (m *Manager) Unregister(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.cmds, name)
+
+	cmdPath := filepath.Join(m.dirs[0], name+".md")
+	if err := os.Remove(cmdPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // parseCommandFile parses a markdown file with optional YAML frontmatter.

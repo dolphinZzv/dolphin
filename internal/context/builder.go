@@ -53,6 +53,7 @@ func (b *Builder) Build() (string, error) {
 // the default locations: project > user > system.
 //
 //	agentDir = .dolphin/agents/<name>/
+	//	SOUL.md:	projectDir > userDir > systemDir (optional, loaded before PREFACE)
 //	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
 //	order for RULES.md:  agentDir > projectDir > userDir > systemDir
 //	order for USER.md:   agentDir > projectDir > userDir > systemDir
@@ -65,7 +66,12 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 
 	var parts []string
 
-	// 1. PREFACE (embedded, always)
+	// 1. SOUL.md (project > user > system, optional)
+	if soul := b.loadFileFallback("", "SOUL.md"); soul != "" {
+		parts = append(parts, "## Soul\n"+soul)
+	}
+
+	// 2. PREFACE (embedded, always)
 	parts = append(parts, DefaultPreface)
 
 	// 2. BUILTIN SKILLS (embedded, always)

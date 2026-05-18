@@ -44,6 +44,7 @@ type Config struct {
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
+	Flags     FlagsConfig     `mapstructure:"flags"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.
@@ -309,6 +310,11 @@ type MetricsConfig struct {
 type HealthConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
+}
+
+// FlagsConfig controls optional feature flags.
+type FlagsConfig struct {
+	SelfEvolution bool `mapstructure:"self_evolution"` // enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands
 }
 
 // TelemetryConfig holds OpenTelemetry tracing configuration.
@@ -827,6 +833,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("telemetry.sample_rate", 1.0)
 	v.SetDefault("telemetry.logs_enabled", false)
 	v.SetDefault("telemetry.metrics_enabled", false)
+
+	v.SetDefault("flags.self_evolution", false)
 
 	v.SetDefault("update.enabled", true)
 	v.SetDefault("update.check_interval", "24h")

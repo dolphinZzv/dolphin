@@ -3,6 +3,7 @@ package command
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -388,6 +389,153 @@ func TestManager_ChineseCommandName(t *testing.T) {
 	}
 	if cmd.Name != "分析竞争对手" {
 		t.Errorf("name = %q", cmd.Name)
+	}
+}
+
+func TestManager_NewTemplate(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.NewTemplate("deploy-app", "Deploy the application"); err != nil {
+		t.Fatalf("NewTemplate: %v", err)
+	}
+
+	// Verify file was created on disk
+	content, err := os.ReadFile(filepath.Join(dir, "deploy-app.md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	s := string(content)
+	if !strings.Contains(s, "name: deploy-app") {
+		t.Error("missing name in frontmatter")
+	}
+	if !strings.Contains(s, "Deploy the application") {
+		t.Error("missing description in frontmatter")
+	}
+	if !strings.Contains(s, "# deploy-app") {
+		t.Error("missing heading")
+	}
+}
+
+func TestManager_NewTemplateLoadsAfterCreation(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Before creation, command shouldn't exist
+	m.Load()
+	if _, ok := m.Get("deploy-app"); ok {
+		t.Fatal("command should not exist before NewTemplate")
+	}
+
+	// Create template
+	if err := m.NewTemplate("deploy-app", "Deploy app"); err != nil {
+		t.Fatalf("NewTemplate: %v", err)
+	}
+
+	// After creation, it should be loaded
+	m.Load()
+	cmd, ok := m.Get("deploy-app")
+	if !ok {
+		t.Fatal("expected command to be available after NewTemplate + Load")
+	}
+	if cmd.Description != "Deploy app" {
+		t.Errorf("description = %q, want 'Deploy app'", cmd.Description)
+	}
+	if cmd.Source != dir {
+		t.Errorf("source = %q, want %q", cmd.Source, dir)
+	}
+}
+
+func TestManager_Register(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.Register("test-cmd", "A test command", "Custom content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	m.Load()
+	cmd, ok := m.Get("test-cmd")
+	if !ok {
+		t.Fatal("expected command after Register")
+	}
+	if cmd.Content != "Custom content" {
+		t.Errorf("content = %q, want 'Custom content'", cmd.Content)
+	}
+}
+
+func TestManager_Unregister(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.Register("test-cmd", "A test", "Content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// File should exist
+	cmdPath := filepath.Join(dir, "test-cmd.md")
+	if _, err := os.Stat(cmdPath); os.IsNotExist(err) {
+		t.Fatal("file should exist after Register")
+	}
+
+	if err := m.Unregister("test-cmd"); err != nil {
+		t.Fatalf("Unregister: %v", err)
+	}
+
+	// File should be removed
+	if _, err := os.Stat(cmdPath); !os.IsNotExist(err) {
+		t.Error("file should be removed after Unregister")
+	}
+}
+
+func TestManager_RegisterUpdateExisting(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Create initial
+	if err := m.Register("test-cmd", "Original", "Original content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Update
+	if err := m.Register("test-cmd", "Updated", "Updated content"); err != nil {
+		t.Fatalf("Register (update): %v", err)
+	}
+
+	m.Load()
+	cmd, ok := m.Get("test-cmd")
+	if !ok {
+		t.Fatal("expected command after update")
+	}
+	if cmd.Description != "Updated" {
+		t.Errorf("description = %q, want 'Updated'", cmd.Description)
+	}
+	if cmd.Content != "Updated content" {
+		t.Errorf("content = %q, want 'Updated content'", cmd.Content)
+	}
+}
+
+func TestManager_UnregisterNonExistent(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Should not error
+	if err := m.Unregister("nonexistent"); err != nil {
+		t.Errorf("Unregister nonexistent should not error, got: %v", err)
+	}
+}
+
+func TestManager_Dir(t *testing.T) {
+	m := NewManager("primary", "secondary")
+	if m.Dir() != "primary" {
+		t.Errorf("Dir() = %q, want 'primary'", m.Dir())
+	}
+}
+
+func TestManager_DirEmpty(t *testing.T) {
+	m := NewManager()
+	if m.Dir() != ".dolphin/commands" {
+		t.Errorf("Dir() = %q, want '.dolphin/commands'", m.Dir())
 	}
 }
 

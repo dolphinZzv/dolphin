@@ -20,12 +20,13 @@ The system prompt is built from context files with cascading fallback: **agent d
 ### Assembly Order
 
 ```
-1. PREFACE (embedded)       — agent identity, capabilities, safety rules
-2. BUILTIN SKILLS (embedded) — always-available instructions
-3. AGENTS.md                — multi-agent definitions and routing
-4. RULES.md                 — behavioral constraints (project coding standards, etc.)
-5. USER.md                  — user profile, preferences, background
-6. SYSTEM.md                — auto-generated once, injected every session (OS, tools, paths)
+1. SOUL.md                  — core identity, surpasses PREFACE (optional, project > user > system)
+2. PREFACE (embedded)       — agent identity, capabilities, safety rules
+3. BUILTIN SKILLS (embedded) — always-available instructions
+4. AGENTS.md                — multi-agent definitions and routing
+5. RULES.md                 — behavioral constraints (project coding standards, etc.)
+6. USER.md                  — user profile, preferences, background
+7. SYSTEM.md                — auto-generated once, injected every session (OS, tools, paths)
 ```
 
 Files are stat-cached: re-read only when mtime changes. Missing files are silently skipped.
