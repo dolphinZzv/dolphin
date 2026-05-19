@@ -526,6 +526,7 @@ func (c *Coordinator) autoLoadMCPTools() {
 		{"cdp", c.cfg.MCP.CDP.Enabled},
 		{"email", c.cfg.MCP.Email.Enabled},
 		{"webhook", c.cfg.MCP.Webhook.Enabled},
+		{"web_search", c.cfg.MCP.WebSearch.Enabled},
 	}
 	for _, t := range enabled {
 		if t.enabled {

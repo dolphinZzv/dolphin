@@ -212,12 +212,13 @@ type DingTalkConfig struct {
 }
 
 type MCPConfig struct {
-	Shell   ShellConfig                `mapstructure:"shell"`
-	CDP     CDPConfig                  `mapstructure:"cdp"`
-	Email   EmailMCPConfig             `mapstructure:"email"`
-	Webhook MCPWebhookConfig           `mapstructure:"webhook"`
-	Servers map[string]MCPServerConfig `mapstructure:"servers"`
-	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
+	Shell     ShellConfig                `mapstructure:"shell"`
+	CDP       CDPConfig                  `mapstructure:"cdp"`
+	Email     EmailMCPConfig             `mapstructure:"email"`
+	Webhook   MCPWebhookConfig           `mapstructure:"webhook"`
+	WebSearch MCPWebSearchConfig         `mapstructure:"web_search"`
+	Servers   map[string]MCPServerConfig `mapstructure:"servers"`
+	Repos     []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
 }
 
 type MCPWebhookConfig struct {
@@ -230,6 +231,13 @@ type WebhookTarget struct {
 	URL     string            `mapstructure:"url"`
 	Method  string            `mapstructure:"method"`  // HTTP method, e.g. "POST" (default), "GET"
 	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers
+}
+
+type MCPWebSearchConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Priority int    `mapstructure:"priority"`
+	Provider string `mapstructure:"provider"` // "duckduckgo" (default, zero-config), "serper", or "iflow"
+	APIKey   string `mapstructure:"api_key"`   // for serper/iflow providers
 }
 
 type MCPServerConfig struct {
@@ -813,6 +821,11 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("mcp.webhook.enabled", true)
 	v.SetDefault("mcp.webhook.priority", 100)
+
+	v.SetDefault("mcp.web_search.enabled", true)
+	v.SetDefault("mcp.web_search.priority", 90)
+	v.SetDefault("mcp.web_search.provider", "duckduckgo")
+	v.SetDefault("mcp.web_search.api_key", "")
 
 	v.SetDefault("agent_pool.max_concurrency", 5)
 	v.SetDefault("agent_pool.default_timeout", 300)

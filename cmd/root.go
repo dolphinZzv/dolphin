@@ -27,6 +27,7 @@ import (
 	"dolphin/internal/mcp/email"
 	mcpshell "dolphin/internal/mcp/shell"
 	"dolphin/internal/mcp/webhook"
+	"dolphin/internal/mcp/websearch"
 	"dolphin/internal/metrics"
 	"dolphin/internal/plugin"
 	"dolphin/internal/resource"
@@ -139,6 +140,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cfg.MCP.Webhook.Enabled {
 		toolRegistry.Register(webhook.New(cfg))
 		zap.S().Infow("webhook tool registered")
+	}
+	if cfg.MCP.WebSearch.Enabled {
+		toolRegistry.Register(websearch.New(cfg))
+		zap.S().Infow("web_search tool registered")
 	}
 
 	// Load external MCP servers — individual failures are non-fatal.
