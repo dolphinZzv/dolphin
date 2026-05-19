@@ -432,7 +432,6 @@ func TestRenderMixedLabeledAndUnlabeled(t *testing.T) {
 	}
 }
 
-
 // ---- LabeledGauge tests ----
 
 func TestLabeledGauge(t *testing.T) {
@@ -560,7 +559,6 @@ func TestRenderLabeledGaugeEmpty(t *testing.T) {
 		t.Errorf("expected empty output for unpopulated labeled gauge, got: %s", output)
 	}
 }
-
 
 func TestConcurrentLabeledGaugeWith(t *testing.T) {
 	r := NewRegistry()

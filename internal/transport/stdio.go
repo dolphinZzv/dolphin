@@ -21,8 +21,8 @@ const defaultPrompt = "Dolphin > "
 type StdioTransport struct {
 	rl     *readline.Instance
 	md     *glamour.TermRenderer // markdown renderer, nil when disabled
-	mdBuf  strings.Builder        // buffer for accumulating streaming content
-	rawOut bool                    // when true, WriteString bypasses markdown buffer
+	mdBuf  strings.Builder       // buffer for accumulating streaming content
+	rawOut bool                  // when true, WriteString bypasses markdown buffer
 }
 
 func NewStdioTransport(cfg *config.Config) *StdioTransport {

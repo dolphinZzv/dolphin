@@ -614,7 +614,6 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 	}
 }
 
-
 func (c *Coordinator) printCurrentContext(io transport.UserIO) {
 	io.WriteLine("=== System Prompt ===")
 	if c.lastLLMSystemPrompt == "" {
@@ -767,7 +766,6 @@ func (c *Coordinator) handleSession(args []string, io transport.UserIO) {
 		c.dumpSessionMermaid(events, sessionID, io)
 	}
 }
-
 
 func (c *Coordinator) dumpSessionList(events []session.SessionEvent, id string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", id, len(events)))

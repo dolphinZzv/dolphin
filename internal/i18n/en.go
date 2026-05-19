@@ -30,13 +30,13 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin Coordinator Ready\n  /exit           Quit\n  /help           Show help\n  /status         Show status\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /sessions       List past sessions\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n  /reload         Reload (restart) the agent\n",
+	KeyCoordReady:          "dolphin Coordinator Ready (type /help for available commands)\n",
 	KeyHelpHeader:          "Commands:",
 	KeyHelpExit:            "  /exit          - Exit",
 	KeyHelpHelp:            "  /help         - This help",
 	KeyHelpAgents:          "  /agents       - List available agents and their status",
-	KeyHelpSkills:          "  /skills       - List available skills  |  /skills new <name> - Create skill template | /skills show <name> - Show skill content | /skills delete <name> - Delete a skill",
-	KeyHelpCommands:        "  /commands     - List user-defined commands  |  /commands new <name> - Create command template | /commands delete <name> - Delete a command",
+	KeyHelpSkills:          "  /skills       - List available skills (/skills help for subcommands)",
+	KeyHelpCommands:        "  /commands     - User-defined commands (/commands help for subcommands)",
 	KeyHelpCancel:          "  /cancel       - Cancel all running tasks",
 	KeyHelpCancelID:        "  /cancel <id>  - Cancel a specific task by ID",
 	KeyHelpMCP:             "  /mcp          - List all MCP tools",
@@ -123,8 +123,8 @@ var enMessages = map[string]string{
 
 	// /context
 	KeyHelpReload:        "  /reload       - Reload (restart) the agent",
-	KeyHelpConfig:        "  /config       - List all config settings  |  /config get <path>  |  /config set <path> <value>",
-	KeyHelpContext:       "  /context       - Show current context summary; /context <name> to view section",
+	KeyHelpConfig:        "  /config       - View or modify config (/config help for subcommands)",
+	KeyHelpContext:       "  /context      - Show current context summary",
 	KeyContextSummaryHd:  "=== Context Summary ===",
 	KeyContextSectionNF:  "Section %q not found.",
 	KeyContextSectionHd:  "=== %s ===",
@@ -142,8 +142,8 @@ var enMessages = map[string]string{
 	KeyWelcomeBanner:     "dolphin — AI Agent",
 
 	// pprof
-	KeyPprofBanner: "\n=== pprof server on %s ===\n",
-	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+	KeyPprofBanner:   "\n=== pprof server on %s ===\n",
+	KeyPprofURL:      "  http://%s/debug/pprof/\n",
 	KeyMetricsBanner: "\n=== Metrics server on %s ===\n",
 	KeyMetricsURL:    "  http://%s/metrics\n",
 

@@ -26,27 +26,27 @@ var (
 )
 
 type Config struct {
-	Name      string          `mapstructure:"name"`
-	ID        string          `mapstructure:"id"`
-	LLM       LLMConfig       `mapstructure:"llm"`
-	Session   SessionConfig   `mapstructure:"session"`
-	Transport TransportConfig `mapstructure:"transport"`
-	MCP       MCPConfig       `mapstructure:"mcp"`
-	Pool      PoolConfig      `mapstructure:"agent_pool"`
-	Skills    SkillsConfig    `mapstructure:"skills"`
-	Crontab   CrontabConfig   `mapstructure:"crontab"`
-	Pprof     PprofConfig     `mapstructure:"pprof"`
-	Metrics   MetricsConfig   `mapstructure:"metrics"`
-	Health    HealthConfig    `mapstructure:"health"`
-	Telemetry TelemetryConfig `mapstructure:"telemetry"`
-	Diary     DiaryConfig     `mapstructure:"diary"`
-	Update    UpdateConfig    `mapstructure:"update"`
-	LogLevel  string          `mapstructure:"log_level"`
-	LogFile   string          `mapstructure:"log_file"`
-	Plugins   PluginsConfig   `mapstructure:"plugins"`
-	Flags     FlagsConfig     `mapstructure:"flags"`
+	Name       string          `mapstructure:"name"`
+	ID         string          `mapstructure:"id"`
+	LLM        LLMConfig       `mapstructure:"llm"`
+	Session    SessionConfig   `mapstructure:"session"`
+	Transport  TransportConfig `mapstructure:"transport"`
+	MCP        MCPConfig       `mapstructure:"mcp"`
+	Pool       PoolConfig      `mapstructure:"agent_pool"`
+	Skills     SkillsConfig    `mapstructure:"skills"`
+	Crontab    CrontabConfig   `mapstructure:"crontab"`
+	Pprof      PprofConfig     `mapstructure:"pprof"`
+	Metrics    MetricsConfig   `mapstructure:"metrics"`
+	Health     HealthConfig    `mapstructure:"health"`
+	Telemetry  TelemetryConfig `mapstructure:"telemetry"`
+	Diary      DiaryConfig     `mapstructure:"diary"`
+	Update     UpdateConfig    `mapstructure:"update"`
+	LogLevel   string          `mapstructure:"log_level"`
+	LogFile    string          `mapstructure:"log_file"`
+	Plugins    PluginsConfig   `mapstructure:"plugins"`
+	Flags      FlagsConfig     `mapstructure:"flags"`
 	Resource   ResourceConfig  `mapstructure:"resource"`
-	SyncConfig bool           `mapstructure:"sync_config"`
+	SyncConfig bool            `mapstructure:"sync_config"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.

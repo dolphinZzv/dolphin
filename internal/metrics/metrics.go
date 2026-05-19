@@ -571,7 +571,6 @@ func formatFloat(v float64) string {
 	return fmt.Sprintf("%g", v)
 }
 
-
 func mergeLabels(base map[string]string, key, value string) map[string]string {
 	if base == nil {
 		return map[string]string{key: value}

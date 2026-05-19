@@ -30,13 +30,13 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin ai 已就绪\n  /exit            退出\n  /help           显示帮助\n  /status         显示当前状态\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /sessions       查看历史会话\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n  /reload         重新加载代理\n",
+	KeyCoordReady:          "dolphin ai 已就绪（输入 /help 查看命令）\n",
 	KeyHelpHeader:          "命令：",
 	KeyHelpExit:            "  /exit          - 退出",
 	KeyHelpHelp:            "  /help         - 显示帮助",
 	KeyHelpAgents:          "  /agents       - 列出可用代理及其状态",
-	KeyHelpSkills:          "  /skills       - 列出可用技能  |  /skills new <名称> - 创建技能模板 | /skills show <名称> - 查看技能内容 | /skills delete <名称> - 删除技能",
-	KeyHelpCommands:        "  /commands     - 列出用户自定义命令  |  /commands new <名称> - 创建命令模板 | /commands delete <名称> - 删除命令",
+	KeyHelpSkills:          "  /skills       - 列出可用技能（/skills help 查看子命令）",
+	KeyHelpCommands:        "  /commands     - 用户自定义命令（/commands help 查看子命令）",
 	KeyHelpCancel:          "  /cancel       - 取消所有运行中的任务",
 	KeyHelpCancelID:        "  /cancel <id>  - 取消指定 ID 的任务",
 	KeyHelpMCP:             "  /mcp          - 列出所有 MCP 工具",
@@ -142,8 +142,8 @@ var zhMessages = map[string]string{
 	KeyWelcomeBanner:     "dolphin — AI Agent",
 
 	// pprof
-	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",
-	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+	KeyPprofBanner:   "\n=== pprof 服务监听在 %s ===\n",
+	KeyPprofURL:      "  http://%s/debug/pprof/\n",
 	KeyMetricsBanner: "\n=== Metrics 服务监听在 %s ===\n",
 	KeyMetricsURL:    "  http://%s/metrics\n",
 

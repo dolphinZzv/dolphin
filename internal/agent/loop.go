@@ -377,7 +377,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	// email is configured, not on every startup.
 	skipWelcome := io.Name() == "email" && config.IsEmailConfigured()
 	if !skipWelcome {
-		io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.commitHash))
+		io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Agent ready. Type /help for available commands.", a.version, runtime.GOOS, runtime.Version(), a.commitHash))
 		toolDefs := a.toolReg.List()
 		if len(toolDefs) > 0 {
 			io.WriteString("Loaded MCP tools: ")
@@ -474,19 +474,28 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			continue
 		}
 		if line == "/help" {
-			io.WriteLine("Commands: /exit - quit, /help - this help, /mcp - list MCP tools, /provider - list/switch LLM provider, /status - session info")
+			io.WriteLine(i18n.TL(i18n.KeyHelpHeader))
+			io.WriteLine(i18n.TL(i18n.KeyHelpExit))
+			io.WriteLine(i18n.TL(i18n.KeyHelpHelp))
+			io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
+			io.WriteLine("")
+			io.WriteLine(i18n.TL(i18n.KeyHelpAgents))
+			io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
+			io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
+			io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
+			io.WriteLine(i18n.TL(i18n.KeyHelpCron))
+			io.WriteLine("")
+			io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
+			io.WriteLine(i18n.TL(i18n.KeyHelpModel))
+			io.WriteLine(i18n.TL(i18n.KeyHelpReload))
+			io.WriteLine("")
 			toolDefs := a.toolReg.List()
 			if len(toolDefs) > 0 {
-				io.WriteString("Loaded MCP tools: ")
-				for i, t := range toolDefs {
-					if i > 0 {
-						io.WriteString(", ")
-					}
-					io.WriteString(t.Name)
+				io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
+				for _, t := range toolDefs {
+					io.WriteLine(fmt.Sprintf("  - %s: %s", t.Name, t.Description))
 				}
-				io.WriteLine("")
 			}
-			io.WriteLine("Otherwise, enter your message for the agent.")
 			continue
 		}
 		if line == "" {

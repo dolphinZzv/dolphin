@@ -298,9 +298,9 @@ func testAnthropicDeepSeekProvider(t *testing.T) *AnthropicProvider {
 
 	var parsed struct {
 		LLM struct {
-			APIKey    string                `yaml:"api_key"`
-			BaseURL   string                `yaml:"base_url"`
-			Type      string                `yaml:"type"`
+			APIKey    string                 `yaml:"api_key"`
+			BaseURL   string                 `yaml:"base_url"`
+			Type      string                 `yaml:"type"`
 			Providers []anthroProviderConfig `yaml:"providers"`
 		} `yaml:"llm"`
 	}

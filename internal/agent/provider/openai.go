@@ -97,7 +97,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 	llmInputTokens.With("openai").Add(int64(resp.Usage.PromptTokens))
 	llmOutputTokens.With("openai").Add(int64(resp.Usage.CompletionTokens))
 	llmCacheHitTokens.With("openai").Add(int64(cached))
-				llmCacheMissTokens.With("openai").Add(int64(resp.Usage.PromptTokens - cached))
+	llmCacheMissTokens.With("openai").Add(int64(resp.Usage.PromptTokens - cached))
 
 	choice := resp.Choices[0]
 	msg := choice.Message
@@ -209,9 +209,9 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 			Delta sseDelta `json:"delta"`
 		}
 		type sseUsage struct {
-			PromptTokens            int  `json:"prompt_tokens"`
-			CompletionTokens        int  `json:"completion_tokens"`
-			PromptTokensDetails     *struct {
+			PromptTokens        int `json:"prompt_tokens"`
+			CompletionTokens    int `json:"completion_tokens"`
+			PromptTokensDetails *struct {
 				CachedTokens int `json:"cached_tokens"`
 			} `json:"prompt_tokens_details"`
 		}
@@ -244,7 +244,7 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 						cached = chunk.Usage.PromptTokensDetails.CachedTokens
 					}
 					llmCacheHitTokens.With("openai").Add(int64(cached))
-				llmCacheMissTokens.With("openai").Add(int64(chunk.Usage.PromptTokens - cached))
+					llmCacheMissTokens.With("openai").Add(int64(chunk.Usage.PromptTokens - cached))
 					ch <- StreamChunk{
 						Usage: &Usage{
 							InputTokens:       chunk.Usage.PromptTokens,

@@ -16,10 +16,10 @@ import (
 
 // Tool provides web search capabilities.
 type Tool struct {
-	cfg          *config.MCPWebSearchConfig
-	schema       json.RawMessage
-	client       *http.Client
-	defaultProv  string // first in the configured ∩ registered intersection
+	cfg         *config.MCPWebSearchConfig
+	schema      json.RawMessage
+	client      *http.Client
+	defaultProv string // first in the configured ∩ registered intersection
 }
 
 // searchInput is the JSON-unmarshal shape for the Execute input.

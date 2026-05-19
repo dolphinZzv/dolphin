@@ -201,8 +201,8 @@ type SSHSession struct {
 	reader  *bufio.Reader
 	history []string
 	histIdx int
-	remote  string // remote address
-	user    string // SSH user
+	remote  string                // remote address
+	user    string                // SSH user
 	md      *glamour.TermRenderer // markdown renderer, nil when disabled
 	mdBuf   strings.Builder       // buffer for accumulating streaming content
 }

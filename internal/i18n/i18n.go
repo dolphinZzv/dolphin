@@ -164,8 +164,8 @@ const (
 	KeyPprofURL    = "pprof_url"
 
 	// metrics
-	KeyMetricsBanner  = "metrics_banner"
-	KeyMetricsURL     = "metrics_url"
+	KeyMetricsBanner = "metrics_banner"
+	KeyMetricsURL    = "metrics_url"
 
 	// Cobra command descriptions
 	KeyCmdDolphinUse         = "cmd_dolphin_use"
