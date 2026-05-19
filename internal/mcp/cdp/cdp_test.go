@@ -94,6 +94,11 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 		t.Skip("skipping CDP integration test (SKIP_CDP_INTEGRATION set)")
 	}
 
+	// Skip if no Chrome/Chromium browser is available
+	if !hasChrome() {
+		t.Skip("skipping: no Chrome/Chromium browser found")
+	}
+
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.Enabled = true
 	cfg.MCP.CDP.Headless = true
@@ -175,4 +180,16 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 		}
 		t.Logf("element screenshot OK [%s]: %s", elapsed, result.Content)
 	})
+}
+
+func hasChrome() bool {
+	for _, name := range []string{"chromium-browser", "google-chrome", "chromium", "chrome"} {
+		if _, err := os.Stat("/usr/bin/" + name); err == nil {
+			return true
+		}
+		if _, err := os.Stat("/usr/local/bin/" + name); err == nil {
+			return true
+		}
+	}
+	return false
 }
