@@ -45,7 +45,8 @@ type Config struct {
 	LogFile   string          `mapstructure:"log_file"`
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
 	Flags     FlagsConfig     `mapstructure:"flags"`
-	Resource  ResourceConfig  `mapstructure:"resource"`
+	Resource   ResourceConfig  `mapstructure:"resource"`
+	SyncConfig bool           `mapstructure:"sync_config"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.
@@ -571,7 +572,71 @@ func Load(cfgFile string) (*Config, error) {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
 
+	if cfg.SyncConfig {
+		if err := fillConfigDefaults(); err != nil {
+			zap.S().Warnw("failed to sync config defaults", "error", err)
+		}
+	}
+
 	return &cfg, nil
+}
+
+// fillConfigDefaults reads the project config file and fills in missing
+// fields with their default values. Existing values are preserved.
+func fillConfigDefaults() error {
+	path := filepath.Join(ProjectConfigDir, ConfigFileName+".yaml")
+
+	data, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read config for sync: %w", err)
+	}
+
+	var current map[string]any
+	if err := yaml.Unmarshal(data, &current); err != nil {
+		return fmt.Errorf("unmarshal config for sync: %w", err)
+	}
+
+	v := viper.New()
+	setDefaults(v)
+	defaults := v.AllSettings()
+
+	merged := deepMergeDefaults(current, defaults)
+
+	out, err := yaml.Marshal(merged)
+	if err != nil {
+		return fmt.Errorf("marshal config with defaults: %w", err)
+	}
+
+	if string(out) != string(data) {
+		if err := os.WriteFile(path, out, 0600); err != nil {
+			return fmt.Errorf("write synced config: %w", err)
+		}
+		zap.S().Infow("config defaults synced", "path", path)
+	}
+	return nil
+}
+
+// deepMergeDefaults recursively merges default values into the current config map.
+// Current values are preserved; only missing keys are filled from defaults.
+func deepMergeDefaults(current, defaults map[string]any) map[string]any {
+	if current == nil {
+		return defaults
+	}
+	for k, dv := range defaults {
+		if _, exists := current[k]; !exists {
+			current[k] = dv
+		} else {
+			cm, cOk := current[k].(map[string]any)
+			dm, dOk := dv.(map[string]any)
+			if cOk && dOk {
+				current[k] = deepMergeDefaults(cm, dm)
+			}
+		}
+	}
+	return current
 }
 
 // DefaultConfig returns a Config with default values (useful for tests).
@@ -873,6 +938,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("resource.disk_paths", []string{"/"})
 	v.SetDefault("resource.max_bandwidth", 125000000)
 	v.SetDefault("resource.thresholds", []float64{20, 40, 60, 80})
+
+	v.SetDefault("sync_config", true)
 
 	v.SetDefault("update.enabled", true)
 	v.SetDefault("update.check_interval", "24h")

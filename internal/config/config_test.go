@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 func writeConfig(t *testing.T, dir, content string) {
@@ -651,5 +654,287 @@ mcp:
 	}
 	if sb.Command != "python" {
 		t.Errorf("server-b command = %q, want python", sb.Command)
+	}
+}
+
+func TestDeepMergeDefaults(t *testing.T) {
+	t.Run("fills missing top-level keys", func(t *testing.T) {
+		current := map[string]any{
+			"name": "dolphin",
+		}
+		defaults := map[string]any{
+			"name": "default",
+			"port": 8080,
+		}
+		result := deepMergeDefaults(current, defaults)
+		if result["name"] != "dolphin" {
+			t.Errorf("name = %v, want dolphin (existing value preserved)", result["name"])
+		}
+		if result["port"] != 8080 {
+			t.Errorf("port = %v, want 8080 (missing key filled)", result["port"])
+		}
+	})
+
+	t.Run("fills missing nested keys", func(t *testing.T) {
+		current := map[string]any{
+			"llm": map[string]any{
+				"model": "gpt-4",
+			},
+		}
+		defaults := map[string]any{
+			"llm": map[string]any{
+				"model":      "gpt-4o",
+				"max_tokens": 4096,
+			},
+		}
+		result := deepMergeDefaults(current, defaults)
+		llm, ok := result["llm"].(map[string]any)
+		if !ok {
+			t.Fatal("llm is not a map")
+		}
+		if llm["model"] != "gpt-4" {
+			t.Errorf("llm.model = %v, want gpt-4 (existing value preserved)", llm["model"])
+		}
+		if llm["max_tokens"] != 4096 {
+			t.Errorf("llm.max_tokens = %v, want 4096 (missing key filled)", llm["max_tokens"])
+		}
+	})
+
+	t.Run("preserves full nested sections missing in defaults", func(t *testing.T) {
+		current := map[string]any{
+			"custom_section": map[string]any{
+				"key": "value",
+			},
+		}
+		defaults := map[string]any{
+			"name": "dolphin",
+		}
+		result := deepMergeDefaults(current, defaults)
+		if _, ok := result["custom_section"]; !ok {
+			t.Error("custom_section should be preserved")
+		}
+		if result["name"] != "dolphin" {
+			t.Errorf("name = %v, want dolphin", result["name"])
+		}
+	})
+
+	t.Run("handles nil current", func(t *testing.T) {
+		defaults := map[string]any{
+			"key": "value",
+		}
+		result := deepMergeDefaults(nil, defaults)
+		if result["key"] != "value" {
+			t.Errorf("key = %v, want value", result["key"])
+		}
+	})
+
+	t.Run("handles nil defaults", func(t *testing.T) {
+		current := map[string]any{
+			"key": "value",
+		}
+		result := deepMergeDefaults(current, nil)
+		// nil map passed as defaults — range over nil map is a no-op, current unchanged
+		if result["key"] != "value" {
+			t.Errorf("key = %v, want value", result["key"])
+		}
+	})
+}
+
+func TestFillConfigDefaults(t *testing.T) {
+	// Save and restore ProjectConfigDir to avoid modifying the real config file
+	origDir := ProjectConfigDir
+	t.Cleanup(func() { ProjectConfigDir = origDir })
+
+	tmpDir := t.TempDir()
+	ProjectConfigDir = tmpDir
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+
+	// Write a minimal config file missing many fields
+	minimal := `
+llm:
+  type: openai
+  api_key: test-key
+  model: gpt-4
+  max_tokens: 2048
+  max_context_tokens: 128000
+  temperature: 0.7
+  max_sub_turns: 10
+session:
+  max_loop: 50
+mcp:
+  shell:
+    enabled: true
+    timeout_seconds: 30
+    priority: 10
+agent_pool:
+  max_concurrency: 5
+  default_timeout: 300
+  max_pending_results: 10
+`[1:] // strip leading newline
+	if err := os.WriteFile(cfgPath, []byte(minimal), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	origData, _ := os.ReadFile(cfgPath)
+
+	// Run fillConfigDefaults (called with the saved ProjectConfigDir)
+	if err := fillConfigDefaults(); err != nil {
+		t.Fatalf("fillConfigDefaults() error: %v", err)
+	}
+
+	// Read back the modified file
+	mergedData, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(mergedData) == string(origData) {
+		t.Fatal("expected config file to be updated with defaults")
+	}
+
+	// Verify existing values are preserved
+	var merged map[string]any
+	if err := yaml.Unmarshal(mergedData, &merged); err != nil {
+		t.Fatal(err)
+	}
+
+	llm, _ := merged["llm"].(map[string]any)
+	if llm["model"] != "gpt-4" {
+		t.Errorf("llm.model = %v, want gpt-4 (existing)", llm["model"])
+	}
+	if llm["max_tokens"] != 2048 {
+		t.Errorf("llm.max_tokens = %v, want 2048 (existing)", llm["max_tokens"])
+	}
+
+	// Verify missing top-level fields were filled
+	if _, ok := merged["crontab"]; !ok {
+		t.Error("expected crontab section to be filled from defaults")
+	}
+	if _, ok := merged["diary"]; !ok {
+		t.Error("expected diary section to be filled from defaults")
+	}
+	if _, ok := merged["skills"]; !ok {
+		t.Error("expected skills section to be filled from defaults")
+	}
+	if _, ok := merged["pprof"]; !ok {
+		t.Error("expected pprof section to be filled from defaults")
+	}
+	if _, ok := merged["metrics"]; !ok {
+		t.Error("expected metrics section to be filled from defaults")
+	}
+	if _, ok := merged["update"]; !ok {
+		t.Error("expected update section to be filled from defaults")
+	}
+	if _, ok := merged["resource"]; !ok {
+		t.Error("expected resource section to be filled from defaults")
+	}
+
+	// Verify SyncConfig default is added
+	v := viper.New()
+	setDefaults(v)
+	defaultSyncConfig := v.GetBool("sync_config")
+	t.Logf("default sync_config = %v", defaultSyncConfig)
+}
+
+func TestFillConfigDefaultsNoopWhenComplete(t *testing.T) {
+	origDir := ProjectConfigDir
+	t.Cleanup(func() { ProjectConfigDir = origDir })
+
+	tmpDir := t.TempDir()
+	ProjectConfigDir = tmpDir
+
+	// Write the full default config
+	v := viper.New()
+	setDefaults(v)
+	full := v.AllSettings()
+	data, err := yaml.Marshal(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run fillConfigDefaults — should be a no-op since config is complete
+	if err := fillConfigDefaults(); err != nil {
+		t.Fatalf("fillConfigDefaults() error: %v", err)
+	}
+
+	// Verify file is still valid YAML and contains all expected keys
+	modified, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := yaml.Unmarshal(modified, &parsed); err != nil {
+		t.Fatalf("invalid YAML after fillConfigDefaults: %v", err)
+	}
+	if parsed["name"] != "dolphin" {
+		t.Errorf("name = %v, want dolphin", parsed["name"])
+	}
+}
+
+func TestFillConfigDefaultsFileNotExists(t *testing.T) {
+	origDir := ProjectConfigDir
+	t.Cleanup(func() { ProjectConfigDir = origDir })
+
+	tmpDir := t.TempDir()
+	ProjectConfigDir = tmpDir
+
+	// No config file exists — should not error
+	if err := fillConfigDefaults(); err != nil {
+		t.Fatalf("fillConfigDefaults() with no file should not error: %v", err)
+	}
+}
+
+func TestSyncConfigFlag(t *testing.T) {
+	// Load config with sync_config=false
+	origDir := ProjectConfigDir
+	t.Cleanup(func() { ProjectConfigDir = origDir })
+
+	tmpDir := t.TempDir()
+	ProjectConfigDir = tmpDir
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+
+	config := `sync_config: false
+llm:
+  type: openai
+  api_key: test-key
+  model: gpt-4
+  max_tokens: 2048
+  max_context_tokens: 128000
+  temperature: 0.7
+  max_sub_turns: 10
+session:
+  max_loop: 50
+mcp:
+  shell:
+    enabled: true
+    timeout_seconds: 30
+    priority: 10
+agent_pool:
+  max_concurrency: 5
+  default_timeout: 300
+  max_pending_results: 10
+`
+	if err := os.WriteFile(cfgPath, []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.SyncConfig {
+		t.Error("SyncConfig should be false")
+	}
+
+	// Config file should NOT have been modified — missing sections like crontab
+	// should remain absent since sync_config=false
+	data, _ := os.ReadFile(cfgPath)
+	var parsed map[string]any
+	yaml.Unmarshal(data, &parsed)
+	if _, ok := parsed["crontab"]; ok {
+		t.Error("crontab should not have been added when sync_config=false")
 	}
 }
