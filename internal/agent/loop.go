@@ -346,6 +346,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 				Data:      map[string]any{"stop_reason": state.StopReason},
 			})
 		}
+		session.ClearSessionTokens(sid)
 		sess.Close()
 		a.sessMgr.Remove(sess.ID)
 	}()
@@ -966,6 +967,7 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 	if usage != nil {
 		state.TotalInputTokens += usage.InputTokens
 		state.TotalOutputTokens += usage.OutputTokens
+		session.SetSessionTokens(string(state.Sess.ID), state.TotalInputTokens, state.TotalOutputTokens)
 		zap.S().Debugw("llm response",
 			"turn", state.Turn,
 			"sub_turn", subTurn,
@@ -1275,6 +1277,7 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	// Ensure cleanup even on panic (recovered by pool.workerLoop).
 	defer func() {
 		a.generateSummary(sess, state)
+		session.ClearSessionTokens(string(sess.ID))
 		sess.Close()
 		a.sessMgr.Remove(sess.ID)
 	}()

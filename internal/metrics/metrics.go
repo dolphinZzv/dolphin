@@ -24,6 +24,7 @@ type Registry struct {
 	gauges            map[string]*Gauge
 	histograms        map[string]*Histogram
 	labeledCounters   map[string]*LabeledCounter
+	labeledGauges     map[string]*LabeledGauge
 	labeledHistograms map[string]*LabeledHistogram
 }
 
@@ -34,6 +35,7 @@ func NewRegistry() *Registry {
 		gauges:            make(map[string]*Gauge),
 		histograms:        make(map[string]*Histogram),
 		labeledCounters:   make(map[string]*LabeledCounter),
+		labeledGauges:     make(map[string]*LabeledGauge),
 		labeledHistograms: make(map[string]*LabeledHistogram),
 	}
 }
@@ -203,6 +205,13 @@ func (lc *LabeledCounter) With(labelValue string) *Counter {
 	return c
 }
 
+// Delete removes the counter for the given label value.
+func (lc *LabeledCounter) Delete(labelValue string) {
+	lc.mu.Lock()
+	defer lc.mu.Unlock()
+	delete(lc.counters, labelValue)
+}
+
 // NewLabeledCounter registers and returns a labeled counter family.
 func (r *Registry) NewLabeledCounter(name, help, labelName string, labels map[string]string) *LabeledCounter {
 	r.mu.Lock()
@@ -220,6 +229,65 @@ func (r *Registry) NewLabeledCounter(name, help, labelName string, labels map[st
 	}
 	r.labeledCounters[name] = lc
 	return lc
+}
+
+// ---- Labeled Gauge ----
+
+// LabeledGauge provides per-label-value gauge instances. Each label value
+// creates a separate Gauge with an additional label, lazily on first With() call.
+type LabeledGauge struct {
+	name       string
+	help       string
+	labelName  string
+	baseLabels map[string]string
+	mu         sync.RWMutex
+	gauges     map[string]*Gauge
+}
+
+// With returns the Gauge for the given label value, creating it lazily.
+func (lg *LabeledGauge) With(labelValue string) *Gauge {
+	lg.mu.RLock()
+	g, ok := lg.gauges[labelValue]
+	lg.mu.RUnlock()
+	if ok {
+		return g
+	}
+
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+	if g, ok = lg.gauges[labelValue]; ok {
+		return g
+	}
+
+	merged := mergeLabels(lg.baseLabels, lg.labelName, labelValue)
+	g = &Gauge{name: lg.name, help: lg.help, labels: merged}
+	lg.gauges[labelValue] = g
+	return g
+}
+
+// Delete removes the gauge for the given label value.
+func (lg *LabeledGauge) Delete(labelValue string) {
+	lg.mu.Lock()
+	defer lg.mu.Unlock()
+	delete(lg.gauges, labelValue)
+}
+
+// NewLabeledGauge registers and returns a labeled gauge family.
+func (r *Registry) NewLabeledGauge(name, help, labelName string, labels map[string]string) *LabeledGauge {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	lg := &LabeledGauge{
+		name:       name,
+		help:       help,
+		labelName:  labelName,
+		baseLabels: labels,
+		gauges:     make(map[string]*Gauge),
+	}
+	if r.labeledGauges == nil {
+		r.labeledGauges = make(map[string]*LabeledGauge)
+	}
+	r.labeledGauges[name] = lg
+	return lg
 }
 
 // LabeledHistogram provides per-label-value histogram instances.
@@ -298,6 +366,25 @@ func (r *Registry) renderLabeledCounter(b *strings.Builder, lc *LabeledCounter) 
 	}
 }
 
+// renderLabeledGauge writes a single labeled gauge family, with HELP/TYPE once.
+func (r *Registry) renderLabeledGauge(b *strings.Builder, lg *LabeledGauge) {
+	lg.mu.RLock()
+	values := make([]*Gauge, 0, len(lg.gauges))
+	for _, g := range lg.gauges {
+		values = append(values, g)
+	}
+	lg.mu.RUnlock()
+
+	if len(values) == 0 {
+		return
+	}
+
+	writeMetricHeader(b, TypeGauge, lg.name, lg.help)
+	for _, g := range values {
+		writeMetricValue(b, g.name, g.labels, float64(g.Value()))
+	}
+}
+
 // renderLabeledHistogram writes a single labeled histogram family, with HELP/TYPE once.
 func (r *Registry) renderLabeledHistogram(b *strings.Builder, lh *LabeledHistogram) {
 	lh.mu.RLock()
@@ -338,6 +425,10 @@ func (r *Registry) Render() string {
 	lcRefs := make([]*LabeledCounter, 0, len(r.labeledCounters))
 	for _, lc := range r.labeledCounters {
 		lcRefs = append(lcRefs, lc)
+	}
+	lgRefs := make([]*LabeledGauge, 0, len(r.labeledGauges))
+	for _, lg := range r.labeledGauges {
+		lgRefs = append(lgRefs, lg)
 	}
 	lhRefs := make([]*LabeledHistogram, 0, len(r.labeledHistograms))
 	for _, lh := range r.labeledHistograms {
@@ -388,6 +479,9 @@ func (r *Registry) Render() string {
 	// Render labeled metric families (each has its own internal lock)
 	for _, lc := range lcRefs {
 		r.renderLabeledCounter(&b, lc)
+	}
+	for _, lg := range lgRefs {
+		r.renderLabeledGauge(&b, lg)
 	}
 	for _, lh := range lhRefs {
 		r.renderLabeledHistogram(&b, lh)
@@ -545,6 +639,9 @@ func NewLabeledCounter(name, help, labelName string, labels map[string]string) *
 }
 func NewLabeledHistogram(name, help, labelName string, labels map[string]string, bounds []float64) *LabeledHistogram {
 	return defaultRegistry.NewLabeledHistogram(name, help, labelName, labels, bounds)
+}
+func NewLabeledGauge(name, help, labelName string, labels map[string]string) *LabeledGauge {
+	return defaultRegistry.NewLabeledGauge(name, help, labelName, labels)
 }
 func Render() string { return defaultRegistry.Render() }
 

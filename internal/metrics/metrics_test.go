@@ -431,3 +431,163 @@ func TestRenderMixedLabeledAndUnlabeled(t *testing.T) {
 		t.Errorf("expected 3 HELP lines, got %d. Output:\n%s", helpLines, output)
 	}
 }
+
+
+// ---- LabeledGauge tests ----
+
+func TestLabeledGauge(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("pool_tokens", "Tokens in pool", "pool", nil)
+
+	g1 := lg.With("pool-a")
+	g2 := lg.With("pool-b")
+	g1.Set(100)
+	g2.Set(200)
+
+	if g1.Value() != 100 {
+		t.Errorf("expected 100, got %d", g1.Value())
+	}
+	if g2.Value() != 200 {
+		t.Errorf("expected 200, got %d", g2.Value())
+	}
+}
+
+func TestLabeledGaugeWithBaseLabels(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("session_tokens", "Session tokens", "session",
+		map[string]string{"service": "dolphin"})
+
+	lg.With("sess-1").Set(50)
+	output := r.Render()
+	if !strings.Contains(output, `service="dolphin"`) {
+		t.Errorf("expected base label in output, got: %s", output)
+	}
+	if !strings.Contains(output, `session="sess-1"`) {
+		t.Errorf("expected dynamic label in output")
+	}
+}
+
+func TestLabeledGaugeWithTwice(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("dup", "test", "env", nil)
+
+	g1 := lg.With("prod")
+	g2 := lg.With("prod") // same label value
+	if g1 != g2 {
+		t.Errorf("expected same gauge for same label value")
+	}
+}
+
+func TestRenderLabeledGauge(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("session_input_tokens", "Session input tokens", "session_id", nil)
+	lg.With("abc123").Set(150)
+	lg.With("def456").Set(300)
+
+	output := r.Render()
+
+	if !strings.Contains(output, "# HELP session_input_tokens Session input tokens") {
+		t.Errorf("expected HELP line, got: %s", output)
+	}
+	if !strings.Contains(output, "# TYPE session_input_tokens gauge") {
+		t.Errorf("expected TYPE gauge line")
+	}
+	if !strings.Contains(output, `session_input_tokens{session_id="abc123"} 150`) {
+		t.Errorf("expected abc123 value line, got: %s", output)
+	}
+	if !strings.Contains(output, `session_input_tokens{session_id="def456"} 300`) {
+		t.Errorf("expected def456 value line, got: %s", output)
+	}
+}
+
+func TestLabeledGaugeDelete(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("temp", "Temporary metric", "id", nil)
+	lg.With("sess-1").Set(100)
+	lg.With("sess-2").Set(200)
+
+	outputBefore := r.Render()
+	if !strings.Contains(outputBefore, `id="sess-1"`) {
+		t.Errorf("expected sess-1 before delete")
+	}
+
+	lg.Delete("sess-1")
+	outputAfter := r.Render()
+	if strings.Contains(outputAfter, `id="sess-1"`) {
+		t.Errorf("expected sess-1 to be removed after delete, got: %s", outputAfter)
+	}
+	if !strings.Contains(outputAfter, `id="sess-2"`) {
+		t.Errorf("expected sess-2 to remain after delete")
+	}
+}
+
+func TestLabeledCounterDelete(t *testing.T) {
+	r := NewRegistry()
+	lc := r.NewLabeledCounter("reqs", "Requests by endpoint", "endpoint", nil)
+	lc.With("/api").Inc()
+	lc.With("/health").Inc()
+
+	outputBefore := r.Render()
+	if !strings.Contains(outputBefore, `endpoint="/api"`) {
+		t.Errorf("expected /api before delete")
+	}
+
+	lc.Delete("/api")
+	outputAfter := r.Render()
+	if strings.Contains(outputAfter, `endpoint="/api"`) {
+		t.Errorf("expected /api to be removed after delete")
+	}
+	if !strings.Contains(outputAfter, `endpoint="/health"`) {
+		t.Errorf("expected /health to remain after delete")
+	}
+}
+
+func TestLabeledGaugeDefaultRegistry(t *testing.T) {
+	lg := NewLabeledGauge("def_labeled_gauge", "default registry test", "env", nil)
+	lg.With("test").Set(42)
+	output := Render()
+	if !strings.Contains(output, "def_labeled_gauge") {
+		t.Errorf("expected metric in default registry render")
+	}
+}
+
+func TestRenderLabeledGaugeEmpty(t *testing.T) {
+	r := NewRegistry()
+	r.NewLabeledGauge("empty_gauge", "no values", "x", nil)
+	// No With() calls — should produce no output
+	output := r.Render()
+	if output != "" {
+		t.Errorf("expected empty output for unpopulated labeled gauge, got: %s", output)
+	}
+}
+
+
+func TestConcurrentLabeledGaugeWith(t *testing.T) {
+	r := NewRegistry()
+	lg := r.NewLabeledGauge("conc_gauge", "test", "worker", nil)
+	done := make(chan struct{}, 10)
+
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			for j := 0; j < 100; j++ {
+				g := lg.With(fmt.Sprintf("worker-%d", id%3))
+				g.Add(1)
+			}
+			done <- struct{}{}
+		}(i)
+	}
+
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+
+	// Render should not panic under concurrent access
+	_ = r.Render()
+
+	total := lg.With("worker-0").Value() +
+		lg.With("worker-1").Value() +
+		lg.With("worker-2").Value()
+	if total != 1000 {
+		t.Errorf("expected total 1000, got %d", total)
+	}
+}

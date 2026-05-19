@@ -219,6 +219,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			})
 		}
 		c.generateSummary(sess, state)
+		session.ClearSessionTokens(string(sess.ID))
 		sess.Close()
 		c.sessMgr.Remove(sess.ID)
 		c.pool.Shutdown()
