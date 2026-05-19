@@ -559,9 +559,7 @@ func writeMetricLine(b *strings.Builder, name string, labels map[string]string, 
 		b.WriteString("}")
 	}
 
-	if isHistogramBucket(name) || len(labels) > 0 {
-		b.WriteString(" ")
-	}
+	b.WriteString(" ")
 	b.WriteString(formatFloat(value))
 	b.WriteString("\n")
 }
@@ -573,9 +571,6 @@ func formatFloat(v float64) string {
 	return fmt.Sprintf("%g", v)
 }
 
-func isHistogramBucket(name string) bool {
-	return strings.HasSuffix(name, "_bucket") || strings.HasSuffix(name, "_sum") || strings.HasSuffix(name, "_count")
-}
 
 func mergeLabels(base map[string]string, key, value string) map[string]string {
 	if base == nil {
