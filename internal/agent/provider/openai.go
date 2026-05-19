@@ -90,16 +90,24 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 		return nil, fmt.Errorf("no choices in response")
 	}
 
+	cached := 0
+	if resp.Usage.PromptTokensDetails != nil {
+		cached = resp.Usage.PromptTokensDetails.CachedTokens
+	}
 	llmInputTokens.With("openai").Add(int64(resp.Usage.PromptTokens))
 	llmOutputTokens.With("openai").Add(int64(resp.Usage.CompletionTokens))
+	llmCacheHitTokens.With("openai").Add(int64(cached))
+				llmCacheMissTokens.With("openai").Add(int64(resp.Usage.PromptTokens - cached))
 
 	choice := resp.Choices[0]
 	msg := choice.Message
 
 	providerResp := &ProviderResponse{
 		Usage: &Usage{
-			InputTokens:  resp.Usage.PromptTokens,
-			OutputTokens: resp.Usage.CompletionTokens,
+			InputTokens:       resp.Usage.PromptTokens,
+			OutputTokens:      resp.Usage.CompletionTokens,
+			CachedInputTokens: cached,
+			MissedInputTokens: resp.Usage.PromptTokens - cached,
 		},
 		StopReason: string(choice.FinishReason),
 	}
@@ -200,8 +208,16 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 			Index int      `json:"index"`
 			Delta sseDelta `json:"delta"`
 		}
+		type sseUsage struct {
+			PromptTokens            int  `json:"prompt_tokens"`
+			CompletionTokens        int  `json:"completion_tokens"`
+			PromptTokensDetails     *struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		}
 		type sseChunk struct {
 			Choices []sseChoice `json:"choices"`
+			Usage   *sseUsage   `json:"usage,omitempty"`
 		}
 
 		for scanner.Scan() {
@@ -222,6 +238,22 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 				continue
 			}
 			if len(chunk.Choices) == 0 {
+				if chunk.Usage != nil {
+					cached := 0
+					if chunk.Usage.PromptTokensDetails != nil {
+						cached = chunk.Usage.PromptTokensDetails.CachedTokens
+					}
+					llmCacheHitTokens.With("openai").Add(int64(cached))
+				llmCacheMissTokens.With("openai").Add(int64(chunk.Usage.PromptTokens - cached))
+					ch <- StreamChunk{
+						Usage: &Usage{
+							InputTokens:       chunk.Usage.PromptTokens,
+							OutputTokens:      chunk.Usage.CompletionTokens,
+							CachedInputTokens: cached,
+							MissedInputTokens: chunk.Usage.PromptTokens - cached,
+						},
+					}
+				}
 				continue
 			}
 			delta := chunk.Choices[0].Delta
@@ -265,6 +297,26 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 			}
 
 			ch <- sc
+
+			// Parse usage from chunk — DeepSeek sends usage in the final chunk
+			// alongside the last choice (with finish_reason). The standard field
+			// prompt_tokens_details.cached_tokens is provider-agnostic (OpenAI,
+			// DeepSeek, etc.).
+			if chunk.Usage != nil {
+				cached := 0
+				if chunk.Usage.PromptTokensDetails != nil {
+					cached = chunk.Usage.PromptTokensDetails.CachedTokens
+				}
+				llmCacheHitTokens.With("openai").Add(int64(cached))
+				llmCacheMissTokens.With("openai").Add(int64(chunk.Usage.PromptTokens - cached))
+				ch <- StreamChunk{
+					Usage: &Usage{
+						InputTokens:       chunk.Usage.PromptTokens,
+						OutputTokens:      chunk.Usage.CompletionTokens,
+						CachedInputTokens: cached,
+					},
+				}
+			}
 		}
 
 		if err := scanner.Err(); err != nil {

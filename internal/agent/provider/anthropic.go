@@ -116,8 +116,9 @@ type anthroResp struct {
 	Content    []contentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
 	Usage      *struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens          int `json:"input_tokens"`
+		OutputTokens         int `json:"output_tokens"`
+		CacheReadInputTokens int `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -163,9 +164,14 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 		StopReason: anthResp.StopReason,
 	}
 	if anthResp.Usage != nil {
+		cached := anthResp.Usage.CacheReadInputTokens
+		llmCacheHitTokens.With("anthropic").Add(int64(cached))
+		llmCacheMissTokens.With("anthropic").Add(int64(anthResp.Usage.InputTokens - cached))
 		pr.Usage = &Usage{
-			InputTokens:  anthResp.Usage.InputTokens,
-			OutputTokens: anthResp.Usage.OutputTokens,
+			InputTokens:       anthResp.Usage.InputTokens,
+			OutputTokens:      anthResp.Usage.OutputTokens,
+			CachedInputTokens: cached,
+			MissedInputTokens: anthResp.Usage.InputTokens - cached,
 		}
 		llmInputTokens.With("anthropic").Add(int64(anthResp.Usage.InputTokens))
 		llmOutputTokens.With("anthropic").Add(int64(anthResp.Usage.OutputTokens))
@@ -283,8 +289,9 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 				ContentBlock *contentBlock   `json:"content_block,omitempty"`
 				Delta        json.RawMessage `json:"delta,omitempty"`
 				Usage        *struct {
-					InputTokens  int `json:"input_tokens"`
-					OutputTokens int `json:"output_tokens"`
+					InputTokens          int `json:"input_tokens"`
+					OutputTokens         int `json:"output_tokens"`
+					CacheReadInputTokens int `json:"cache_read_input_tokens"`
 				} `json:"usage,omitempty"`
 			}
 			if err := json.Unmarshal([]byte(data), &evt); err != nil {
@@ -297,8 +304,9 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 				var msgStart struct {
 					Message *struct {
 						Usage *struct {
-							InputTokens  int `json:"input_tokens"`
-							OutputTokens int `json:"output_tokens"`
+							InputTokens          int `json:"input_tokens"`
+							OutputTokens         int `json:"output_tokens"`
+							CacheReadInputTokens int `json:"cache_read_input_tokens"`
 						} `json:"usage"`
 					} `json:"message"`
 				}

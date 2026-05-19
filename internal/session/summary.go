@@ -25,10 +25,17 @@ type Summary struct {
 	Summary          string    `json:"summary,omitempty"`
 	InputTokens      int       `json:"input_tokens,omitempty"`
 	OutputTokens     int       `json:"output_tokens,omitempty"`
+	CachedInputTokens int     `json:"cached_input_tokens,omitempty"`
+	MissedInputTokens int     `json:"missed_input_tokens,omitempty"`
 }
 
 // GenerateSummary creates a summary from session events and writes it to a JSON file.
-func (s *Session) GenerateSummary(dir string, toolCalls int, errors int, compressions int, state string, summary string, inputTokens int, outputTokens int) error {
+func (s *Session) GenerateSummary(dir string, toolCalls int, errors int, compressions int, state string, summary string, inputTokens int, outputTokens int, cachedInputTokens int, missedInputTokens ...int) error {
+	cached := cachedInputTokens
+	missed := 0
+	if len(missedInputTokens) > 0 {
+		missed = missedInputTokens[0]
+	}
 	sum := Summary{
 		SessionID:        s.ID,
 		StartedAt:        s.StartedAt,
@@ -42,6 +49,8 @@ func (s *Session) GenerateSummary(dir string, toolCalls int, errors int, compres
 		Summary:          summary,
 		InputTokens:      inputTokens,
 		OutputTokens:     outputTokens,
+		CachedInputTokens: cached,
+		MissedInputTokens: missed,
 	}
 
 	data, err := json.MarshalIndent(sum, "", "  ")

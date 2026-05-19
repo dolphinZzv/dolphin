@@ -55,8 +55,10 @@ type LoopState struct {
 	CompressionCount  int
 	SummaryGenerated  bool
 	SummaryTexts      []string
-	TotalInputTokens  int // cumulative input tokens in current turn
-	TotalOutputTokens int // cumulative output tokens in current turn
+	TotalInputTokens  int // cumulative input tokens
+	TotalOutputTokens int // cumulative output tokens
+	TotalCachedTokens int // cumulative cached input tokens
+	TotalMissedTokens int // cumulative missed input tokens
 }
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
@@ -612,6 +614,11 @@ func (a *Agent) handleStatusCommand(state *LoopState, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf("Tool Calls: %d", state.ToolCallCount))
 	io.WriteLine(fmt.Sprintf("Errors:     %d", state.ErrorCount))
 	io.WriteLine(fmt.Sprintf("Compressions: %d", state.CompressionCount))
+	cachePct := 0.0
+	if state.TotalInputTokens > 0 {
+		cachePct = float64(state.TotalCachedTokens) / float64(state.TotalInputTokens) * 100
+	}
+	io.WriteLine(fmt.Sprintf("Cache Hit:   %d / %d (%.1f%%)", state.TotalCachedTokens, state.TotalInputTokens, cachePct))
 }
 
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
@@ -966,6 +973,8 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 	if usage != nil {
 		state.TotalInputTokens += usage.InputTokens
 		state.TotalOutputTokens += usage.OutputTokens
+		state.TotalCachedTokens += usage.CachedInputTokens
+		state.TotalMissedTokens += usage.MissedInputTokens
 		session.SetSessionTokens(string(state.Sess.ID), state.TotalInputTokens, state.TotalOutputTokens)
 		zap.S().Debugw("llm response",
 			"turn", state.Turn,
@@ -973,12 +982,13 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 			"duration", llmDuration,
 			"input_tokens", usage.InputTokens,
 			"output_tokens", usage.OutputTokens,
+			"cached_tokens", usage.CachedInputTokens,
 			"tool_calls", len(toolCalls),
 		)
 		if a.cfg.LogLevel == "debug" && io != nil {
-			io.WriteLine(fmt.Sprintf("  tokens: in=%d out=%d  (total: in=%d out=%d)",
-				usage.InputTokens, usage.OutputTokens,
-				state.TotalInputTokens, state.TotalOutputTokens))
+			io.WriteLine(fmt.Sprintf("  tokens: in=%d [cache=%d miss=%d] out=%d  (total: in=%d out=%d cache=%d miss=%d)",
+				usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
+				state.TotalInputTokens, state.TotalOutputTokens, state.TotalCachedTokens, state.TotalMissedTokens))
 		}
 	} else if a.cfg.LogLevel == "debug" && io != nil {
 		io.WriteLine("  tokens: -")
@@ -1244,7 +1254,7 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 	}
 
 	summaryText := strings.Join(state.SummaryTexts, "\n")
-	sess.GenerateSummary(config.SessionsDir(), state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText, state.TotalInputTokens, state.TotalOutputTokens)
+	sess.GenerateSummary(config.SessionsDir(), state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText, state.TotalInputTokens, state.TotalOutputTokens, state.TotalCachedTokens, state.TotalMissedTokens)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,

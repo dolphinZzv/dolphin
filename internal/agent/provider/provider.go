@@ -60,10 +60,12 @@ type ProviderResponse struct {
 	StopReason string
 }
 
-// Usage tracks token usage.
+// Usage tracks token usage including cache statistics.
 type Usage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens       int `json:"input_tokens"`
+	OutputTokens      int `json:"output_tokens"`
+	CachedInputTokens int `json:"cached_input_tokens"`
+	MissedInputTokens int `json:"missed_input_tokens"`
 }
 
 // StreamChunk represents one streaming chunk.
