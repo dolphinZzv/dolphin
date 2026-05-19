@@ -39,17 +39,23 @@ namespace Dolphin.WebHost
             }
         }
 
-        private void OnShowWindowClick(object sender, RoutedEventArgs e)
+        private async void OnShowWindowClick(object sender, RoutedEventArgs e)
         {
             var selected = SessionList.SelectedItem as Models.SessionInfo;
-            if (selected != null)
-            {
-                SetStatus($"Selected session: {selected.SessionId} (URL: {selected.Url})");
-            }
-            else
+            if (selected == null)
             {
                 SetStatus("No session selected");
+                return;
             }
+            if (!(DataContext is McpServer server)) return;
+            var session = server.SessionManager.GetSession(selected.SessionId);
+            if (session == null)
+            {
+                SetStatus("Session not found");
+                return;
+            }
+            await session.SetInteractiveAsync(true);
+            SetStatus($"Browser shown: {selected.SessionId}");
         }
 
         private void OnExitClick(object sender, RoutedEventArgs e)

@@ -1,4 +1,4 @@
-$ProjectDir = $PSScriptRoot
+$WebHostExe = "$PSScriptRoot\bin\Release\net5.0-windows\WebHost.exe"
 $BaseUrl = "http://localhost:9223"
 
 Write-Host "=== WebHost Interactive Demo ===" -ForegroundColor Cyan
@@ -6,9 +6,9 @@ Write-Host "=== WebHost Interactive Demo ===" -ForegroundColor Cyan
 # Build
 dotnet build -c Release --nologo -v q 2>&1 | Out-Null
 
-# Start WebHost - use dotnet run for proper WPF hosting
+# Start WebHost directly (no console window, tray icon shows in system tray)
 Write-Host "Starting WebHost..." -ForegroundColor Yellow
-$process = Start-Process -FilePath "dotnet" -ArgumentList "run","--project",$ProjectDir,"-c","Release","--no-build" -WindowStyle Normal -PassThru
+$process = Start-Process -FilePath $WebHostExe -WindowStyle Normal -PassThru
 Start-Sleep -Seconds 5
 
 # Wait for server

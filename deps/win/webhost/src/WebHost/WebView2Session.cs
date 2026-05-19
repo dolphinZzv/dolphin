@@ -153,6 +153,16 @@ namespace Dolphin.WebHost
                     Title = $"WebHost {_sessionId}",
                 };
 
+                _window.Closing += (_, args) =>
+                {
+                    args.Cancel = true;
+                    _window.WindowState = WindowState.Minimized;
+                    _window.Left = -9999;
+                    _window.Top = -9999;
+                    _window.ShowInTaskbar = false;
+                    IsInteractive = false;
+                };
+
                 _webView = new WebView2();
                 _webView.CreationProperties = new CoreWebView2CreationProperties
                 {

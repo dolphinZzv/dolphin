@@ -1,4 +1,4 @@
-$WebHostDll = "bin\Release\net5.0-windows\WebHost.dll"
+$WebHostExe = "bin\Release\net5.0-windows\WebHost.exe"
 $OutputFile = "$env:USERPROFILE\Desktop\webhost_screenshot.png"
 $BaseUrl = "http://localhost:9223"
 
@@ -8,9 +8,9 @@ Write-Host "=== WebHost Integration Test ===" -ForegroundColor Cyan
 dotnet build -c Release --nologo -v q 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed" -ForegroundColor Red; exit 1 }
 
-# Start WebHost
+# Start WebHost (no console window - native WinExe + tray icon)
 Write-Host "Starting WebHost..." -ForegroundColor Yellow
-$process = Start-Process -FilePath "dotnet" -ArgumentList "exec", $WebHostDll -WindowStyle Minimized -PassThru
+$process = Start-Process -FilePath $WebHostExe -WindowStyle Hidden -PassThru
 Start-Sleep -Seconds 3
 
 try {
