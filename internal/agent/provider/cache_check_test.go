@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,6 +124,102 @@ func TestCacheTokensWithDeepSeekPro(t *testing.T) {
 			}
 		}
 		time.Sleep(1 * time.Second)
+	}
+}
+
+func TestCacheGrowsWithConversation(t *testing.T) {
+	prov, _ := testDeepSeekProvider(t)
+	t.Logf("Testing cache growth with multi-turn conversation")
+
+	// Build a long system prompt (~2000 tokens to trigger DeepSeek caching)
+	var sb strings.Builder
+	sb.WriteString("You are a helpful assistant. ")
+	for i := 0; i < 200; i++ {
+		sb.WriteString(fmt.Sprintf("Rule %d: Always be helpful. ", i))
+	}
+	system := sb.String()
+
+	ctx := context.Background()
+
+	// Turn 1: first request
+	t.Log("=== Turn 1 ===")
+	resp1, err := prov.Complete(ctx, ProviderRequest{
+		System: system,
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"What is the capital of France? Answer in one word."`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Turn 1 error: %v", err)
+	}
+	t.Logf("in=%d cache=%d miss=%d out=%d",
+		resp1.Usage.InputTokens, resp1.Usage.CachedInputTokens, resp1.Usage.MissedInputTokens, resp1.Usage.OutputTokens)
+
+	time.Sleep(1 * time.Second)
+
+	// Turn 2: previous turn + new question
+	t.Log("=== Turn 2 ===")
+	resp2, err := prov.Complete(ctx, ProviderRequest{
+		System: system,
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"What is the capital of France? Answer in one word."`)},
+			{Role: "assistant", Content: resp1.Content},
+			{Role: "user", Content: json.RawMessage(`"What is the capital of Germany? Answer in one word."`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Turn 2 error: %v", err)
+	}
+	t.Logf("in=%d cache=%d miss=%d out=%d",
+		resp2.Usage.InputTokens, resp2.Usage.CachedInputTokens, resp2.Usage.MissedInputTokens, resp2.Usage.OutputTokens)
+
+	// Turn 3: more conversation
+	t.Log("=== Turn 3 ===")
+	resp3, err := prov.Complete(ctx, ProviderRequest{
+		System: system,
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"What is the capital of France? Answer in one word."`)},
+			{Role: "assistant", Content: resp1.Content},
+			{Role: "user", Content: json.RawMessage(`"What is the capital of Germany? Answer in one word."`)},
+			{Role: "assistant", Content: resp2.Content},
+			{Role: "user", Content: json.RawMessage(`"What is the capital of Italy? Answer in one word."`)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Turn 3 error: %v", err)
+	}
+	t.Logf("in=%d cache=%d miss=%d out=%d",
+		resp3.Usage.InputTokens, resp3.Usage.CachedInputTokens, resp3.Usage.MissedInputTokens, resp3.Usage.OutputTokens)
+
+	// Verify: Turn 2 cache should cover Turn 1's system + user prompt
+	// (cache may be 0 for turn 1 as it's the first request)
+	if resp1.Usage.CachedInputTokens+resp1.Usage.MissedInputTokens != resp1.Usage.InputTokens {
+		t.Errorf("Turn 1: cache+miss (%d) != input (%d)",
+			resp1.Usage.CachedInputTokens+resp1.Usage.MissedInputTokens, resp1.Usage.InputTokens)
+	}
+	if resp2.Usage.CachedInputTokens+resp2.Usage.MissedInputTokens != resp2.Usage.InputTokens {
+		t.Errorf("Turn 2: cache+miss (%d) != input (%d)",
+			resp2.Usage.CachedInputTokens+resp2.Usage.MissedInputTokens, resp2.Usage.InputTokens)
+	}
+	if resp3.Usage.CachedInputTokens+resp3.Usage.MissedInputTokens != resp3.Usage.InputTokens {
+		t.Errorf("Turn 3: cache+miss (%d) != input (%d)",
+			resp3.Usage.CachedInputTokens+resp3.Usage.MissedInputTokens, resp3.Usage.InputTokens)
+	}
+
+	t.Log("=== Cache growth analysis ===")
+	if resp2.Usage.CachedInputTokens > resp1.Usage.CachedInputTokens {
+		t.Logf("Cache GREW from turn 1 to turn 2: %d → %d ✓",
+			resp1.Usage.CachedInputTokens, resp2.Usage.CachedInputTokens)
+	} else {
+		t.Logf("Cache stayed same from turn 1 to turn 2: %d → %d",
+			resp1.Usage.CachedInputTokens, resp2.Usage.CachedInputTokens)
+	}
+	if resp3.Usage.CachedInputTokens > resp2.Usage.CachedInputTokens {
+		t.Logf("Cache GREW from turn 2 to turn 3: %d → %d ✓",
+			resp2.Usage.CachedInputTokens, resp3.Usage.CachedInputTokens)
+	} else {
+		t.Logf("Cache stayed same from turn 2 to turn 3: %d → %d",
+			resp2.Usage.CachedInputTokens, resp3.Usage.CachedInputTokens)
 	}
 }
 
