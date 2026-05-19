@@ -107,7 +107,7 @@ func (t *StdioTransport) ReadLine() (string, error) {
 		case "/clear":
 			fmt.Print("\033[H\033[2J")
 			continue
-		case "/exit", "/quit":
+		case "/exit", "/quit", "exit", "quit":
 			fmt.Println("bye")
 			os.Exit(0)
 		}
