@@ -567,7 +567,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		var sb strings.Builder
 		sb.WriteString("\n## Available Agents\n")
 		for _, a := range agents {
-			fmt.Fprintf(&sb, "- %s [%s]: %s\n", a.Name, a.Status, a.Role)
+			fmt.Fprintf(&sb, "- %s: %s\n", a.Name, a.Role)
 		}
 		parts = append(parts, sb.String())
 	}
@@ -585,11 +585,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 			}
 			topSkills := c.skills.TopSkills(maxTop)
 			for _, s := range topSkills {
-				usage := ""
-				if s.CallCount > 0 {
-					usage = fmt.Sprintf(" (used %d times)", s.CallCount)
-				}
-				fmt.Fprintf(&sb, "- %s: %s%s\n", s.Name, s.Description, usage)
+				fmt.Fprintf(&sb, "- %s: %s\n", s.Name, s.Description)
 			}
 			if len(skills) > maxTop {
 				fmt.Fprintf(&sb, "\n  [%d more skills available — use search_skills to find them]\n", len(skills)-maxTop)

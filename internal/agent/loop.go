@@ -786,6 +786,7 @@ func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Regis
 			InputSchema: d.InputSchema,
 		}
 	}
+	sort.Slice(toolDefs, func(i, j int) bool { return toolDefs[i].Name < toolDefs[j].Name })
 	return toolDefs
 }
 
