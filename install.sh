@@ -2,7 +2,12 @@
 set -eu
 
 REPO="dolphinZzv/dolphin"
-BIN="dolphin"
+BIN="dolphin-ai"
+
+# ---- dependency check ----
+for cmd in curl tar uname; do
+  command -v "$cmd" >/dev/null 2>&1 || { echo "Error: $cmd is required but not installed."; exit 1; }
+done
 
 # ---- detect platform ----
 case "$(uname -s)" in
@@ -30,13 +35,14 @@ LATEST=$(curl -sSfL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/
 echo "Latest release: $LATEST"
 
 # ---- download & install ----
-ARCHIVE="$BIN_${LATEST}_${OS}_${ARCH}.tar.gz"
+VERSION="${LATEST#v}"  # strip v prefix — goreleaser archive names omit it
+ARCHIVE="${BIN}_${VERSION}_${OS}_${ARCH}.tar.gz"
 URL="https://github.com/$REPO/releases/download/${LATEST}/$ARCHIVE"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 echo "Downloading $URL ..."
-curl -sSfL "$URL" -o "$TMPDIR/$ARCHIVE"
+curl -sSfL --retry 3 --retry-delay 2 "$URL" -o "$TMPDIR/$ARCHIVE"
 
 echo "Extracting..."
 tar xzf "$TMPDIR/$ARCHIVE" -C "$TMPDIR"
@@ -52,4 +58,10 @@ cp "$TMPDIR/$BIN" "$DEST/$BIN"
 chmod +x "$DEST/$BIN"
 
 echo "Installed $BIN to $DEST/$BIN"
+
+if ! command -v "$BIN" >/dev/null 2>&1; then
+  echo "  Warning: $DEST is not in your PATH."
+  echo "  Add it: export PATH=\"\$PATH:$DEST\""
+fi
+
 echo "Run '$BIN setup' to get started."

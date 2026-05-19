@@ -479,7 +479,7 @@ func TestGenerateSummary(t *testing.T) {
 	sess.Turn = 5
 	time.Sleep(time.Millisecond) // ensure EndedAt > StartedAt
 
-	err = sess.GenerateSummary(dir, 12, 2, 0, "completed", "")
+	err = sess.GenerateSummary(dir, 12, 2, 0, "completed", "", 0, 0)
 	if err != nil {
 		t.Fatalf("GenerateSummary: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestGenerateSummaryZeroTurns(t *testing.T) {
 	defer sess.Close()
 	// Turn stays 0 — simulates user connecting then immediately quitting
 
-	err = sess.GenerateSummary(dir, 0, 0, 0, "user_exit", "")
+	err = sess.GenerateSummary(dir, 0, 0, 0, "user_exit", "", 0, 0)
 	if err != nil {
 		t.Fatalf("GenerateSummary: %v", err)
 	}
@@ -572,7 +572,7 @@ func TestGenerateSummaryStates(t *testing.T) {
 			t.Fatalf("NewSession: %v", err)
 		}
 		defer sess.Close()
-		err = sess.GenerateSummary(dir, 0, 0, 0, state, "")
+		err = sess.GenerateSummary(dir, 0, 0, 0, state, "", 0, 0)
 		if err != nil {
 			t.Fatalf("GenerateSummary(%q): %v", state, err)
 		}
@@ -605,7 +605,7 @@ func TestGenerateSummaryFileContent(t *testing.T) {
 	defer sess.Close()
 	sess.Turn = 3
 
-	err = sess.GenerateSummary(dir, 7, 1, 0, "completed", "")
+	err = sess.GenerateSummary(dir, 7, 1, 0, "completed", "", 0, 0)
 	if err != nil {
 		t.Fatalf("GenerateSummary: %v", err)
 	}
@@ -653,7 +653,7 @@ func TestGenerateSummaryBadDir(t *testing.T) {
 		MaxLoop:   10,
 	}
 
-	err := sess.GenerateSummary("/nonexistent/path/that/does/not/exist", 0, 0, 0, "completed", "")
+	err := sess.GenerateSummary("/nonexistent/path/that/does/not/exist", 0, 0, 0, "completed", "", 0, 0)
 	if err == nil {
 		t.Error("expected error for bad directory, got nil")
 	}

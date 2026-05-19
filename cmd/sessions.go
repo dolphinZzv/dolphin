@@ -81,6 +81,8 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 		startedAt time.Time
 		state     string
 		path      string
+		inTokens  int
+		outTokens int
 	}
 
 	var sessions []sessInfo
@@ -95,11 +97,22 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				continue
 			}
+			// Parse token counts from summary file
+			var inTok, outTok int
+			if data, err := os.ReadFile(filepath.Join(sessionDir, name)); err == nil {
+				var sum session.Summary
+				if json.Unmarshal(data, &sum) == nil {
+					inTok = sum.InputTokens
+					outTok = sum.OutputTokens
+				}
+			}
 			sessions = append(sessions, sessInfo{
 				id:        sid,
 				startedAt: info.ModTime(),
 				state:     "completed",
 				path:      filepath.Join(sessionDir, name),
+				inTokens:  inTok,
+				outTokens: outTok,
 			})
 		}
 	}
@@ -137,7 +150,7 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 	fmt.Printf(i18n.TL(i18n.KeySessDirLabel)+"\n\n", sessionDir)
 	for _, s := range sessions {
 		age := time.Since(s.startedAt).Round(time.Second)
-		fmt.Printf("  %-24s  %s  %s  %s\n", s.id[:min(len(s.id), 20)]+"...", s.startedAt.Format("2006-01-02 15:04"), s.state, age)
+		fmt.Printf("  %-24s  %s  %s  %s  in=%d out=%d\n", s.id[:min(len(s.id), 20)]+"...", s.startedAt.Format("2006-01-02 15:04"), s.state, age, s.inTokens, s.outTokens)
 	}
 	fmt.Println()
 	return nil

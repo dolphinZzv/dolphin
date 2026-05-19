@@ -346,7 +346,6 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 				Data:      map[string]any{"stop_reason": state.StopReason},
 			})
 		}
-		session.ClearSessionTokens(sid)
 		sess.Close()
 		a.sessMgr.Remove(sess.ID)
 	}()
@@ -1245,7 +1244,7 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 	}
 
 	summaryText := strings.Join(state.SummaryTexts, "\n")
-	sess.GenerateSummary(config.SessionsDir(), state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText)
+	sess.GenerateSummary(config.SessionsDir(), state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText, state.TotalInputTokens, state.TotalOutputTokens)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,
@@ -1277,7 +1276,6 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	// Ensure cleanup even on panic (recovered by pool.workerLoop).
 	defer func() {
 		a.generateSummary(sess, state)
-		session.ClearSessionTokens(string(sess.ID))
 		sess.Close()
 		a.sessMgr.Remove(sess.ID)
 	}()

@@ -38,6 +38,10 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.handleSessions(io) },
 	})
 	con.Add(&console.Command{
+		Name: "session", Desc: "Dump current or specified session as Mermaid diagram",
+		Handler: func(args []string, io transport.UserIO) { c.handleSession(args, io) },
+	})
+	con.Add(&console.Command{
 		Name: "mcp", Desc: i18n.TL(i18n.KeyHelpMCP),
 		Handler: func(args []string, io transport.UserIO) { c.printMCP(io) },
 	})
@@ -675,6 +679,52 @@ func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 		c.dumpSessionList(events, args[0], io)
 	}
 }
+func (c *Coordinator) handleSession(args []string, io transport.UserIO) {
+	// Default: dump current session as mermaid
+	formatType := "mermaid"
+	sessionID := ""
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "list" || arg == "mermaid":
+			formatType = arg
+		case strings.HasPrefix(arg, "-type="):
+			formatType = strings.TrimPrefix(arg, "-type=")
+		case arg == "-type" && i+1 < len(args):
+			i++
+			formatType = args[i]
+		default:
+			if sessionID == "" {
+				sessionID = arg
+			}
+		}
+	}
+
+	// Use current session if no ID specified
+	if sessionID == "" {
+		if c.currentSess == nil {
+			io.WriteLine("No active session")
+			return
+		}
+		sessionID = string(c.currentSess.ID)
+	}
+
+	sessionPath := filepath.Join(c.sessMgr.Dir(), sessionID+".jsonl")
+	events, err := session.ReadEvents(sessionPath)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
+		return
+	}
+
+	switch formatType {
+	case "list":
+		c.dumpSessionList(events, sessionID, io)
+	default:
+		c.dumpSessionMermaid(events, sessionID, io)
+	}
+}
+
 
 func (c *Coordinator) dumpSessionList(events []session.SessionEvent, id string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", id, len(events)))
