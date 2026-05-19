@@ -659,7 +659,11 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			t.Close()
 		})
 		g.Add(func() error {
-			newCoordinator().Run(ctx, t)
+			go func() {
+				newCoordinator().Run(ctx, t)
+				zap.S().Errorw("coordinator exited unexpectedly")
+			}()
+			<-ctx.Done()
 			return nil
 		}, func(err error) {
 			cancel()
@@ -686,7 +690,11 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			t.Close()
 		})
 		g.Add(func() error {
-			newCoordinator().Run(ctx, t)
+			go func() {
+				newCoordinator().Run(ctx, t)
+				zap.S().Errorw("coordinator exited unexpectedly")
+			}()
+			<-ctx.Done()
 			return nil
 		}, func(err error) {
 			cancel()
@@ -708,7 +716,11 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			t.Close()
 		})
 		g.Add(func() error {
-			newCoordinator().Run(ctx, t)
+			go func() {
+				newCoordinator().Run(ctx, t)
+				zap.S().Errorw("coordinator exited unexpectedly")
+			}()
+			<-ctx.Done()
 			return nil
 		}, func(err error) {
 			cancel()
