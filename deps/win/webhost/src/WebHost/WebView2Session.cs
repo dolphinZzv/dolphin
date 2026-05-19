@@ -139,7 +139,7 @@ namespace Dolphin.WebHost
             try
             {
                 var userDataFolder = System.IO.Path.Combine(
-                    System.IO.Path.GetTempPath(), "DolphinWebHost", _sessionId);
+                    System.IO.Path.GetTempPath(), "DolphinWebHost", "default");
                 Directory.CreateDirectory(userDataFolder);
 
                 _window = new Window
