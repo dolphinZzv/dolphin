@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -199,6 +200,7 @@ func (t *A2ATransport) Start(ctx context.Context) error {
 		}
 	}()
 
+	fmt.Fprintf(os.Stderr, "\n=== A2A transport active (Google Agent-to-Agent) on %s ===\n", t.cfg.ListenAddr)
 	zap.S().Infow("a2a transport started",
 		"listen_addr", t.cfg.ListenAddr,
 		"agent_id", t.cfg.AgentID,
