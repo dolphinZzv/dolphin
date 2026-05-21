@@ -150,6 +150,12 @@ func TestCacheGrowsWithConversation(t *testing.T) {
 		},
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") {
+			t.Skipf("auth error: %v", err)
+		}
+		if strings.Contains(err.Error(), "404") {
+			t.Skipf("model not found: %v", err)
+		}
 		t.Fatalf("Turn 1 error: %v", err)
 	}
 	t.Logf("in=%d cache=%d miss=%d out=%d",
@@ -168,6 +174,12 @@ func TestCacheGrowsWithConversation(t *testing.T) {
 		},
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") {
+			t.Skipf("auth error: %v", err)
+		}
+		if strings.Contains(err.Error(), "404") {
+			t.Skipf("model not found: %v", err)
+		}
 		t.Fatalf("Turn 2 error: %v", err)
 	}
 	t.Logf("in=%d cache=%d miss=%d out=%d",
@@ -186,6 +198,12 @@ func TestCacheGrowsWithConversation(t *testing.T) {
 		},
 	})
 	if err != nil {
+		if strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "403") {
+			t.Skipf("auth error: %v", err)
+		}
+		if strings.Contains(err.Error(), "404") {
+			t.Skipf("model not found: %v", err)
+		}
 		t.Fatalf("Turn 3 error: %v", err)
 	}
 	t.Logf("in=%d cache=%d miss=%d out=%d",

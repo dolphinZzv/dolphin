@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	servermqtt "dolphin/internal/server/mqtt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -19,9 +20,14 @@ func TestPandaSendMessageDolphinReceivesAndResponds(t *testing.T) {
 		testPassword = "test"
 	}
 
-	accounts := []config.MQTTAccount{{Username: "dolphin", Password: testPassword}}
-	broker := NewEmbeddedBroker(":19991", accounts)
-	if err := broker.Start(accounts); err != nil {
+	broker := servermqtt.New(config.MQTTBrokerConfig{
+		Enabled: true,
+		Addr:    ":19991",
+		Accounts: []config.MQTTAccount{
+			{Username: "dolphin", Password: testPassword},
+		},
+	})
+	if err := broker.Start(); err != nil {
 		t.Fatalf("broker start: %v", err)
 	}
 	defer broker.Close()
@@ -31,8 +37,8 @@ func TestPandaSendMessageDolphinReceivesAndResponds(t *testing.T) {
 
 	cfg := &config.Config{}
 	cfg.Transport.MQTT.Broker = brokerAddr
-	cfg.Transport.MQTT.Topic = "/agent/+/message"
-	cfg.Transport.MQTT.ResponseTopic = "/agent/response"
+	cfg.Transport.MQTT.SubscribeTopic = "/agent/+/message"
+	cfg.Transport.MQTT.PublishTopic = "/agent/response"
 	cfg.Transport.MQTT.Username = "dolphin"
 	cfg.Transport.MQTT.Password = testPassword
 	cfg.Transport.MQTT.ClientID = "dolphin-transport"

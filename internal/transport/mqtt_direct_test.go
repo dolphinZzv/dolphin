@@ -5,14 +5,24 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	servermqtt "dolphin/internal/server/mqtt"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+func newTestBroker(addr string) *servermqtt.Broker {
+	return servermqtt.New(config.MQTTBrokerConfig{
+		Enabled: true,
+		Addr:    addr,
+		Accounts: []config.MQTTAccount{
+			{Username: "test", Password: "secret"},
+		},
+	})
+}
+
 func TestPubSubDirect(t *testing.T) {
-	accounts := []config.MQTTAccount{{Username: "test", Password: "secret"}}
-	broker := NewEmbeddedBroker(":19993", accounts)
-	if err := broker.Start(accounts); err != nil {
+	broker := newTestBroker(":19993")
+	if err := broker.Start(); err != nil {
 		t.Fatalf("broker start: %v", err)
 	}
 	defer broker.Close()
@@ -70,9 +80,8 @@ func TestPubSubDirect(t *testing.T) {
 }
 
 func TestPubSubWildcard(t *testing.T) {
-	accounts := []config.MQTTAccount{{Username: "test", Password: "secret"}}
-	broker := NewEmbeddedBroker(":19992", accounts)
-	if err := broker.Start(accounts); err != nil {
+	broker := newTestBroker(":19992")
+	if err := broker.Start(); err != nil {
 		t.Fatalf("broker start: %v", err)
 	}
 	defer broker.Close()

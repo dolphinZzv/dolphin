@@ -76,7 +76,7 @@ type Registry struct {
 	toolCalls    *metrics.LabeledCounter
 	toolErrors   *metrics.LabeledCounter
 	toolDuration *metrics.LabeledHistogram
-	bus *event.EventBus
+	bus          *event.EventBus
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
@@ -119,6 +119,10 @@ func (r *Registry) LoadServers(ctx context.Context) error {
 
 	var loaded, failed int
 	for name, cfg := range r.cfg.Servers {
+		if cfg.Enabled != nil && !*cfg.Enabled {
+			zap.S().Debugw("mcp server skipped — disabled", "server", name)
+			continue
+		}
 		client, err := NewServerClient(ctx, name, cfg, r.bus)
 		if err != nil {
 			failed++
@@ -309,7 +313,7 @@ func (r *Registry) FilteredView(names []string) *Registry {
 		toolCalls:    r.toolCalls,
 		toolErrors:   r.toolErrors,
 		toolDuration: r.toolDuration,
-		bus: r.bus,
+		bus:          r.bus,
 	}
 }
 
@@ -375,7 +379,7 @@ func (r *Registry) Clone() *Registry {
 		toolCalls:    r.toolCalls,
 		toolErrors:   r.toolErrors,
 		toolDuration: r.toolDuration,
-		bus: r.bus,
+		bus:          r.bus,
 	}
 }
 

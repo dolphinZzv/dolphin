@@ -1,7 +1,10 @@
-package transport
+// Package mqtt provides an embedded MQTT broker server for dolphin.
+// It is independent of the MQTT transport client and runs as a standalone in-process service.
+package mqtt
 
 import (
 	"fmt"
+	"log/slog"
 	"net"
 
 	"dolphin/internal/config"
@@ -12,32 +15,33 @@ import (
 	"go.uber.org/zap"
 )
 
-// EmbeddedBroker runs an in-process MQTT broker so dolphin does not require
+// Broker runs an in-process MQTT broker so dolphin does not require
 // an external broker when MQTT transport is enabled.
-type EmbeddedBroker struct {
+type Broker struct {
 	server *mqtt.Server
-	addr   string
+	cfg    config.MQTTBrokerConfig
 }
 
-// NewEmbeddedBroker creates a new embedded MQTT broker listening on addr (e.g. ":1883" or "127.0.0.1:1883").
-func NewEmbeddedBroker(addr string, accounts []config.MQTTAccount) *EmbeddedBroker {
-	return &EmbeddedBroker{addr: addr}
+// New creates a new MQTT broker from the given server config.
+func New(cfg config.MQTTBrokerConfig) *Broker {
+	return &Broker{cfg: cfg}
 }
 
 // Start creates the server, adds an auth hook with the configured accounts, binds
 // a TCP listener, and begins serving in a background goroutine.
-func (b *EmbeddedBroker) Start(accounts []config.MQTTAccount) error {
-	b.server = mqtt.New(nil)
+func (b *Broker) Start() error {
+	b.server = mqtt.New(&mqtt.Options{
+		Logger: slog.New(newZapHandler()),
+	})
 
-	// Build auth ledger from configured accounts.
-	ledger := buildLedger(accounts)
+	ledger := buildLedger(b.cfg.Accounts)
 	if err := b.server.AddHook(new(auth.Hook), &auth.Options{Ledger: ledger}); err != nil {
 		return fmt.Errorf("add auth hook: %w", err)
 	}
 
 	tcp := listeners.NewTCP(listeners.Config{
-		ID:      "dolphin-embedded",
-		Address: b.addr,
+		ID:      "dolphin-mqtt",
+		Address: b.cfg.Addr,
 	})
 	if err := b.server.AddListener(tcp); err != nil {
 		return fmt.Errorf("add tcp listener: %w", err)
@@ -45,31 +49,30 @@ func (b *EmbeddedBroker) Start(accounts []config.MQTTAccount) error {
 
 	go func() {
 		if err := b.server.Serve(); err != nil {
-			zap.S().Errorw("embedded mqtt broker stopped", "error", err)
+			zap.S().Errorw("mqtt broker stopped", "error", err)
 		}
 	}()
 
-	zap.S().Infow("embedded mqtt broker started", "address", b.addr, "accounts", len(accounts))
+	zap.S().Infow("mqtt broker started", "address", b.cfg.Addr, "accounts", len(b.cfg.Accounts))
 	return nil
 }
 
-// Close gracefully shuts down the embedded broker.
-func (b *EmbeddedBroker) Close() error {
+// Close gracefully shuts down the broker.
+func (b *Broker) Close() error {
 	if b.server != nil {
 		b.server.Close()
 	}
 	return nil
 }
 
-// ClientAddr returns the address the MQTT transport client should use to connect
-// to this embedded broker. When the broker listens on all interfaces (":port"),
-// we use localhost; otherwise the configured address is used as-is.
-func (b *EmbeddedBroker) ClientAddr() string {
-	host, port, err := net.SplitHostPort(b.addr)
+// ClientAddr returns the address an MQTT client should use to connect
+// to this broker. When the broker listens on all interfaces, returns localhost.
+func (b *Broker) ClientAddr() string {
+	host, port, err := net.SplitHostPort(b.cfg.Addr)
 	if err != nil {
 		return "localhost:1883"
 	}
-	if host == "" {
+	if host == "" || host == "0.0.0.0" {
 		host = "localhost"
 	}
 	return net.JoinHostPort(host, port)

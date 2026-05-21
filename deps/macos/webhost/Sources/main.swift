@@ -164,6 +164,35 @@ func handleRequest(_ request: HttpRequest, conn: NWConnection) {
                 let rpcResponse = server.handleSync(request: rpcRequest)
                 response = HttpResponse(statusCode: 200, body: rpcResponse.toJson().data(using: .utf8)!)
             }
+            else if request.uri == "/mcp/sessions" && request.method == "GET" {
+                var sessionList: [[String: Any]] = []
+                server.lock.lock()
+                for (id, _) in server.sessions {
+                    sessionList.append(["sessionId": id, "active": true])
+                }
+                server.lock.unlock()
+
+                if let jsonData = try? JSONSerialization.data(withJSONObject: sessionList),
+                   let jsonStr = String(data: jsonData, encoding: .utf8) {
+                    response = HttpResponse(statusCode: 200, body: jsonStr.data(using: .utf8)!)
+                } else {
+                    response = HttpResponse(statusCode: 500, body: "{\"error\":\"internal error\"}".data(using: .utf8)!)
+                }
+            }
+            else if request.uri.hasPrefix("/mcp/sessions/") && request.method == "DELETE" {
+                let sessionId = String(request.uri.dropFirst("/mcp/sessions/".count))
+                server.lock.lock()
+                let existed = server.sessions[sessionId] != nil
+                server.sessions.removeValue(forKey: sessionId)
+                server.lock.unlock()
+
+                if existed {
+                    server.sessionManager.remove(sessionId: sessionId)
+                    response = HttpResponse(statusCode: 200, body: "{\"success\":true}".data(using: .utf8)!)
+                } else {
+                    response = HttpResponse(statusCode: 404, body: "{\"error\":\"session not found\"}".data(using: .utf8)!)
+                }
+            }
             else if request.uri.hasPrefix("/mcp/stream") && request.method == "GET" {
                 guard let query = request.uri.split(separator: "?").dropFirst().first.flatMap(String.init) else {
                     response = HttpResponse(statusCode: 400, body: "{\"error\":\"missing sessionId\"}".data(using: .utf8)!)

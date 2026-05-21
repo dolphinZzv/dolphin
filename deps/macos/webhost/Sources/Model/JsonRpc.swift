@@ -124,10 +124,12 @@ struct JsonRpcResult: Sendable {
     let title: String?
     let status: String?
     let capabilities: [String: AnyCodable]?
+    let found: Bool?
 
     init(success: Bool = true, sessionId: String? = nil, value: String? = nil,
          data: String? = nil, url: String? = nil, title: String? = nil,
-         status: String? = nil, capabilities: [String: AnyCodable]? = nil) {
+         status: String? = nil, capabilities: [String: AnyCodable]? = nil,
+         found: Bool? = nil) {
         self.success = success
         self.sessionId = sessionId
         self.value = value
@@ -136,6 +138,7 @@ struct JsonRpcResult: Sendable {
         self.title = title
         self.status = status
         self.capabilities = capabilities
+        self.found = found
     }
 
     func toDictionary() -> [String: Any] {
@@ -147,6 +150,7 @@ struct JsonRpcResult: Sendable {
         if let v = title { d["title"] = v }
         if let v = status { d["status"] = v }
         if let v = capabilities { d["capabilities"] = v.mapValues { $0.value } }
+        if let v = found { d["found"] = v }
         return d
     }
 }

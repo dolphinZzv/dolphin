@@ -68,14 +68,14 @@ func TestMQTTTransportName(t *testing.T) {
 
 func TestNewMQTTTransport(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Transport.MQTT.Topic = "test/topic"
-	cfg.Transport.MQTT.ResponseTopic = "test/response"
+	cfg.Transport.MQTT.SubscribeTopic = "test/topic"
+	cfg.Transport.MQTT.PublishTopic = "test/response"
 	tp := NewMQTTTransport(cfg)
 	if tp == nil {
 		t.Fatal("NewMQTTTransport returned nil")
 	}
-	if tp.cfg.Topic != "test/topic" {
-		t.Errorf("topic = %q", tp.cfg.Topic)
+	if tp.cfg.SubscribeTopic != "test/topic" {
+		t.Errorf("topic = %q", tp.cfg.SubscribeTopic)
 	}
 	respTopic := tp.respTopic
 	if respTopic != "test/response" {
@@ -184,7 +184,7 @@ func TestMQTTTransportConcurrentReadClose(t *testing.T) {
 
 func TestMQTTTransportChannelFullDropped(t *testing.T) {
 	tp := &MQTTTransport{
-		cfg:     &config.MQTTConfig{Topic: "cmd", ResponseTopic: "resp"},
+		cfg:     &config.MQTTConfig{SubscribeTopic: "cmd", PublishTopic: "resp"},
 		msgCh:   make(chan mqttMsg, 1),
 		closeCh: make(chan struct{}),
 	}
@@ -238,8 +238,8 @@ func TestMQTTTransportCapabilities(t *testing.T) {
 
 func TestMQTTTransportRespTopicConcurrent(t *testing.T) {
 	cfg := &config.Config{}
-	cfg.Transport.MQTT.Topic = "cmd/+/test"
-	cfg.Transport.MQTT.ResponseTopic = "resp"
+	cfg.Transport.MQTT.SubscribeTopic = "cmd/+/test"
+	cfg.Transport.MQTT.PublishTopic = "resp"
 	tp := NewMQTTTransport(cfg)
 
 	// Simulate concurrent update from subscribe callback and read from publish

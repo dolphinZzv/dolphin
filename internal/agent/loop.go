@@ -474,28 +474,40 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			continue
 		}
 		if line == "/help" {
-			io.WriteLine(i18n.TL(i18n.KeyHelpHeader))
-			io.WriteLine(i18n.TL(i18n.KeyHelpExit))
-			io.WriteLine(i18n.TL(i18n.KeyHelpHelp))
-			io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
-			io.WriteLine("")
-			io.WriteLine(i18n.TL(i18n.KeyHelpAgents))
-			io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
-			io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
-			io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
-			io.WriteLine(i18n.TL(i18n.KeyHelpCron))
-			io.WriteLine("")
-			io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
-			io.WriteLine(i18n.TL(i18n.KeyHelpModel))
-			io.WriteLine(i18n.TL(i18n.KeyHelpReload))
-			io.WriteLine("")
+			var sb strings.Builder
+			sb.WriteString(i18n.TL(i18n.KeyHelpHeader))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpExit))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpHelp))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpStatus))
+			sb.WriteString("\n\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpAgents))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpSkills))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpCommands))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpSessions))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpCron))
+			sb.WriteString("\n\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpMCP))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpModel))
+			sb.WriteString("\n")
+			sb.WriteString(i18n.TL(i18n.KeyHelpReload))
+			sb.WriteString("\n\n")
 			toolDefs := a.toolReg.List()
 			if len(toolDefs) > 0 {
-				io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
+				sb.WriteString(i18n.TL(i18n.KeyHelpTopMCP))
+				sb.WriteString("\n")
 				for _, t := range toolDefs {
-					io.WriteLine(fmt.Sprintf("  - %s: %s", t.Name, t.Description))
+					sb.WriteString(fmt.Sprintf("  - %s: %s\n", t.Name, t.Description))
 				}
 			}
+			io.WriteLine(sb.String())
 			continue
 		}
 		if line == "" {

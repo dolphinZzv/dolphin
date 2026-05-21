@@ -312,8 +312,8 @@ func checkPorts(cfg *config.Config) []checkResult {
 	if cfg.Metrics.Enabled && cfg.Metrics.Addr != "" {
 		results = append(results, checkPort(cfg.Metrics.Addr, "metrics")...)
 	}
-	if cfg.Transport.MQTT.Embedded && cfg.Transport.MQTT.EmbeddedAddr != "" {
-		results = append(results, checkPort(cfg.Transport.MQTT.EmbeddedAddr, "MQTT broker")...)
+	if cfg.Servers.MQTTBroker.Enabled && cfg.Servers.MQTTBroker.Addr != "" {
+		results = append(results, checkPort(cfg.Servers.MQTTBroker.Addr, "MQTT broker")...)
 	}
 	if cfg.Pprof.Enabled && cfg.Pprof.Addr != "" {
 		results = append(results, checkPort(cfg.Pprof.Addr, "pprof")...)

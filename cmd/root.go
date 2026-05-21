@@ -33,6 +33,7 @@ import (
 	"dolphin/internal/plugin"
 	"dolphin/internal/resource"
 	"dolphin/internal/scheduler"
+	servermqtt "dolphin/internal/server/mqtt"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/transport"
@@ -214,7 +215,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	bus := event.NewEventBus(256)
 	pm := plugin.NewManager(hooks, bus)
-		toolRegistry.SetEventBus(bus)
+	toolRegistry.SetEventBus(bus)
 
 	// Configure webhook delivery
 	if cfg.Plugins.WebhookURL != "" {
@@ -632,26 +633,23 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		actorCount++
 	}
 
-	// MQTT transport
-	if cfg.Transport.MQTT.Enabled {
-		// Start embedded MQTT broker when configured, so no external broker is needed.
-		if cfg.Transport.MQTT.Embedded {
-			accounts := cfg.Transport.MQTT.EmbeddedAccounts
-			broker := transport.NewEmbeddedBroker(cfg.Transport.MQTT.EmbeddedAddr, accounts)
-			if err := broker.Start(accounts); err != nil {
-				return fmt.Errorf("embedded mqtt broker: %w", err)
-			}
-			defer broker.Close()
-			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
-			// Auto-populate client credentials from the first embedded account.
-			if cfg.Transport.MQTT.Username == "" && len(accounts) > 0 {
-				cfg.Transport.MQTT.Username = accounts[0].Username
-				cfg.Transport.MQTT.Password = accounts[0].Password
-			}
+	// MQTT broker server (standalone, independent of transport client)
+	if cfg.Servers.MQTTBroker.Enabled {
+		broker := servermqtt.New(cfg.Servers.MQTTBroker)
+		if err := broker.Start(); err != nil {
+			return fmt.Errorf("mqtt broker: %w", err)
 		}
+		defer broker.Close()
+		// Point transport client at the embedded broker if not already set to an external one.
+		if cfg.Transport.MQTT.Enabled {
+			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
+		}
+	}
 
+	// MQTT transport (client)
+	if cfg.Transport.MQTT.Enabled {
 		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransMQTTActive))
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransMQTTBroker)+"\n\n", cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransMQTTBroker)+"\n\n", cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.SubscribeTopic, cfg.Transport.MQTT.ClientID))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)

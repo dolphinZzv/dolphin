@@ -114,28 +114,41 @@ func (c *Coordinator) onboardConsole() {
 }
 
 func (c *Coordinator) printHelp(io transport.UserIO) {
-	io.WriteLine(i18n.TL(i18n.KeyHelpHeader))
-	io.WriteLine(i18n.TL(i18n.KeyHelpHelp))
-	io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
-	io.WriteLine(i18n.TL(i18n.KeyHelpContext))
-	io.WriteLine(i18n.TL(i18n.KeyHelpConfig))
-	io.WriteLine(i18n.TL(i18n.KeyHelpExit))
-	io.WriteLine(i18n.TL(i18n.KeyHelpReload))
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
-	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyHelpAgents))
-	io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
-	io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
-	io.WriteLine(i18n.TL(i18n.KeyHelpCron))
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
-	io.WriteLine(i18n.TL(i18n.KeyHelpModel))
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
+	var sb strings.Builder
+	sb.WriteString(i18n.TL(i18n.KeyHelpHeader))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpHelp))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpStatus))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpContext))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpConfig))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpExit))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpReload))
+	sb.WriteString("\n\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpCancel))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpCancelID))
+	sb.WriteString("\n\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpAgents))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpSkills))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpCommands))
+	sb.WriteString("\n\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpSessions))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpCron))
+	sb.WriteString("\n\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpMCP))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpModel))
+	sb.WriteString("\n\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpTopMCP))
+	sb.WriteString("\n")
 	stats := c.toolReg.ToolStats()
 	toolDefs := c.toolReg.MostUsedTools(10)
 	if len(toolDefs) > 0 {
@@ -144,16 +157,16 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 			if s, ok := stats[t.Name]; ok && s.CallCount > 0 {
 				usage = fmt.Sprintf(" (%d calls)", s.CallCount)
 			}
-			io.WriteLine(fmt.Sprintf("  - %s: %s%s", t.Name, t.Description, usage))
+			fmt.Fprintf(&sb, "  - %s: %s%s\n", t.Name, t.Description, usage)
 		}
 	}
 	if c.skills != nil {
 		skills := c.skills.List()
 		if len(skills) > 0 {
-			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyHelpSkillsAvail), len(skills)))
+			fmt.Fprintf(&sb, i18n.TL(i18n.KeyHelpSkillsAvail)+"\n", len(skills))
 		}
 	}
-	io.WriteLine("")
+	io.WriteLine(sb.String())
 }
 
 func (c *Coordinator) printAgents(io transport.UserIO) {

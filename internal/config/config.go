@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"time"
@@ -31,6 +32,7 @@ type Config struct {
 	LLM        LLMConfig       `mapstructure:"llm"`
 	Session    SessionConfig   `mapstructure:"session"`
 	Transport  TransportConfig `mapstructure:"transport"`
+	Servers    ServersConfig   `mapstructure:"servers"`
 	MCP        MCPConfig       `mapstructure:"mcp"`
 	Pool       PoolConfig      `mapstructure:"agent_pool"`
 	Skills     SkillsConfig    `mapstructure:"skills"`
@@ -152,22 +154,36 @@ type TransportConfig struct {
 	ACP      ACPConfig      `mapstructure:"acp"`
 }
 
+// ServersConfig holds standalone server configurations (MQTT broker, etc.).
+// These are independent of transport clients and run as in-process services.
+type ServersConfig struct {
+	MQTTBroker MQTTBrokerConfig `mapstructure:"mqtt_broker"`
+}
+
+// MQTTBrokerConfig configures an embedded MQTT broker server.
+// Separate from transport.mqtt which configures the MQTT client.
+type MQTTBrokerConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Addr     string        `mapstructure:"addr"`
+	Accounts []MQTTAccount `mapstructure:"accounts"`
+}
+
 // ACPConfig holds configuration for the ACP (Agent Communication Protocol) transport.
 // Uses REST over HTTP, following IBM BeeAI ACP specification.
 type ACPConfig struct {
-	Enabled      bool             `mapstructure:"enabled"`
-	ListenAddr   string           `mapstructure:"listen_addr"`
-	AgentID      string           `mapstructure:"agent_id"`
-	AgentName    string           `mapstructure:"agent_name"`
-	AgentVersion string           `mapstructure:"agent_version"`
-	AgentDesc    string           `mapstructure:"agent_description"`
-	Capabilities []string         `mapstructure:"capabilities"`
-	SyncTimeout  string           `mapstructure:"sync_timeout"`
-	APIKey       string           `mapstructure:"api_key"`
-	TLSEnabled   bool             `mapstructure:"tls_enabled"`
-	TLSCertFile  string           `mapstructure:"tls_cert_file"`
-	TLSKeyFile   string           `mapstructure:"tls_key_file"`
-	Peers        []ACPPeerConfig  `mapstructure:"peers"`
+	Enabled      bool            `mapstructure:"enabled"`
+	ListenAddr   string          `mapstructure:"listen_addr"`
+	AgentID      string          `mapstructure:"agent_id"`
+	AgentName    string          `mapstructure:"agent_name"`
+	AgentVersion string          `mapstructure:"agent_version"`
+	AgentDesc    string          `mapstructure:"agent_description"`
+	Capabilities []string        `mapstructure:"capabilities"`
+	SyncTimeout  string          `mapstructure:"sync_timeout"`
+	APIKey       string          `mapstructure:"api_key"`
+	TLSEnabled   bool            `mapstructure:"tls_enabled"`
+	TLSCertFile  string          `mapstructure:"tls_cert_file"`
+	TLSKeyFile   string          `mapstructure:"tls_key_file"`
+	Peers        []ACPPeerConfig `mapstructure:"peers"`
 }
 
 type ACPPeerConfig struct {
@@ -198,16 +214,13 @@ type MQTTAccount struct {
 }
 
 type MQTTConfig struct {
-	Enabled          bool          `mapstructure:"enabled"`
-	Broker           string        `mapstructure:"broker"`
-	Topic            string        `mapstructure:"topic"`
-	ResponseTopic    string        `mapstructure:"response_topic"`
-	ClientID         string        `mapstructure:"client_id"`
-	Embedded         bool          `mapstructure:"embedded"`
-	EmbeddedAddr     string        `mapstructure:"embedded_addr"`
-	EmbeddedAccounts []MQTTAccount `mapstructure:"embedded_accounts"`
-	Username         string        `mapstructure:"username"`
-	Password         string        `mapstructure:"password"`
+	Enabled        bool   `mapstructure:"enabled"`
+	Broker         string `mapstructure:"broker"`
+	SubscribeTopic string `mapstructure:"subscribe_topic"`
+	PublishTopic   string `mapstructure:"publish_topic"`
+	ClientID       string `mapstructure:"client_id"`
+	Username       string `mapstructure:"username"`
+	Password       string `mapstructure:"password"`
 }
 
 type EmailConfig struct {
@@ -274,6 +287,7 @@ type MCPServerConfig struct {
 	URL     string            `mapstructure:"url"`     // for sse / http-stream type
 	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers (auth etc.)
 	Timeout int               `mapstructure:"timeout"` // request timeout in seconds, 0 = default 30
+	Enabled *bool             `mapstructure:"enabled"` // nil or true = enabled, false = skip
 }
 
 // TimeoutDuration returns the effective timeout as a time.Duration.
@@ -487,10 +501,10 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Transport.MQTT.Broker = v
 	}
 	if v := os.Getenv("DZ_MQTT_TOPIC"); v != "" {
-		cfg.Transport.MQTT.Topic = v
+		cfg.Transport.MQTT.SubscribeTopic = v
 	}
-	if v := os.Getenv("DZ_MQTT_RESPONSE_TOPIC"); v != "" {
-		cfg.Transport.MQTT.ResponseTopic = v
+	if v := os.Getenv("DZ_MQTT_PUBLISH_TOPIC"); v != "" {
+		cfg.Transport.MQTT.PublishTopic = v
 	}
 	if v := os.Getenv("DZ_EMAIL_USERNAME"); v != "" {
 		cfg.Transport.Email.Username = v
@@ -516,24 +530,24 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_TRANSPORT_MQTT_ENABLED"); v != "" {
 		cfg.Transport.MQTT.Enabled = v == "true" || v == "1"
 	}
-	if v := os.Getenv("DZ_MQTT_EMBEDDED"); v != "" {
-		cfg.Transport.MQTT.Embedded = v == "true" || v == "1"
+	if v := os.Getenv("DZ_SERVERS_MQTT_BROKER_ENABLED"); v != "" {
+		cfg.Servers.MQTTBroker.Enabled = v == "true" || v == "1"
 	}
-	if v := os.Getenv("DZ_MQTT_EMBEDDED_ADDR"); v != "" {
-		cfg.Transport.MQTT.EmbeddedAddr = v
+	if v := os.Getenv("DZ_SERVERS_MQTT_BROKER_ADDR"); v != "" {
+		cfg.Servers.MQTTBroker.Addr = v
 	}
-	if v := os.Getenv("DZ_MQTT_USER"); v != "" {
-		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
-			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Username: v})
+	if v := os.Getenv("DZ_SERVERS_MQTT_BROKER_USER"); v != "" {
+		if len(cfg.Servers.MQTTBroker.Accounts) == 0 {
+			cfg.Servers.MQTTBroker.Accounts = append(cfg.Servers.MQTTBroker.Accounts, MQTTAccount{Username: v})
 		} else {
-			cfg.Transport.MQTT.EmbeddedAccounts[0].Username = v
+			cfg.Servers.MQTTBroker.Accounts[0].Username = v
 		}
 	}
-	if v := os.Getenv("DZ_MQTT_PASSWORD"); v != "" {
-		if len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
-			cfg.Transport.MQTT.EmbeddedAccounts = append(cfg.Transport.MQTT.EmbeddedAccounts, MQTTAccount{Password: v})
+	if v := os.Getenv("DZ_SERVERS_MQTT_BROKER_PASSWORD"); v != "" {
+		if len(cfg.Servers.MQTTBroker.Accounts) == 0 {
+			cfg.Servers.MQTTBroker.Accounts = append(cfg.Servers.MQTTBroker.Accounts, MQTTAccount{Password: v})
 		} else {
-			cfg.Transport.MQTT.EmbeddedAccounts[0].Password = v
+			cfg.Servers.MQTTBroker.Accounts[0].Password = v
 		}
 	}
 
@@ -550,14 +564,30 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.Update.AutoInstall = v == "true" || v == "1"
 	}
 
-	// Auto-generate MQTT broker account if embedded broker is enabled and no accounts configured.
-	if cfg.Transport.MQTT.Enabled && cfg.Transport.MQTT.Embedded && len(cfg.Transport.MQTT.EmbeddedAccounts) == 0 {
+	// Auto-generate MQTT broker account if broker is enabled and no accounts configured.
+	if cfg.Servers.MQTTBroker.Enabled && len(cfg.Servers.MQTTBroker.Accounts) == 0 {
 		buf := make([]byte, 12)
 		if _, err := rand.Read(buf); err == nil {
-			cfg.Transport.MQTT.EmbeddedAccounts = []MQTTAccount{{
+			cfg.Servers.MQTTBroker.Accounts = []MQTTAccount{{
 				Username: "dolphin",
 				Password: hex.EncodeToString(buf),
 			}}
+		}
+	}
+
+	// When MQTT broker is enabled and transport MQTT client has no broker set,
+	// point the client at the embedded broker and auto-populate credentials.
+	if cfg.Servers.MQTTBroker.Enabled && cfg.Transport.MQTT.Enabled {
+		if cfg.Transport.MQTT.Broker == "" || cfg.Transport.MQTT.Broker == "tcp://localhost:1883" {
+			addr := cfg.Servers.MQTTBroker.Addr
+			if addr == "" {
+				addr = ":1883"
+			}
+			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", clientAddrFromAddr(addr))
+		}
+		if cfg.Transport.MQTT.Username == "" && len(cfg.Servers.MQTTBroker.Accounts) > 0 {
+			cfg.Transport.MQTT.Username = cfg.Servers.MQTTBroker.Accounts[0].Username
+			cfg.Transport.MQTT.Password = cfg.Servers.MQTTBroker.Accounts[0].Password
 		}
 	}
 
@@ -773,6 +803,19 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	return os.WriteFile(configPath, out, 0600)
 }
 
+// clientAddrFromAddr resolves a listen address to a client-connectable address.
+// When the address listens on all interfaces (":port" or "0.0.0.0:port"), returns "localhost:port".
+func clientAddrFromAddr(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "localhost:1883"
+	}
+	if host == "" || host == "0.0.0.0" {
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, port)
+}
+
 func configType(path string) string {
 	switch filepath.Ext(path) {
 	case ".json":
@@ -879,11 +922,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.ssh.password", "")
 	v.SetDefault("transport.mqtt.enabled", false)
 	v.SetDefault("transport.mqtt.broker", "tcp://localhost:1883")
-	v.SetDefault("transport.mqtt.topic", "dolphin/agent/command")
-	v.SetDefault("transport.mqtt.response_topic", "dolphin/agent/response")
+	v.SetDefault("transport.mqtt.subscribe_topic", "/agent/dolphin")
+	v.SetDefault("transport.mqtt.publish_topic", "/agent/dolphin/message")
 	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
-	v.SetDefault("transport.mqtt.embedded", true)
-	v.SetDefault("transport.mqtt.embedded_addr", ":1883")
+
+	v.SetDefault("servers.mqtt_broker.enabled", true)
+	v.SetDefault("servers.mqtt_broker.addr", ":1883")
 
 	v.SetDefault("transport.email.enabled", false)
 	v.SetDefault("transport.email.smtp_port", 587)

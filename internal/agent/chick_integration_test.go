@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/mcp"
 
 	"gopkg.in/yaml.v3"
@@ -74,7 +75,7 @@ func readChickConfig(t *testing.T) config.MCPServerConfig {
 func TestChickServerListTools(t *testing.T) {
 	cfg := readChickConfig(t)
 
-	client, err := mcp.NewServerClient(context.Background(), "chick", cfg)
+	client, err := mcp.NewServerClient(context.Background(), "chick", cfg, event.NewEventBus(0))
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -107,7 +108,7 @@ func TestChickServerListTools(t *testing.T) {
 func TestChickServerCallSearchIssues(t *testing.T) {
 	cfg := readChickConfig(t)
 
-	client, err := mcp.NewServerClient(context.Background(), "chick", cfg)
+	client, err := mcp.NewServerClient(context.Background(), "chick", cfg, event.NewEventBus(0))
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestChickServerCallSearchIssues(t *testing.T) {
 func TestChickServerCallCreateComment(t *testing.T) {
 	cfg := readChickConfig(t)
 
-	client, err := mcp.NewServerClient(context.Background(), "chick", cfg)
+	client, err := mcp.NewServerClient(context.Background(), "chick", cfg, event.NewEventBus(0))
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestChickServerCallCreateComment(t *testing.T) {
 func TestChickAllToolsInputSchema(t *testing.T) {
 	cfg := readChickConfig(t)
 
-	client, err := mcp.NewServerClient(context.Background(), "chick", cfg)
+	client, err := mcp.NewServerClient(context.Background(), "chick", cfg, event.NewEventBus(0))
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestChickAllToolsInputSchema(t *testing.T) {
 func TestChickServerToolSchemaRoundTrip(t *testing.T) {
 	cfg := readChickConfig(t)
 
-	client, err := mcp.NewServerClient(context.Background(), "chick", cfg)
+	client, err := mcp.NewServerClient(context.Background(), "chick", cfg, event.NewEventBus(0))
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}

@@ -32,7 +32,7 @@ class WebKitSession: NSObject, Sendable {
         hostWindow.makeKeyAndOrderFront(nil)
     }
 
-    func evaluate(script: String) async throws -> String {
+    func evaluate(script: String, timeout: Int = 10000) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
             webView.evaluateJavaScript(script) { result, error in
                 if let error = error {
@@ -42,6 +42,32 @@ class WebKitSession: NSObject, Sendable {
                 }
             }
         }
+    }
+
+    func evaluateSync(script: String, timeout: Int = 10000) throws -> String {
+        var result: String = ""
+        var evalError: Error?
+        let semaphore = DispatchSemaphore(value: 0)
+
+        webView.evaluateJavaScript(script) { res, err in
+            if let err = err {
+                evalError = err
+            } else {
+                result = res as? String ?? ""
+            }
+            semaphore.signal()
+        }
+
+        let timeout_ns = Int64(timeout) * Int64(NSEC_PER_MSEC)
+        let didTimeout = semaphore.wait(timeout: .now() + Double(timeout_ns) / Double(NSEC_PER_SEC)) == .timedOut
+
+        if didTimeout {
+            throw WebHostError.scriptTimeout
+        }
+        if let err = evalError {
+            throw err
+        }
+        return result
     }
 
     @MainActor func screenshot() throws -> Data {
@@ -57,6 +83,36 @@ class WebKitSession: NSObject, Sendable {
             throw WebHostError.pngConversionFailed
         }
         return pngData
+    }
+
+    func screenshotSync() throws -> Data {
+        var screenshotData: Data?
+        var screenshotError: Error?
+        let semaphore = DispatchSemaphore(value: 0)
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else {
+                semaphore.signal()
+                return
+            }
+            do {
+                let data = try self.screenshot()
+                screenshotData = data
+            } catch {
+                screenshotError = error
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+
+        if let err = screenshotError {
+            throw err
+        }
+        guard let data = screenshotData else {
+            throw WebHostError.captureFailed
+        }
+        return data
     }
 
     func setInteractive(_ enabled: Bool) {
@@ -107,6 +163,72 @@ class WebKitSession: NSObject, Sendable {
         let request = URLRequest(url: url)
         webView.load(request)
     }
+
+    func getTitle() -> String {
+        return webView.title ?? ""
+    }
+
+    func injectContent(css: String?, js: String?) {
+        if let css = css, !css.isEmpty {
+            let escapedCss = css.replacingOccurrences(of: "'", with: "\\'")
+            let script = """
+            (function() {
+                var style = document.createElement('style');
+                style.textContent = '\(escapedCss)';
+                document.head.appendChild(style);
+            })();
+            """
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
+        if let js = js, !js.isEmpty {
+            webView.evaluateJavaScript(js, completionHandler: nil)
+        }
+    }
+
+    func waitForElement(selector: String, timeout: Int) throws -> Bool {
+        let semaphore = DispatchSemaphore(value: 0)
+        var result = false
+        var scriptError: Error?
+
+        let script = """
+        (function() {
+            var el = document.querySelector('\(selector)');
+            return el ? el.innerHTML : null;
+        })();
+        """
+
+        let timeoutDate = Date().addingTimeInterval(TimeInterval(timeout) / 1000.0)
+
+        func checkElement() {
+            if Date().compare(timeoutDate) == .orderedDescending {
+                semaphore.signal()
+                return
+            }
+
+            webView.evaluateJavaScript(script) { _, error in
+                if let error = error {
+                    scriptError = error
+                    semaphore.signal()
+                    return
+                }
+
+                result = true
+                semaphore.signal()
+            }
+        }
+
+        checkElement()
+        semaphore.wait()
+
+        if let error = scriptError {
+            throw error
+        }
+
+        return result
+    }
+
+    func resolveDialog(dialogId: String, action: String, text: String?) {
+    }
 }
 
 extension WebKitSession: WKUIDelegate {
@@ -155,6 +277,7 @@ extension WebKitSession: WKNavigationDelegate {
 enum WebHostError: Error {
     case captureFailed
     case pngConversionFailed
+    case scriptTimeout
 }
 
 class EventBuffer: Sendable {

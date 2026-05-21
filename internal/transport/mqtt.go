@@ -49,7 +49,7 @@ func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 		cfg:       &cfg.Transport.MQTT,
 		msgCh:     make(chan mqttMsg, 4096),
 		closeCh:   make(chan struct{}),
-		respTopic: cfg.Transport.MQTT.ResponseTopic,
+		respTopic: cfg.Transport.MQTT.PublishTopic,
 	}
 	return t
 }
@@ -58,7 +58,7 @@ func (t *MQTTTransport) Name() string { return "mqtt" }
 
 func (t *MQTTTransport) Context() string {
 	return fmt.Sprintf("Connected via MQTT (broker: %s, command topic: %s). Responses are published as MQTT messages. Keep responses concise since each publish is a separate message.",
-		t.cfg.Broker, t.cfg.Topic)
+		t.cfg.Broker, t.cfg.SubscribeTopic)
 }
 
 func (t *MQTTTransport) Capabilities() Capabilities {
@@ -94,13 +94,13 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	t.connected.Store(true)
 	zap.S().Infow("mqtt connected",
 		"broker", t.cfg.Broker,
-		"command_topic", t.cfg.Topic,
-		"response_topic", t.cfg.ResponseTopic,
+		"command_topic", t.cfg.SubscribeTopic,
+		"response_topic", t.cfg.PublishTopic,
 	)
 
 	// Subscribe to command topic — push payloads with response topic to msgCh
-	token = t.client.Subscribe(t.cfg.Topic, 1, func(c mqtt.Client, msg mqtt.Message) {
-		respTopic := deriveResponseTopic(t.cfg.Topic, t.cfg.ResponseTopic, msg.Topic())
+	token = t.client.Subscribe(t.cfg.SubscribeTopic, 1, func(c mqtt.Client, msg mqtt.Message) {
+		respTopic := deriveResponseTopic(t.cfg.SubscribeTopic, t.cfg.PublishTopic, msg.Topic())
 		payload := string(msg.Payload())
 		zap.S().Debugw("mqtt command received",
 			"topic", msg.Topic(),
@@ -158,7 +158,7 @@ func (t *MQTTTransport) publish(payload string) error {
 	topic := t.respTopic
 	t.respMu.Unlock()
 	if topic == "" {
-		topic = t.cfg.ResponseTopic
+		topic = t.cfg.PublishTopic
 	}
 	zap.S().Debugw("mqtt publish", "topic", topic, "payload", truncate(payload, 200))
 	token := t.client.Publish(topic, 0, false, payload)
@@ -173,7 +173,7 @@ func (t *MQTTTransport) Close() error {
 		defer t.closeMu.Unlock()
 		if t.client != nil && t.connected.Load() {
 			t.connected.Store(false)
-			t.client.Unsubscribe(t.cfg.Topic)
+			t.client.Unsubscribe(t.cfg.SubscribeTopic)
 			t.client.Disconnect(250)
 		}
 		close(t.closeCh)

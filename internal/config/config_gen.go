@@ -108,16 +108,11 @@ transport:
   mqtt:
     enabled: false
     broker: tcp://localhost:1883
-    topic: dolphinnzZ/agent/command
-    response_topic: dolphinnzZ/agent/response
+    subscribe_topic: /agent/dolphin
+    publish_topic: /agent/dolphin/message
     client_id: dolphinnzZ-agent
-    embedded: true
-    embedded_addr: :1883
-    embedded_accounts:
-      - username: dolphinnzZ
-        password: ""          # auto-generated if empty; set manually to override
-    username: ""              # client credentials for broker connection
-    password: ""              # auto-populated from first embedded account if empty
+    username: ""              # MQTT client credentials for broker connection
+    password: ""
   email:
     enabled: false
     smtp_host: ""
@@ -129,6 +124,15 @@ transport:
     from: ""
     use_tls: true
     poll_interval: 10s
+
+# ── Servers ───────────────────────────────────────────────
+servers:
+  mqtt_broker:
+    enabled: true
+    addr: :1883
+    accounts:
+      - username: dolphinnzZ
+        password: ""          # auto-generated if empty; set manually to override
 
 # ── Crontab ───────────────────────────────────────────────
 crontab:
@@ -294,16 +298,11 @@ transport:
   mqtt:
     enabled: false
     broker: tcp://localhost:1883
-    topic: dolphinnzZ/agent/command
-    response_topic: dolphinnzZ/agent/response
+    subscribe_topic: /agent/dolphin
+    publish_topic: /agent/dolphin/message
     client_id: dolphinnzZ-agent
-    embedded: true
-    embedded_addr: :1883
-    embedded_accounts:
-      - username: dolphinnzZ
-        password: ""          # 为空则自动生成随机密码；手动设置则覆盖
-    username: ""              # 客户端连接 broker 的凭据
-    password: ""              # 为空则自动取第一个 embedded 账号
+    username: ""              # MQTT 客户端连接 broker 的凭据
+    password: ""
   email:
     enabled: false
     smtp_host: ""
@@ -315,6 +314,15 @@ transport:
     from: ""
     use_tls: true
     poll_interval: 10s
+
+# ── 服务器 ───────────────────────────────────────────────
+servers:
+  mqtt_broker:
+    enabled: true
+    addr: :1883
+    accounts:
+      - username: dolphinnzZ
+        password: ""          # 为空则自动生成随机密码；手动设置则覆盖
 
 # ── 定时任务 ──────────────────────────────────────────────
 crontab:

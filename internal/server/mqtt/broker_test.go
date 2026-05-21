@@ -1,4 +1,4 @@
-package transport
+package mqtt
 
 import (
 	"testing"
@@ -9,26 +9,31 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
-func testAccounts() []config.MQTTAccount {
-	return []config.MQTTAccount{{Username: "test", Password: "secret"}}
+func testBrokerCfg() config.MQTTBrokerConfig {
+	return config.MQTTBrokerConfig{
+		Enabled: true,
+		Addr:    ":19999",
+		Accounts: []config.MQTTAccount{
+			{Username: "test", Password: "secret"},
+		},
+	}
 }
 
-func TestNewEmbeddedBroker(t *testing.T) {
-	b := NewEmbeddedBroker(":9999", testAccounts())
+func TestNewBroker(t *testing.T) {
+	b := New(testBrokerCfg())
 	if b == nil {
-		t.Fatal("NewEmbeddedBroker returned nil")
-	}
-	if b.addr != ":9999" {
-		t.Errorf("addr = %q, want :9999", b.addr)
+		t.Fatal("New returned nil")
 	}
 	if b.server != nil {
 		t.Error("server should be nil before Start")
 	}
 }
 
-func TestEmbeddedBrokerStartClose(t *testing.T) {
-	b := NewEmbeddedBroker(":19999", testAccounts())
-	if err := b.Start(testAccounts()); err != nil {
+func TestBrokerStartClose(t *testing.T) {
+	cfg := testBrokerCfg()
+	cfg.Addr = ":19998"
+	b := New(cfg)
+	if err := b.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	if b.server == nil {
@@ -39,20 +44,22 @@ func TestEmbeddedBrokerStartClose(t *testing.T) {
 	}
 }
 
-func TestEmbeddedBrokerClientAddr(t *testing.T) {
+func TestBrokerClientAddr(t *testing.T) {
 	tests := []struct {
 		addr string
 		want string
 	}{
 		{":1883", "localhost:1883"},
-		{"0.0.0.0:1883", "0.0.0.0:1883"},
+		{"0.0.0.0:1883", "localhost:1883"},
 		{"127.0.0.1:1883", "127.0.0.1:1883"},
 		{"192.168.1.1:8888", "192.168.1.1:8888"},
 		{"", "localhost:1883"},
 		{"invalid", "localhost:1883"},
 	}
 	for _, tt := range tests {
-		b := NewEmbeddedBroker(tt.addr, testAccounts())
+		cfg := testBrokerCfg()
+		cfg.Addr = tt.addr
+		b := New(cfg)
 		got := b.ClientAddr()
 		if got != tt.want {
 			t.Errorf("ClientAddr(%q) = %q, want %q", tt.addr, got, tt.want)
@@ -60,9 +67,11 @@ func TestEmbeddedBrokerClientAddr(t *testing.T) {
 	}
 }
 
-func TestEmbeddedBrokerClientConnect(t *testing.T) {
-	b := NewEmbeddedBroker(":19998", testAccounts())
-	if err := b.Start(testAccounts()); err != nil {
+func TestBrokerClientConnect(t *testing.T) {
+	cfg := testBrokerCfg()
+	cfg.Addr = ":19997"
+	b := New(cfg)
+	if err := b.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer b.Close()
@@ -87,9 +96,11 @@ func TestEmbeddedBrokerClientConnect(t *testing.T) {
 	}
 }
 
-func TestEmbeddedBrokerClientConnectBadAuth(t *testing.T) {
-	b := NewEmbeddedBroker(":19996", testAccounts())
-	if err := b.Start(testAccounts()); err != nil {
+func TestBrokerClientConnectBadAuth(t *testing.T) {
+	cfg := testBrokerCfg()
+	cfg.Addr = ":19996"
+	b := New(cfg)
+	if err := b.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer b.Close()
@@ -109,9 +120,11 @@ func TestEmbeddedBrokerClientConnectBadAuth(t *testing.T) {
 	}
 }
 
-func TestEmbeddedBrokerPubSub(t *testing.T) {
-	b := NewEmbeddedBroker(":19997", testAccounts())
-	if err := b.Start(testAccounts()); err != nil {
+func TestBrokerPubSub(t *testing.T) {
+	cfg := testBrokerCfg()
+	cfg.Addr = ":19995"
+	b := New(cfg)
+	if err := b.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer b.Close()
@@ -129,7 +142,6 @@ func TestEmbeddedBrokerPubSub(t *testing.T) {
 		return o
 	}
 
-	// Give the server goroutine time to start accepting connections.
 	time.Sleep(100 * time.Millisecond)
 
 	sub := mqtt.NewClient(clientOpts("sub-client"))
