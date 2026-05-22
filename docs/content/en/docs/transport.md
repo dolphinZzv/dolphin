@@ -14,7 +14,7 @@ The default transport. Runs in your terminal.
 ./dolphin
 ```
 
-First run walks you through setting up your profile and recommended tools.
+First run prompts you to generate a config file and system prompt.
 
 ## SSH
 

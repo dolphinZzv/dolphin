@@ -107,7 +107,6 @@ Dolphin > 查看系统环境信息
 ```bash
 dolphin-ai --version      # 查看版本
 dolphin-ai init           # 初始化项目
-dolphin-ai setup          # 交互式设置向导
 dolphin-ai skills list    # 列出已安装技能
 dolphin-ai sessions list  # 列出会话历史
 ```

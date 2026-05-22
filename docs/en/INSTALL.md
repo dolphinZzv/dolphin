@@ -180,7 +180,7 @@ export DZ_LLM_MODEL="claude-opus-4-7"
 ./dolphin
 ```
 
-On the first run, dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file. Everything is stored locally.
+On the first run, dolphin will prompt you to generate a config file and a system prompt file.
 
 ## Updating
 

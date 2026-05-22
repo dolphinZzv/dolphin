@@ -70,13 +70,7 @@ export DZ_LLM_MODEL="deepseek-v4-flash"
 dolphin-ai
 ```
 
-On first run Dolphin starts a setup wizard:
-
-1. **Choose your role** — how Dolphin addresses you
-2. **Generate config** — optionally save a default `~/.dolphin/config.yaml`
-3. **Generate skills** — optionally save starter skill files
-
-Once setup completes, you'll see the prompt:
+On first run Dolphin prompts you to generate a configuration file and a system prompt file. Once done, you'll see the prompt:
 
 ```
 Dolphin >

@@ -23,7 +23,7 @@ export DZ_LLM_MODEL="gpt-4o"
 ./dolphin
 ```
 
-On the first run, Dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file. See the [Quick Start guide](docs/quickstart/) for other providers.
+On the first run, Dolphin will prompt you to generate a config file and a system prompt file. See the [Quick Start guide](docs/quickstart/) for other providers.
 
 ## Key Features
 
