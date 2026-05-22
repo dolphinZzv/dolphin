@@ -19,6 +19,7 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
+	"dolphin/internal/subsystem"
 
 	"github.com/rs/xid"
 	"go.uber.org/zap"
@@ -451,6 +452,14 @@ func (c *Coordinator) registerCoordinatorTools() {
 			c.handleConfig,
 		)
 	}
+	// Register subsystem tools
+	for _, td := range subsystem.ToolDefs() {
+		if td.SelfEvolution && !c.cfg.Flags.SelfEvolution {
+			continue
+		}
+		c.registerCoordTool(td.Name, td.Description, td.Schema, td.Handler)
+	}
+
 	c.registerCoordTool("load_mcp_tools",
 		"Load MCP tools by name so they become available for use as API-level tools. Use search_mcp_tools first to discover available tool names. Loaded tools will appear in the tool list starting from your next turn.",
 		map[string]any{

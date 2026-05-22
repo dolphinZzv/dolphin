@@ -127,6 +127,10 @@ skills:
   max_top: 10             # skills shown in LLM context
   repos: []               # manifest repos, e.g. ["dolphinv/skills"]
 
+# ── Workflows ───────────────────────────────
+workflows:
+  dir: .dolphin/workflows
+
 # ── Transports ────────────────────────────────────────────
 transport:
   stdio:

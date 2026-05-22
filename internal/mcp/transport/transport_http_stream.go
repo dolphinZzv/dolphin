@@ -38,7 +38,7 @@ func NewHTTPStream(name string, cfg config.MCPServerConfig, bus *event.EventBus)
 		name:    name,
 		baseURL: strings.TrimRight(cfg.URL, "/"),
 		client:  NewHTTPClient(cfg.Timeout),
-			bus: bus,
+		bus:     bus,
 	}, nil
 }
 

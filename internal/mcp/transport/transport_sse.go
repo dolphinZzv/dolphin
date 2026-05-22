@@ -126,7 +126,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 			}
 		}
 
-			scanner := bufio.NewScanner(resp.Body)
+		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		var eventType string
 		for scanner.Scan() {

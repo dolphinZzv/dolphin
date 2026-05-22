@@ -253,7 +253,10 @@ func TestJSONRPCParseError(t *testing.T) {
 	cfg := newTestA2AConfig()
 	_, baseURL := startTestTransport(t, cfg)
 
-	resp, _ := http.Post(baseURL+"/a2a", "application/json", bytes.NewReader([]byte(`not json`)))
+	resp, err := http.Post(baseURL+"/a2a", "application/json", bytes.NewReader([]byte(`not json`)))
+	if err != nil {
+		t.Fatalf("http post failed: %v", err)
+	}
 	defer resp.Body.Close()
 
 	var rpcResp jsonRPCResponse
@@ -268,7 +271,10 @@ func TestMethodNotFound(t *testing.T) {
 	_, baseURL := startTestTransport(t, cfg)
 
 	body := `{"jsonrpc":"2.0","id":1,"method":"bogus","params":{}}`
-	resp, _ := http.Post(baseURL+"/a2a", "application/json", strings.NewReader(body))
+	resp, err := http.Post(baseURL+"/a2a", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("http post failed: %v", err)
+	}
 	defer resp.Body.Close()
 
 	var rpcResp jsonRPCResponse

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"dolphin/internal/subsystem"
+
 	"go.uber.org/zap"
 )
 
@@ -21,6 +23,7 @@ const (
 	PriorityRules         = 6
 	PriorityUser          = 7
 	PrioritySystem        = 8
+	PrioritySubSystems    = 9
 )
 
 // section holds a single prompt section with its priority.
@@ -85,6 +88,12 @@ func (b *Builder) LoadSection(name string) string {
 	default:
 		return b.loadFileFallback("", name)
 	}
+}
+
+// LoadSubSystemMD returns aggregated context markdown from all registered
+// subsystems. Returns empty string if no subsystems have context to inject.
+func (b *Builder) LoadSubSystemMD() string {
+	return subsystem.ContextMD()
 }
 
 func NewBuilder() *Builder {
@@ -222,6 +231,14 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem), Size: len(content), Path: filepath.Join(b.userDir, "SYSTEM.md")})
 	}
 
+	// SubSystems (programmatic, from subsystem registry)
+	if md := b.LoadSubSystemMD(); md != "" {
+		secs = append(secs, section{
+			priority: b.sectionPriority("subsystems", PrioritySubSystems),
+			content:  md,
+		})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SUBSYSTEMS.md", Priority: b.sectionPriority("subsystems", PrioritySubSystems), Size: len(md)})
+	}
 	// Sort by priority ascending
 	sort.Slice(secs, func(i, j int) bool {
 		return secs[i].priority < secs[j].priority

@@ -633,6 +633,11 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		parts = append(parts, sb.String())
 	}
 
+	// SubSystems context
+	if md := c.ctxBuilder.LoadSubSystemMD(); md != "" {
+		parts = append(parts, md)
+	}
+
 	// Coordinator instructions
 	parts = append(parts, `## Coordinator Instructions
 You are a coordinator agent. Your job:

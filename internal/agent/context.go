@@ -3,6 +3,7 @@ package agent
 import (
 	"dolphin/internal/config"
 	ctx "dolphin/internal/context"
+	"dolphin/internal/subsystem"
 )
 
 // ContextBuilder builds the system prompt from context files.
@@ -41,4 +42,10 @@ func (b *ContextBuilder) LoadedSections() []ctx.SectionInfo {
 // LoadSection loads a single context section by filename (e.g. "SYSTEM.md").
 func (b *ContextBuilder) LoadSection(name string) string {
 	return b.b.LoadSection(name)
+}
+
+// LoadSubSystemMD returns aggregated context markdown from all registered subsystems.
+// Called by the coordinator to inject dynamic subsystem context into the prompt.
+func (b *ContextBuilder) LoadSubSystemMD() string {
+	return subsystem.ContextMD()
 }
