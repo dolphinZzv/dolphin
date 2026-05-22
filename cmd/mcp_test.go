@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"dolphin/internal/config"
 )
 
 // setupMCPTest creates an isolated test environment for MCP commands.
@@ -217,6 +220,128 @@ func TestMCPUninstall_NotFound(t *testing.T) {
 
 	cmd := NewMCPCmd()
 	cmd.SetArgs([]string{"uninstall", "not-exist"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-existent server")
+	}
+}
+
+// writeMCPServerManifest creates a local JSON manifest in dir so the repo
+// fetcher's local fallback can serve it during search/install tests.
+// The filename must match localManifestName(repoName), e.g. "org/mcp-repo" → "mcp-repo.json".
+func writeMCPServerManifest(t *testing.T, dir, filename string) {
+	t.Helper()
+	manifest := map[string]any{
+		"description": "Test MCP Servers",
+		"servers": []map[string]any{
+			{
+				"name":        "browser-preview",
+				"description": "Browser preview MCP server",
+				"command":     "npx",
+				"args":        []string{"-y", "@modelcontextprotocol/server-browser"},
+			},
+			{
+				"name":        "filesystem",
+				"description": "Filesystem MCP server",
+				"command":     "npx",
+				"args":        []string{"-y", "@modelcontextprotocol/server-filesystem"},
+			},
+		},
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, filename+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMCPSearch_Found(t *testing.T) {
+	_, dir := setupMCPTest(t, nil)
+	writeMCPServerManifest(t, dir, "mcp-repo")
+
+	cmd := NewMCPCmd()
+	cmd.SetArgs([]string{"search", "browser-preview"})
+
+	output := captureOutput(func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "browser-preview") {
+		t.Errorf("expected browser-preview in results, got: %s", output)
+	}
+}
+
+func TestMCPSearch_NoResults(t *testing.T) {
+	_, dir := setupMCPTest(t, nil)
+	writeMCPServerManifest(t, dir, "mcp-repo")
+
+	cmd := NewMCPCmd()
+	cmd.SetArgs([]string{"search", "nonexistent"})
+
+	output := captureOutput(func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "No MCP servers found") {
+		t.Errorf("expected no results message, got: %s", output)
+	}
+}
+
+func TestMCPInstall(t *testing.T) {
+	_, dir := setupMCPTest(t, nil)
+	writeMCPServerManifest(t, dir, "mcp-repo")
+
+	cmd := NewMCPCmd()
+	cmd.SetArgs([]string{"install", "browser-preview"})
+
+	output := captureOutput(func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "browser-preview") {
+		t.Errorf("expected success message, got: %s", output)
+	}
+
+	// Verify server was added to config
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.MCP.Servers["browser-preview"]; !ok {
+		t.Errorf("expected browser-preview in config after install, got servers: %v", cfg.MCP.Servers)
+	}
+}
+
+func TestMCPInstall_AlreadyInstalled(t *testing.T) {
+	_, dir := setupMCPTest(t, map[string]map[string]any{
+		"browser-preview": {"type": "stdio", "command": "npx"},
+	})
+	writeMCPServerManifest(t, dir, "mcp-repo")
+
+	cmd := NewMCPCmd()
+	cmd.SetArgs([]string{"install", "browser-preview"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for already installed server")
+	}
+}
+
+func TestMCPInstall_NotFound(t *testing.T) {
+	_, dir := setupMCPTest(t, nil)
+	writeMCPServerManifest(t, dir, "mcp-repo")
+
+	cmd := NewMCPCmd()
+	cmd.SetArgs([]string{"install", "not-exist"})
 
 	err := cmd.Execute()
 	if err == nil {
