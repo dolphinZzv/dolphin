@@ -206,7 +206,17 @@ mcp:
 
 ## 传输层 (`transport`)
 
-控制 agent 的通信方式：本地终端、SSH、MQTT 或邮件。
+控制 agent 的通信方式。每个传输层有独立的使用指南：
+
+| 传输层 | 指南 |
+|--------|------|
+| Stdio | [docs/zh/transport/stdio.md](transport/stdio.md) |
+| SSH | [docs/zh/transport/ssh.md](transport/ssh.md) |
+| MQTT | [docs/zh/transport/mqtt.md](transport/mqtt.md) |
+| Email | [docs/zh/transport/email.md](transport/email.md) |
+| DingTalk | [docs/zh/transport/dingtalk.md](transport/dingtalk.md) |
+| ACP (IBM BeeAI) | [docs/zh/transport/acp.md](transport/acp.md) |
+| A2A (Google) | [docs/zh/transport/a2a.md](transport/a2a.md) |
 
 ### Stdio (`transport.stdio`)
 
@@ -265,6 +275,25 @@ MQTT 消息传输。
 | `transport.email.use_tls` | `bool` | `true` | 启用 SMTP 和 IMAP 的 TLS 加密。 |
 | `transport.email.skip_tls_verify` | `bool` | `false` | 跳过 TLS 证书验证（用于自签名证书场景）。 |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP 收件箱轮询间隔（如 `"30s"`、`"5m"`）。 |
+
+### A2A (`transport.a2a`)
+
+Google Agent-to-Agent (A2A) 协议传输层 — 提供 JSON-RPC 2.0 HTTP 端点，供其他 A2A 兼容的 Agent 发现和调用 Dolphin。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `transport.a2a.enabled` | `bool` | `false` | 启用 A2A 传输层。 |
+| `transport.a2a.listen_addr` | `string` | `":8334"` | HTTP 监听地址。 |
+| `transport.a2a.agent_id` | `string` | `"dolphin"` | Agent 标识符（在 Agent Card 中暴露）。 |
+| `transport.a2a.agent_name` | `string` | `"Dolphin AI Agent"` | 可读的 Agent 名称。 |
+| `transport.a2a.agent_version` | `string` | `"0.1.0"` | Agent 版本号。 |
+| `transport.a2a.agent_description` | `string` | `""` | Agent 描述（在 Agent Card 中展示）。 |
+| `transport.a2a.capabilities` | `[]string` | `["task-execution","shell-command","web-search"]` | 能力声明（在 Agent Card 中展示）。 |
+| `transport.a2a.sync_timeout` | `string` | `"60s"` | 同步任务执行的最大等待时间。 |
+| `transport.a2a.api_key` | `string` | `""` | API 密钥，用于 `Authorization: Bearer` header 验证。空 = 不鉴权。 |
+| `transport.a2a.tls_enabled` | `bool` | `false` | 为 HTTP 监听器启用 TLS。 |
+| `transport.a2a.tls_cert_file` | `string` | `""` | TLS 证书文件路径（PEM 格式）。 |
+| `transport.a2a.tls_key_file` | `string` | `""` | TLS 私钥文件路径（PEM 格式）。 |
 
 ---
 
@@ -337,6 +366,9 @@ plugins:
 |------|------|--------|------|
 | `log_level` | `string` | `"info"` | 日志级别。可选：`"debug"`、`"info"`、`"warn"`、`"error"`、`"dpanic"`、`"panic"`、`"fatal"`。环境变量：`DZ_LOG_LEVEL`。 |
 | `log_file` | `string` | `".dolphin/logs/agent.log"` | 日志文件路径。环境变量：`DZ_LOG_FILE`。 |
+| `log_max_size` | `int` | `100` | 单日志文件大小上限，超过后自动滚动（单位 MB）。 |
+| `log_max_age` | `int` | `30` | 旧日志文件保留天数。 |
+| `log_max_backup` | `int` | `3` | 保留的旧日志文件最大数量。 |
 
 ---
 

@@ -200,7 +200,17 @@ Manages skill files that teach the agent new capabilities.
 
 ## Transports (`transport`)
 
-Controls how the agent communicates: local terminal, SSH, MQTT, or email.
+Controls how the agent communicates. Each transport has a dedicated usage guide:
+
+| Transport | Guide |
+|-----------|-------|
+| Stdio | [docs/en/transport/stdio.md](transport/stdio.md) |
+| SSH | [docs/en/transport/ssh.md](transport/ssh.md) |
+| MQTT | [docs/en/transport/mqtt.md](transport/mqtt.md) |
+| Email | [docs/en/transport/email.md](transport/email.md) |
+| DingTalk | [docs/en/transport/dingtalk.md](transport/dingtalk.md) |
+| ACP (IBM BeeAI) | [docs/en/transport/acp.md](transport/acp.md) |
+| A2A (Google) | [docs/en/transport/a2a.md](transport/a2a.md) |
 
 ### Stdio (`transport.stdio`)
 
@@ -259,6 +269,25 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 | `transport.email.use_tls` | `bool` | `true` | Enable TLS for SMTP and IMAP. |
 | `transport.email.skip_tls_verify` | `bool` | `false` | Skip TLS certificate verification (for self-signed certificates). |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP inbox poll interval (e.g. `"30s"`, `"5m"`). |
+
+### A2A (`transport.a2a`)
+
+Google Agent-to-Agent (A2A) protocol transport — exposes a JSON-RPC 2.0 endpoint for other A2A-compatible agents to discover and invoke Dolphin.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `transport.a2a.enabled` | `bool` | `false` | Enable A2A transport. |
+| `transport.a2a.listen_addr` | `string` | `":8334"` | HTTP listen address. |
+| `transport.a2a.agent_id` | `string` | `"dolphin"` | Agent identifier exposed in Agent Card. |
+| `transport.a2a.agent_name` | `string` | `"Dolphin AI Agent"` | Human-readable agent name. |
+| `transport.a2a.agent_version` | `string` | `"0.1.0"` | Agent version string. |
+| `transport.a2a.agent_description` | `string` | `""` | Agent description in Agent Card. |
+| `transport.a2a.capabilities` | `[]string` | `["task-execution","shell-command","web-search"]` | Capability declarations in Agent Card. |
+| `transport.a2a.sync_timeout` | `string` | `"60s"` | Max wait time for synchronous task execution. |
+| `transport.a2a.api_key` | `string` | `""` | API key for `Authorization: Bearer` header validation. Empty = no auth. |
+| `transport.a2a.tls_enabled` | `bool` | `false` | Enable TLS for the HTTP listener. |
+| `transport.a2a.tls_cert_file` | `string` | `""` | TLS certificate file path (PEM). |
+| `transport.a2a.tls_key_file` | `string` | `""` | TLS private key file path (PEM). |
 
 ---
 
@@ -331,6 +360,9 @@ plugins:
 |-------|------|---------|-------------|
 | `log_level` | `string` | `"info"` | Log level. One of: `"debug"`, `"info"`, `"warn"`, `"error"`, `"dpanic"`, `"panic"`, `"fatal"`. Env: `DZ_LOG_LEVEL`. |
 | `log_file` | `string` | `".dolphin/logs/agent.log"` | Log file path. Env: `DZ_LOG_FILE`. |
+| `log_max_size` | `int` | `100` | Max log file size in MB before rotation. |
+| `log_max_age` | `int` | `30` | Days to retain old log files. |
+| `log_max_backup` | `int` | `3` | Max old log files to keep. |
 
 ---
 

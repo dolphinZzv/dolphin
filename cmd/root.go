@@ -401,9 +401,9 @@ func setupLogging(cfg *config.Config) {
 	logger.Init(logger.Config{
 		Level:     cfg.LogLevel,
 		File:      cfg.LogFile,
-		MaxSize:   100,
-		MaxAge:    30,
-		MaxBackup: 3,
+		MaxSize:   cfg.LogMaxSize,
+		MaxAge:    cfg.LogMaxAge,
+		MaxBackup: cfg.LogMaxBack,
 	})
 }
 

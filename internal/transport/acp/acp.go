@@ -129,6 +129,9 @@ type ACPTransport struct {
 }
 
 func New(cfg *config.Config) (transport.Transport, error) {
+	if cfg.Transport.ACP.APIKey == "" {
+		zap.S().Warnw("acp transport: api_key is empty, authentication is disabled")
+	}
 	return &ACPTransport{
 		cfg:     &cfg.Transport.ACP,
 		msgCh:   make(chan *acpTask, 4096),

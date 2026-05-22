@@ -45,6 +45,9 @@ type Config struct {
 	Update     UpdateConfig    `mapstructure:"update"`
 	LogLevel   string          `mapstructure:"log_level"`
 	LogFile    string          `mapstructure:"log_file"`
+	LogMaxSize int             `mapstructure:"log_max_size"`
+	LogMaxAge  int             `mapstructure:"log_max_age"`
+	LogMaxBack int             `mapstructure:"log_max_backup"`
 	Plugins    PluginsConfig   `mapstructure:"plugins"`
 	Flags      FlagsConfig     `mapstructure:"flags"`
 	Resource   ResourceConfig  `mapstructure:"resource"`
@@ -1061,6 +1064,9 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_file", ".dolphin/logs/agent.log")
+	v.SetDefault("log_max_size", 100)
+	v.SetDefault("log_max_age", 30)
+	v.SetDefault("log_max_backup", 3)
 
 	v.SetDefault("plugins.enabled", true)
 	v.SetDefault("plugins.dir", "~/.dolphin/plugins/")

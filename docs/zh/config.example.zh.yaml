@@ -113,6 +113,16 @@ transport:
     from: ""
     use_tls: true
     poll_interval: 10s
+  a2a:
+    enabled: false
+    listen_addr: ":8334"      # A2A JSON-RPC 2.0 端点
+    agent_id: dolphin
+    agent_name: "Dolphin AI Agent"
+    agent_version: "0.1.0"
+    agent_description: "跨终端/邮件/聊天/SSH AI agent"
+    sync_timeout: 60s
+    api_key: ""               # 通过配置文件或环境变量设置；空 = 不鉴权
+    tls_enabled: false
 
 # ── 定时任务 ──────────────────────────────────────────────
 crontab:
@@ -195,6 +205,9 @@ plugins:
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log
+log_max_size: 100        # 单文件大小，超过后滚动（单位 MB）
+log_max_age: 30          # 旧日志保留天数
+log_max_backup: 3        # 保留的旧日志文件数
 
 pprof:
   enabled: false

@@ -157,6 +157,9 @@ type A2ATransport struct {
 }
 
 func New(cfg *config.Config) (transport.Transport, error) {
+	if cfg.Transport.A2A.APIKey == "" {
+		zap.S().Warnw("a2a transport: api_key is empty, authentication is disabled")
+	}
 	return &A2ATransport{
 		cfg:     &cfg.Transport.A2A,
 		msgCh:   make(chan *a2aTask, 4096),

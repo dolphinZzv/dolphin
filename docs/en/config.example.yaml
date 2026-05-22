@@ -116,6 +116,16 @@ transport:
     from: ""
     use_tls: true
     poll_interval: 10s
+  a2a:
+    enabled: false
+    listen_addr: ":8334"      # A2A JSON-RPC 2.0 endpoint
+    agent_id: dolphin
+    agent_name: "Dolphin AI Agent"
+    agent_version: "0.1.0"
+    agent_description: "Cross-terminal/email/chat/SSH AI agent"
+    sync_timeout: 60s
+    api_key: ""               # set via config or env; empty = no auth
+    tls_enabled: false
 
 # ── Crontab ───────────────────────────────────────────────
 crontab:
@@ -199,6 +209,9 @@ plugins:
 # ── Observability ─────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log
+log_max_size: 100        # MB before rotation
+log_max_age: 30          # days to retain old logs
+log_max_backup: 3        # max old log files to keep
 
 pprof:
   enabled: false
