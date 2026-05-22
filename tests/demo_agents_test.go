@@ -28,7 +28,7 @@ func TestAgentManifestE2E(t *testing.T) {
 		}()
 
 		// Copy demo_agents.json to project root for local fallback
-		srcData, err := os.ReadFile(filepath.Join("..", "demo_agents.json"))
+		srcData, err := os.ReadFile(filepath.Join("testdata", "demo_agents.json"))
 		convey.So(err, convey.ShouldBeNil)
 		err = os.WriteFile(filepath.Join(tmpProject, "demo_agents.json"), srcData, 0600)
 		convey.So(err, convey.ShouldBeNil)
@@ -158,7 +158,7 @@ func TestDemoAgentsSearchCLI(t *testing.T) {
 		}()
 
 		// Copy demo_agents.json for local fallback
-		srcData, _ := os.ReadFile(filepath.Join("..", "demo_agents.json"))
+		srcData, _ := os.ReadFile(filepath.Join("testdata", "demo_agents.json"))
 		os.WriteFile(filepath.Join(tmpProject, "demo_agents.json"), srcData, 0600)
 
 		fetcher := config.NewRepoFetcher(t.TempDir())
