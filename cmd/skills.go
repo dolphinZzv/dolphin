@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -230,45 +232,137 @@ func runSkillsSearch(cmd *cobra.Command, args []string) error {
 }
 
 func runSkillsInstall(cmd *cobra.Command, args []string) error {
-	_, mgr, err := loadSkillsCmdConfig()
+	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	name := args[0]
-	description := name
+
+	// Use project skills dir as install target
+	installDir := cfg.Skills.Dir
+	mgr := skill.NewManager(installDir)
+	if err := mgr.Load(); err != nil {
+		return fmt.Errorf("load skills: %w", err)
+	}
+
+	// Check if already installed
+	if _, ok := mgr.Get(name); ok {
+		return fmt.Errorf("skill %q is already installed", name)
+	}
+	// Check if disabled
+	if _, err := os.Stat(filepath.Join(installDir, name+".disabled")); err == nil {
+		return fmt.Errorf("skill %q is installed but disabled. Use 'dolphin skills enable %s' to restore it", name, name)
+	}
+
+	// Determine repos
+	repos := cfg.Skills.Repos
+	if len(repos) == 0 {
+		repos = []string{"https://raw.githubusercontent.com/dolphinZzv/dolphin/main/skills.json"}
+	}
+
+	// Fetch skills manifest from repos
+	homeDir, err := os.UserHomeDir()
+	cacheDir := ""
+	if err == nil {
+		cacheDir = filepath.Join(homeDir, config.UserConfigDir, "cache")
+	}
+	fetcher := config.NewRepoFetcher(cacheDir)
+	if ex, err := os.Executable(); err == nil {
+		fetcher.SetLocalDir(filepath.Dir(ex))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var found *config.ToolEntry
+	for _, repo := range repos {
+		m, err := fetcher.FetchSkillsManifest(ctx, repo)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[skills] fetch %s: %v\n", repo, err)
+			continue
+		}
+		for _, t := range m.Tools {
+			if t.Name == name {
+				found = &t
+				break
+			}
+		}
+		if found != nil {
+			break
+		}
+	}
+
+	if found == nil {
+		return fmt.Errorf("skill %q not found in any configured repo", name)
+	}
+
+	description := found.Description
 	if len(args) > 1 {
 		description = args[1]
 	}
 
-	if err := mgr.NewTemplate(name, description); err != nil {
+	// Download skill content from URL, or use description as fallback
+	var content string
+	if found.URL != "" {
+		content, err = downloadSkillContent(found.URL)
+		if err != nil {
+			return fmt.Errorf("download skill content: %w", err)
+		}
+	} else {
+		content = fmt.Sprintf("# %s\n\n%s\n", name, description)
+	}
+
+	if err := mgr.Register(name, description, content); err != nil {
 		return fmt.Errorf("install skill: %w", err)
 	}
 
-	zap.S().Infow("installed skill", "name", name, "dir", mgr.Dir())
-	fmt.Printf(i18n.TL(i18n.KeySkillsCLIInstalled)+"\n", name, mgr.Dir())
+	zap.S().Infow("installed skill", "name", name, "dir", installDir)
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLIInstalled)+"\n", name, installDir)
 	fmt.Println(i18n.TL(i18n.KeySkillsCLIEdit))
 	return nil
 }
 
-func runSkillsNew(cmd *cobra.Command, args []string) error {
-	_, mgr, err := loadSkillsCmdConfig()
+func downloadSkillContent(url string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("download %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download %s: HTTP %d", url, resp.StatusCode)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	return string(data), nil
+}
+
+func runSkillsNew(cmd *cobra.Command, args []string) error {
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	name := args[0]
 	description := name
 	if len(args) > 1 {
 		description = args[1]
+	}
+
+	mgr := skill.NewManager(cfg.Skills.Dir)
+	if err := mgr.Load(); err != nil {
+		return fmt.Errorf("load skills: %w", err)
 	}
 
 	if err := mgr.NewTemplate(name, description); err != nil {
 		return fmt.Errorf("create skill: %w", err)
 	}
 
-	zap.S().Infow("created skill", "name", name, "dir", mgr.Dir())
-	fmt.Printf(i18n.TL(i18n.KeySkillsCLICreated)+"\n", name, mgr.Dir())
+	zap.S().Infow("created skill", "name", name, "dir", cfg.Skills.Dir)
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLICreated)+"\n", name, cfg.Skills.Dir)
 	fmt.Println(i18n.TL(i18n.KeySkillsCLIEdit))
 	return nil
 }

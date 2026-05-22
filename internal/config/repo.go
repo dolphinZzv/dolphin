@@ -105,8 +105,9 @@ func (f *RepoFetcher) SetLocalDir(dir string) {
 	f.localDir = dir
 }
 
-// FetchManifest fetches the manifest.json for a single repo.
+// FetchManifest fetches the manifest for a single repo.
 // Repo name format: "owner/repo" (e.g. "dolphinv/skills") or full URL.
+// Supports both {"tools": [...]} and {"servers": [...]} JSON formats.
 func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*ToolManifest, error) {
 	// Check cache first
 	if m, ok := f.cacheHit(repoName); ok {
@@ -137,20 +138,64 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 		return nil, fmt.Errorf("fetch %s: HTTP %d", url, resp.StatusCode)
 	}
 
-	var m ToolManifest
-	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	m, err := parseToolsOrServersManifest(data, repoName)
+	if err != nil {
 		if m, ok := f.tryLocalFallback(repoName); ok && !isFullURL(repoName) {
 			return m, nil
 		}
 		return nil, fmt.Errorf("parse manifest from %s: %w", repoName, err)
 	}
 
-	if m.Name == "" {
-		m.Name = repoName
+	f.writeCache(repoName, m)
+	return m, nil
+}
+
+// parseToolsOrServersManifest attempts to parse data as either a tools-format
+// or servers-format (mcp.json) manifest.
+func parseToolsOrServersManifest(data []byte, repoName string) (*ToolManifest, error) {
+	// Try tools format first
+	var m ToolManifest
+	if err := json.Unmarshal(data, &m); err == nil && len(m.Tools) > 0 {
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		return &m, nil
 	}
 
-	f.writeCache(repoName, &m)
-	return &m, nil
+	// Try servers format (mcp.json variant)
+	var srvManifest struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Servers     []struct {
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Command     string   `json:"command"`
+			Args        []string `json:"args"`
+		} `json:"servers"`
+	}
+	if err := json.Unmarshal(data, &srvManifest); err == nil && len(srvManifest.Servers) > 0 {
+		m.Name = srvManifest.Name
+		m.Description = srvManifest.Description
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		for _, s := range srvManifest.Servers {
+			m.Tools = append(m.Tools, ToolEntry{
+				Name:        s.Name,
+				Description: s.Description,
+				Command:     s.Command,
+				Args:        s.Args,
+			})
+		}
+		return &m, nil
+	}
+
+	return nil, fmt.Errorf("unsupported format: no tools or servers found")
 }
 
 // FetchAll fetches manifests from multiple repos in parallel.

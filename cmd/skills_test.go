@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -87,6 +88,30 @@ func captureOutput(f func()) string {
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 	return buf.String()
+}
+
+// writeTestSkillsManifest creates a local skills.json in the temp dir so the
+// repo fetcher's local fallback can find it during install tests.
+func writeTestSkillsManifest(t *testing.T, dir string, skills map[string]string) {
+	t.Helper()
+	var entries []map[string]string
+	for name, desc := range skills {
+		entries = append(entries, map[string]string{
+			"name":        name,
+			"description": desc,
+			"url":         "",
+		})
+	}
+	manifest := map[string]any{"skills": entries}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Place in the temp dir — setupSkillsTest chdir'd there, so trySkillsLocalFallback
+	// will find it while walking up from CWD.
+	if err := os.WriteFile(filepath.Join(dir, "skills.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSkillsList_Empty(t *testing.T) {
@@ -177,8 +202,11 @@ func TestSkillsSearch_NoResults(t *testing.T) {
 
 func TestSkillsInstall(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
-	os.MkdirAll(userSkillsDir, 0o700)
+	writeTestSkillsManifest(t, dir, map[string]string{
+		"my-new-skill": "A brand new skill",
+	})
+	projectSkillsDir := filepath.Join(dir, "skills")
+	os.MkdirAll(projectSkillsDir, 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "my-new-skill", "A brand new skill"})
@@ -193,8 +221,8 @@ func TestSkillsInstall(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
-	skillPath := filepath.Join(userSkillsDir, "my-new-skill", "SKILL.md")
+	// File is created in the project skills dir (cfg.Skills.Dir), not user home.
+	skillPath := filepath.Join(projectSkillsDir, "my-new-skill", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	} else {
@@ -210,8 +238,11 @@ func TestSkillsInstall(t *testing.T) {
 
 func TestSkillsInstall_DefaultDescription(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
-	os.MkdirAll(userSkillsDir, 0o700)
+	writeTestSkillsManifest(t, dir, map[string]string{
+		"no-desc": "no-desc",
+	})
+	projectSkillsDir := filepath.Join(dir, "skills")
+	os.MkdirAll(projectSkillsDir, 0o700)
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "no-desc"})
@@ -226,8 +257,8 @@ func TestSkillsInstall_DefaultDescription(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
-	skillPath := filepath.Join(userSkillsDir, "no-desc", "SKILL.md")
+	// File is created in the project skills dir (cfg.Skills.Dir).
+	skillPath := filepath.Join(projectSkillsDir, "no-desc", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}
@@ -235,7 +266,10 @@ func TestSkillsInstall_DefaultDescription(t *testing.T) {
 
 func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 	_, dir := setupSkillsTest(t)
-	// No skills dir at all — install should create it in user skills dir.
+	writeTestSkillsManifest(t, dir, map[string]string{
+		"auto-create": "Testing",
+	})
+	// No skills dir at all — install should auto-create it in cfg.Skills.Dir.
 
 	cmd := NewSkillsCmd()
 	cmd.SetArgs([]string{"install", "auto-create", "Testing"})
@@ -250,8 +284,8 @@ func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 		t.Errorf("expected success message, got: %s", output)
 	}
 
-	// File is created in user-skills dir (~/.dolphin/skills) which gets auto-created.
-	skillPath := filepath.Join(dir, ".dolphin", "skills", "auto-create", "SKILL.md")
+	// File is created in project skills dir (cfg.Skills.Dir = dir/skills), auto-created.
+	skillPath := filepath.Join(dir, "skills", "auto-create", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}

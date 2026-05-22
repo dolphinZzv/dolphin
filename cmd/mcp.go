@@ -120,8 +120,13 @@ func runMCPSearch(cmd *cobra.Command, args []string) error {
 
 	var results []mcpResult
 
-	// Fetch remote repos and search their manifests
-	if len(cfg.MCP.Repos) > 0 {
+	// Determine repos: prefer configured, fall back to default
+	repos := cfg.MCP.Repos
+	if len(repos) == 0 {
+		repos = []string{"https://raw.githubusercontent.com/dolphinZzv/dolphin/main/mcp.json"}
+	}
+
+	if len(repos) > 0 {
 		homeDir, err := os.UserHomeDir()
 		cacheDir := ""
 		if err == nil {
@@ -133,7 +138,7 @@ func runMCPSearch(cmd *cobra.Command, args []string) error {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		manifests := fetcher.FetchAll(ctx, cfg.MCP.Repos)
+		manifests := fetcher.FetchAll(ctx, repos)
 		cancel()
 
 		seen := make(map[string]bool)
@@ -193,9 +198,9 @@ func runMCPInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("mcp server %q already installed", name)
 	}
 
-	// Fetch repos to find the server manifest
-	if len(cfg.MCP.Repos) == 0 {
-		return fmt.Errorf("no MCP repos configured — add repos to mcp.repos in config.yaml")
+	repos := cfg.MCP.Repos
+	if len(repos) == 0 {
+		repos = []string{"https://raw.githubusercontent.com/dolphinZzv/dolphin/main/mcp.json"}
 	}
 
 	homeDir, err := os.UserHomeDir()
@@ -209,7 +214,7 @@ func runMCPInstall(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	manifests := fetcher.FetchAll(ctx, cfg.MCP.Repos)
+	manifests := fetcher.FetchAll(ctx, repos)
 	cancel()
 
 	var found *config.ToolEntry
