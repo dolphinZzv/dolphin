@@ -425,6 +425,21 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			}
 		}
 
+		// Surface pending cron task results to the user
+		if c.cronMgr != nil {
+			cronResults := c.cronMgr.PendingResults()
+			for _, cr := range cronResults {
+				if cr.Success {
+					io.WriteLine(fmt.Sprintf("[⏰ %s] %s", cr.TaskName, truncateString(cr.Output, 500)))
+				} else {
+					io.WriteLine(fmt.Sprintf("[⏰ %s] failed: %s", cr.TaskName, cr.Error))
+				}
+			}
+			if len(cronResults) > 0 {
+				io.WriteLine("")
+			}
+		}
+
 		// Bound pending slice to prevent unbounded growth (P0#1)
 		maxResults := c.agent.cfg.Pool.MaxPendingResults
 		if maxResults <= 0 {
@@ -493,11 +508,6 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 	// Phase 1: Non-blocking drain — catch results completed during runTurn.
 	c.drainAndSynthesize(ctx, state, io, false)
 
-	// Yield to give pool worker goroutines a chance to start processing
-	// freshly dispatched tasks. Without this, the coordinator can check
-	// for busy agents before the worker has set status to "busy".
-	runtime.Gosched()
-
 	// Check if any agents are still busy
 	agents := c.pool.List()
 	if len(agents) == 0 {
@@ -550,11 +560,12 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 			break
 		}
 
-		// Poll interval
-		select {
-		case <-time.After(pollInterval):
-		case <-ctx.Done():
+		results := c.pool.results.waitForResult(pollInterval)
+		if ctx.Err() != nil {
 			return
+		}
+		if len(results) > 0 {
+			c.pending = append(c.pending, results...)
 		}
 
 		if c.drainAndSynthesize(ctx, state, io, false) {
@@ -680,6 +691,26 @@ func (c *Coordinator) buildDynamicPrompt() string {
 	// SubSystems context
 	if md := subsystem.ContextMD(); md != "" {
 		parts = append(parts, md)
+	}
+
+	// Agent messages (non-empty mailboxes in the pool)
+	if c.pool != nil {
+		agents := c.pool.List()
+		var msgLines []string
+		for _, a := range agents {
+			msgs := c.pool.ReadMessages(a.Name)
+			for _, m := range msgs {
+				msgLines = append(msgLines, fmt.Sprintf("- from %s to %s [%s]: %s", m.From, m.To, m.Subject, m.Body))
+			}
+		}
+		if len(msgLines) > 0 {
+			var sb strings.Builder
+			sb.WriteString("\n## Incoming Messages\n")
+			for _, line := range msgLines {
+				sb.WriteString(line + "\n")
+			}
+			parts = append(parts, sb.String())
+		}
 	}
 
 	// Coordinator instructions

@@ -32,9 +32,10 @@ func (c *Coordinator) registerCoordinatorTools() {
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"agent":   map[string]any{"type": "string", "description": "Target agent name"},
-				"task":    map[string]any{"type": "string", "description": "Detailed task description"},
-				"timeout": map[string]any{"type": "integer", "description": "Timeout in seconds (optional)"},
+				"agent":    map[string]any{"type": "string", "description": "Target agent name"},
+				"task":     map[string]any{"type": "string", "description": "Detailed task description"},
+				"timeout":  map[string]any{"type": "integer", "description": "Timeout in seconds (optional)"},
+				"priority": map[string]any{"type": "integer", "description": "Priority: 0=low, 1=normal, 2=high, 3=critical (optional)"},
 			},
 			"required": []string{"agent", "task"},
 		},
@@ -45,11 +46,13 @@ func (c *Coordinator) registerCoordinatorTools() {
 		map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"name":    map[string]any{"type": "string", "description": "Agent name"},
-				"role":    map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
-				"tools":   map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
-				"model":   map[string]any{"type": "string", "description": "Model override (optional)"},
-				"timeout": map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
+				"name":     map[string]any{"type": "string", "description": "Agent name"},
+				"role":     map[string]any{"type": "string", "description": "Role description for the agent's system prompt"},
+				"tools":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Tool allowlist (default: all)"},
+				"model":    map[string]any{"type": "string", "description": "Model override (optional)"},
+				"timeout":  map[string]any{"type": "integer", "description": "Task timeout in seconds (optional)"},
+				"priority": map[string]any{"type": "integer", "description": "Priority: 0=low, 1=normal, 2=high, 3=critical (optional)"},
+				"group":    map[string]any{"type": "string", "description": "Concurrency group name, e.g. research, coding (optional)"},
 			},
 			"required": []string{"name", "role"},
 		},
@@ -86,6 +89,19 @@ func (c *Coordinator) registerCoordinatorTools() {
 			"required": []string{"name"},
 		},
 		c.handleDeleteAgent,
+	)
+	c.registerCoordTool("agent_send_message",
+		"Send a message to another agent. The recipient will see it in their next task context.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"to":      map[string]any{"type": "string", "description": "Target agent name"},
+				"subject": map[string]any{"type": "string", "description": "Message subject/label"},
+				"body":    map[string]any{"type": "string", "description": "Message content"},
+			},
+			"required": []string{"to", "body"},
+		},
+		c.handleSendMessage,
 	)
 	c.registerCoordTool("search_mcp_tools",
 		"Search available MCP tools by name or description. Use this when you need a tool not in your current tool list.",
@@ -494,18 +510,25 @@ func (c *Coordinator) registerCoordTool(name, description string, schema map[str
 
 func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
-		Agent   string `json:"agent"`
-		Task    string `json:"task"`
-		Timeout int    `json:"timeout,omitempty"`
+		Agent    string   `json:"agent"`
+		Task     string   `json:"task"`
+		Timeout  int      `json:"timeout,omitempty"`
+		Priority Priority `json:"priority,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
+	pri := params.Priority
+	if pri < PriLow || pri > PriCritical {
+		pri = PriNormal
+	}
+
 	task := Task{
-		ID:      xid.New().String(),
-		Input:   params.Task,
-		Timeout: params.Timeout,
+		ID:       xid.New().String(),
+		Input:    params.Task,
+		Timeout:  params.Timeout,
+		Priority: pri,
 	}
 
 	if err := c.pool.Dispatch(params.Agent, task); err != nil {
@@ -530,11 +553,13 @@ func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMess
 
 func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
-		Name    string   `json:"name"`
-		Role    string   `json:"role"`
-		Tools   []string `json:"tools,omitempty"`
-		Model   string   `json:"model,omitempty"`
-		Timeout int      `json:"timeout,omitempty"`
+		Name     string   `json:"name"`
+		Role     string   `json:"role"`
+		Tools    []string `json:"tools,omitempty"`
+		Model    string   `json:"model,omitempty"`
+		Timeout  int      `json:"timeout,omitempty"`
+		Priority int      `json:"priority,omitempty"`
+		Group    string   `json:"group,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
@@ -562,6 +587,7 @@ func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage
 		Model:     params.Model,
 		Workspace: workspace,
 		Timeout:   timeout,
+		Group:     params.Group,
 	}
 
 	c.pool.Add(params.Name, def, AgentCoord, c.agent, c.agent.toolReg)
@@ -1800,4 +1826,25 @@ func coordHTTPTimeout(cfg *config.Config) time.Duration {
 		return time.Duration(cfg.Update.TimeoutSeconds) * time.Second
 	}
 	return 30 * time.Second
+}
+
+func (c *Coordinator) handleSendMessage(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		To      string `json:"to"`
+		Subject string `json:"subject,omitempty"`
+		Body    string `json:"body"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.To == "" {
+		return &mcp.ToolResult{Content: "target agent name is required", IsError: true}, nil
+	}
+	if params.Body == "" {
+		return &mcp.ToolResult{Content: "message body is required", IsError: true}, nil
+	}
+	if err := c.pool.SendMessage("coordinator", params.To, params.Subject, params.Body); err != nil {
+		return &mcp.ToolResult{Content: "send failed: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	return &mcp.ToolResult{Content: "Message sent to " + params.To}, nil
 }

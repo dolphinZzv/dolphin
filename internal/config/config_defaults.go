@@ -139,6 +139,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("agent_pool.poll_interval", "200ms")
 	v.SetDefault("agent_pool.min_reap_interval", "5s")
 	v.SetDefault("agent_pool.max_reap_interval", "30s")
+	v.SetDefault("agent_pool.dispatch_timeout", "5s")
+	v.SetDefault("agent_pool.worker_stop_timeout", "5s")
+	v.SetDefault("agent_pool.max_stale_duration", "1h")
+	v.SetDefault("agent_pool.enable_agent_log", false)
 
 	v.SetDefault("skills.dir", ".dolphin/skills")
 	v.SetDefault("skills.max_top", 10)

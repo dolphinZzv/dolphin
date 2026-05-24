@@ -378,6 +378,10 @@ type PoolConfig struct {
 	PollInterval        string `mapstructure:"poll_interval"`          // sub-agent ready poll interval, e.g. "200ms"; empty = default 200ms
 	MinReapInterval     string `mapstructure:"min_reap_interval"`      // idle reap minimum interval, e.g. "5s"; empty = default 5s
 	MaxReapInterval     string `mapstructure:"max_reap_interval"`      // idle reap maximum interval, e.g. "30s"; empty = default 30s
+	DispatchTimeout     string `mapstructure:"dispatch_timeout"`       // blocking dispatch fallback timeout, e.g. "5s"; empty = no blocking
+	WorkerStopTimeout   string `mapstructure:"worker_stop_timeout"`    // worker shutdown grace period, e.g. "5s"; empty = default 5s
+	MaxStaleDuration    string `mapstructure:"max_stale_duration"`     // max age for error agents before workspace cleanup, e.g. "1h"; empty = default 1h
+	EnableAgentLog      bool   `mapstructure:"enable_agent_log"`       // write agent execution log to workspace/agent.log
 }
 
 type SkillsConfig struct {

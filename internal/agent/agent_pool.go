@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +22,120 @@ import (
 	"go.uber.org/zap"
 )
 
+// priorityTask wraps a Task with its priority for the heap.
+type priorityTask struct {
+	task     Task
+	priority Priority
+	index    int // index in the heap (maintained by heap.Interface)
+}
+
+// priorityQueue implements heap.Interface. Higher priority tasks are popped first.
+type priorityQueue []*priorityTask
+
+func (pq priorityQueue) Len() int { return len(pq) }
+
+func (pq priorityQueue) Less(i, j int) bool {
+	return pq[i].priority > pq[j].priority // higher priority first
+}
+
+func (pq priorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *priorityQueue) Push(x any) {
+	n := len(*pq)
+	item := x.(*priorityTask)
+	item.index = n
+	*pq = append(*pq, item)
+}
+
+func (pq *priorityQueue) Pop() any {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = -1
+	*pq = old[0 : n-1]
+	return item
+}
+
+// resultQueue is a thread-safe, unbounded queue for TaskResult backed by a slice.
+// It uses sync.Cond for event-driven notification so waiters can block efficiently.
+type resultQueue struct {
+	mu     sync.Mutex
+	cond   *sync.Cond
+	items  []TaskResult
+	closed bool
+}
+
+func newResultQueue() *resultQueue {
+	q := &resultQueue{}
+	q.cond = sync.NewCond(&q.mu)
+	return q
+}
+
+// push adds a result. Returns false if queue is closed or exceeds hard cap (10000).
+func (q *resultQueue) push(item TaskResult) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closed {
+		return false
+	}
+	if len(q.items) >= 10000 {
+		return false
+	}
+	q.items = append(q.items, item)
+	q.cond.Signal()
+	return true
+}
+
+// popAll drains all available results (non-blocking).
+func (q *resultQueue) popAll() []TaskResult {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) == 0 {
+		return nil
+	}
+	items := q.items
+	q.items = nil
+	return items
+}
+
+// waitForResult blocks until results are available or timeout expires.
+// Returns all accumulated items (may be empty on timeout).
+func (q *resultQueue) waitForResult(timeout time.Duration) []TaskResult {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if len(q.items) == 0 && !q.closed {
+		go func() {
+			time.Sleep(timeout)
+			q.cond.Broadcast()
+		}()
+		q.cond.Wait()
+	}
+
+	items := q.items
+	q.items = nil
+	return items
+}
+
+// close marks the queue as closed and wakes all waiters.
+func (q *resultQueue) close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.closed = true
+	q.cond.Broadcast()
+}
+
+func (q *resultQueue) len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.items)
+}
+
 // AgentInstance is a live agent managed by the pool.
 type AgentInstance struct {
 	Def   *AgentDef
@@ -26,16 +143,23 @@ type AgentInstance struct {
 	agent *Agent
 	pool  *AgentPool
 
-	mu              sync.RWMutex
-	createdAt       time.Time
-	status          string // idle / busy / error
-	tasksDone       int
-	lastTaskAt      time.Time
-	taskCh          chan Task
-	cancel          context.CancelFunc // cancels the current task
-	currentTaskID   string             // task ID currently being processed
-	doneCh          chan struct{}      // closed when the worker goroutine exits
-	taskChCloseOnce sync.Once
+	mu            sync.RWMutex
+	createdAt     time.Time
+	status        string // idle / busy / error
+	tasksDone     int
+	lastTaskAt    time.Time
+	cancel        context.CancelFunc // cancels the current task
+	currentTaskID string             // task ID currently being processed
+	doneCh        chan struct{}      // closed when the worker goroutine exits
+
+	// Priority task queue (replaces taskCh)
+	taskMu        sync.Mutex
+	taskPQ        priorityQueue
+	taskCond      *sync.Cond
+	taskClosed    bool
+	taskCloseOnce sync.Once
+
+	sem chan struct{} // semaphore for this instance (group or global)
 }
 
 func (inst *AgentInstance) Status() string {
@@ -56,14 +180,63 @@ func (inst *AgentInstance) LastTaskAt() time.Time {
 	return inst.lastTaskAt
 }
 
+// pushTask adds a task to the agent's priority queue. Returns false if queue is closed.
+func (inst *AgentInstance) pushTask(task Task, pri Priority) bool {
+	inst.taskMu.Lock()
+	defer inst.taskMu.Unlock()
+	if inst.taskClosed {
+		return false
+	}
+	heap.Push(&inst.taskPQ, &priorityTask{task: task, priority: pri})
+	inst.taskCond.Signal()
+	return true
+}
+
+// popTask blocks until a task is available or the queue is closed. Returns false if closed.
+func (inst *AgentInstance) popTask() (Task, bool) {
+	inst.taskMu.Lock()
+	defer inst.taskMu.Unlock()
+	for len(inst.taskPQ) == 0 && !inst.taskClosed {
+		inst.taskCond.Wait()
+	}
+	if len(inst.taskPQ) == 0 {
+		return Task{}, false // closed and empty
+	}
+	item := heap.Pop(&inst.taskPQ).(*priorityTask)
+	return item.task, true
+}
+
+// closeTasks marks the queue as closed and wakes all waiters (idempotent).
+func (inst *AgentInstance) closeTasks() {
+	inst.taskMu.Lock()
+	defer inst.taskMu.Unlock()
+	inst.taskClosed = true
+	inst.taskCond.Broadcast()
+}
+
+// Mailbox holds messages for a single agent.
+type Mailbox struct {
+	mu       sync.Mutex
+	cond     *sync.Cond
+	messages []AgentMessage
+}
+
+func newMailbox() *Mailbox {
+	mb := &Mailbox{}
+	mb.cond = sync.NewCond(&mb.mu)
+	return mb
+}
+
 // AgentPool manages a pool of agent instances, each with its own goroutine.
 type AgentPool struct {
-	cfg      PoolConfig
-	agents   map[string]*AgentInstance
-	resultCh chan TaskResult
-	sem      chan struct{} // max concurrency semaphore
-	mu       sync.RWMutex
-	wg       sync.WaitGroup
+	cfg       PoolConfig
+	agents    map[string]*AgentInstance
+	results   *resultQueue
+	mailboxes map[string]*Mailbox
+	groups    map[string]chan struct{} // per-group semaphores
+	sem       chan struct{}            // max concurrency semaphore
+	mu        sync.RWMutex
+	wg        sync.WaitGroup
 
 	coordinatorCtx  context.Context
 	cancel          context.CancelFunc
@@ -82,6 +255,11 @@ type PoolConfig struct {
 	PollInterval        time.Duration
 	MinReapInterval     time.Duration
 	MaxReapInterval     time.Duration
+	DispatchTimeout     time.Duration  // 0 = no blocking fallback on full task channel
+	WorkerStopTimeout   time.Duration  // worker shutdown grace period
+	GroupLimits         map[string]int // per-group concurrency caps (empty = use global)
+	MaxStaleDuration    time.Duration  // max age for error agents before workspace cleanup (default 1h)
+	EnableAgentLog      bool           // write agent execution log to workspace/agent.log
 }
 
 // NewPoolConfigFromConfig converts a config.PoolConfig to the agent-level
@@ -98,6 +276,10 @@ func NewPoolConfigFromConfig(cfg config.PoolConfig) PoolConfig {
 		PollInterval:        parseDurationOpt(cfg.PollInterval, 200*time.Millisecond),
 		MinReapInterval:     parseDurationOpt(cfg.MinReapInterval, 5*time.Second),
 		MaxReapInterval:     parseDurationOpt(cfg.MaxReapInterval, 30*time.Second),
+		DispatchTimeout:     parseDurationOpt(cfg.DispatchTimeout, 5*time.Second),
+		WorkerStopTimeout:   parseDurationOpt(cfg.WorkerStopTimeout, 5*time.Second),
+		MaxStaleDuration:    parseDurationOpt(cfg.MaxStaleDuration, 1*time.Hour),
+		EnableAgentLog:      cfg.EnableAgentLog,
 	}
 }
 
@@ -106,7 +288,9 @@ func NewAgentPool(ctx context.Context, cfg PoolConfig) *AgentPool {
 	p := &AgentPool{
 		cfg:            cfg,
 		agents:         make(map[string]*AgentInstance),
-		resultCh:       make(chan TaskResult, 128),
+		results:        newResultQueue(),
+		mailboxes:      make(map[string]*Mailbox),
+		groups:         make(map[string]chan struct{}),
 		sem:            make(chan struct{}, cfg.MaxConcurrency),
 		coordinatorCtx: ctx,
 		cancel:         cancel,
@@ -156,7 +340,6 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 		compressor: comp,
 	}
 
-	taskCh := make(chan Task, 8)
 	inst := &AgentInstance{
 		Def:       def,
 		Kind:      kind,
@@ -164,8 +347,22 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 		pool:      p,
 		createdAt: time.Now(),
 		status:    "idle",
-		taskCh:    taskCh,
 		doneCh:    make(chan struct{}),
+	}
+	inst.taskCond = sync.NewCond(&inst.taskMu)
+
+	// Use group-level semaphore if agent belongs to a group
+	if def.Group != "" && p.cfg.GroupLimits[def.Group] > 0 {
+		p.mu.Lock()
+		sem, ok := p.groups[def.Group]
+		if !ok {
+			sem = make(chan struct{}, p.cfg.GroupLimits[def.Group])
+			p.groups[def.Group] = sem
+		}
+		p.mu.Unlock()
+		inst.sem = sem
+	} else {
+		inst.sem = p.sem
 	}
 
 	p.mu.Lock()
@@ -179,7 +376,7 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 
 	// Start worker goroutine
 	p.wg.Add(1)
-	go p.workerLoop(inst, taskCh)
+	go p.workerLoop(inst)
 
 	zap.S().Infow("agent added to pool",
 		"name", name,
@@ -190,8 +387,8 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	return inst
 }
 
-// workerLoop processes tasks from the agent's channel.
-func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
+// workerLoop processes tasks from the agent's priority queue.
+func (p *AgentPool) workerLoop(inst *AgentInstance) {
 	defer p.wg.Done()
 	defer close(inst.doneCh)
 	defer func() {
@@ -203,15 +400,13 @@ func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
 			inst.mu.Lock()
 			inst.status = "error"
 			inst.mu.Unlock()
-			select {
-			case p.resultCh <- TaskResult{
+			if !p.results.push(TaskResult{
 				AgentName: inst.Def.Name,
 				Success:   false,
 				Status:    "error",
 				Error:     fmt.Sprintf("panic: %v", r),
-			}:
-			default:
-				zap.S().Warnw("result channel closed, dropping panic result",
+			}) {
+				zap.S().Warnw("result queue closed or full, dropping panic result",
 					"name", inst.Def.Name,
 				)
 			}
@@ -219,15 +414,18 @@ func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
 	}()
 
 	for {
+		// Check pool context before blocking on popTask
 		select {
 		case <-p.coordinatorCtx.Done():
 			return
-		case task, ok := <-taskCh:
-			if !ok {
-				return
-			}
-			p.processTask(inst, task)
+		default:
 		}
+
+		task, ok := inst.popTask()
+		if !ok {
+			return
+		}
+		p.processTask(inst, task)
 	}
 }
 
@@ -235,11 +433,11 @@ func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
 func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	// Acquire concurrency slot
 	select {
-	case p.sem <- struct{}{}:
+	case inst.sem <- struct{}{}:
 	case <-p.coordinatorCtx.Done():
 		return
 	}
-	defer func() { <-p.sem }()
+	defer func() { <-inst.sem }()
 
 	inst.mu.Lock()
 	inst.status = "busy"
@@ -282,6 +480,25 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		inst.lastTaskAt = time.Now()
 		inst.mu.Unlock()
 	}()
+
+	events := make([]TaskEvent, 0, 4)
+	events = append(events, TaskEvent{
+		Type:      TaskProcessing,
+		Timestamp: time.Now(),
+	})
+
+	// Open agent execution log if enabled
+	var agentLog *os.File
+	if p.cfg.EnableAgentLog && inst.Def.Workspace != "" {
+		logPath := filepath.Join(inst.Def.Workspace, "agent.log")
+		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			agentLog = f
+			defer f.Close()
+			fmt.Fprintf(agentLog, "[%s] [processing] task=%s input=%s\n",
+				time.Now().Format(time.RFC3339), task.ID, truncateString(task.Input, 200))
+		}
+	}
 
 	// Build system prompt for this agent
 	inst.agent.ctxBuilder.SetRenderData(ctxpkg.NewRenderData(inst.agent.cfg))
@@ -332,14 +549,33 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		result.Error = taskCtx.Err().Error()
 	}
 
-	select {
-	case p.resultCh <- result:
+	switch result.Status {
+	case "cancelled":
+		events = append(events, TaskEvent{Type: TaskCancelled, Timestamp: time.Now()})
+	case "completed":
+		events = append(events, TaskEvent{Type: TaskCompleted, Timestamp: time.Now()})
 	default:
-		zap.S().Errorw("result channel full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
+		events = append(events, TaskEvent{Type: TaskFailed, Timestamp: time.Now()})
+	}
+	result.Events = events
+
+	// Log completion if agent log is active
+	if agentLog != nil {
+		fmt.Fprintf(agentLog, "[%s] [%s] task=%s success=%v duration_ms=%d\n",
+			time.Now().Format(time.RFC3339), result.Status, task.ID, result.Success, result.DurationMs)
+		if result.Error != "" {
+			fmt.Fprintf(agentLog, "[%s] [error] task=%s error=%s\n",
+				time.Now().Format(time.RFC3339), task.ID, result.Error)
+		}
+	}
+
+	if !p.results.push(result) {
+		zap.S().Errorw("result queue full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
 	}
 }
 
-// Dispatch sends a task to an agent. Returns the task ID if accepted.
+// Dispatch sends a task to an agent. Tries non-blocking first; if the task channel
+// is full and DispatchTimeout > 0, falls through to a blocking send with timeout.
 func (p *AgentPool) Dispatch(agentName string, task Task) error {
 	p.mu.RLock()
 	inst, ok := p.agents[agentName]
@@ -348,38 +584,56 @@ func (p *AgentPool) Dispatch(agentName string, task Task) error {
 		return fmt.Errorf("agent not found: %s", agentName)
 	}
 
+	// Push to priority queue (unbounded, non-blocking for the caller)
+	if !inst.pushTask(task, task.Priority) {
+		return fmt.Errorf("agent %s task queue closed", agentName)
+	}
+	p.recordDispatch(agentName)
+	return nil
+}
+
+// DispatchBlocking sends a task to an agent, blocking until the task is
+// enqueued or the context is cancelled.
+func (p *AgentPool) DispatchBlocking(ctx context.Context, agentName string, task Task) error {
+	p.mu.RLock()
+	inst, ok := p.agents[agentName]
+	p.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("agent not found: %s", agentName)
+	}
+
+	// Use a goroutine to make pushTask cancellable via context
+	done := make(chan struct{}, 1)
+	go func() {
+		inst.pushTask(task, task.Priority)
+		done <- struct{}{}
+	}()
 	select {
-	case inst.taskCh <- task:
-		taskDispatched.Inc()
-		if TelemetryCallbacks.OnTaskDispatched != nil {
-			TelemetryCallbacks.OnTaskDispatched(agentName)
-		}
-		if TelemetryCallbacks.OnDispatchSpan != nil {
-			end := TelemetryCallbacks.OnDispatchSpan(context.Background(), agentName)
-			if end != nil {
-				end()
-			}
-		}
+	case <-done:
+		p.recordDispatch(agentName)
 		return nil
-	default:
-		return fmt.Errorf("agent %s task queue full", agentName)
+	case <-ctx.Done():
+		return fmt.Errorf("dispatch to %s cancelled: %w", agentName, ctx.Err())
+	}
+}
+
+// recordDispatch updates telemetry after a successful dispatch.
+func (p *AgentPool) recordDispatch(agentName string) {
+	taskDispatched.Inc()
+	if TelemetryCallbacks.OnTaskDispatched != nil {
+		TelemetryCallbacks.OnTaskDispatched(agentName)
+	}
+	if TelemetryCallbacks.OnDispatchSpan != nil {
+		end := TelemetryCallbacks.OnDispatchSpan(context.Background(), agentName)
+		if end != nil {
+			end()
+		}
 	}
 }
 
 // Collect drains all completed task results (non-blocking).
 func (p *AgentPool) Collect() []TaskResult {
-	var results []TaskResult
-	for {
-		select {
-		case r, ok := <-p.resultCh:
-			if !ok {
-				return results
-			}
-			results = append(results, r)
-		default:
-			return results
-		}
-	}
+	return p.results.popAll()
 }
 
 // Cancel cancels a specific task by ID. Returns true if a matching running
@@ -411,6 +665,75 @@ func (p *AgentPool) CancelAll() {
 		if cancel != nil {
 			cancel()
 		}
+	}
+}
+
+// getMailbox returns (or creates) the mailbox for an agent name.
+func (p *AgentPool) getMailbox(name string) *Mailbox {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	mb, ok := p.mailboxes[name]
+	if !ok {
+		mb = newMailbox()
+		p.mailboxes[name] = mb
+	}
+	return mb
+}
+
+// SendMessage delivers a message to a specific agent's mailbox.
+func (p *AgentPool) SendMessage(from, to, subject, body string) error {
+	p.mu.RLock()
+	_, ok := p.agents[to]
+	p.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("agent not found: %s", to)
+	}
+
+	mb := p.getMailbox(to)
+	mb.mu.Lock()
+	mb.messages = append(mb.messages, AgentMessage{
+		From:    from,
+		To:      to,
+		Subject: subject,
+		Body:    body,
+		SentAt:  time.Now(),
+	})
+	mb.cond.Signal()
+	mb.mu.Unlock()
+	return nil
+}
+
+// ReadMessages drains all messages from an agent's mailbox (non-blocking).
+func (p *AgentPool) ReadMessages(agentName string) []AgentMessage {
+	mb := p.getMailbox(agentName)
+	mb.mu.Lock()
+	msgs := mb.messages
+	mb.messages = nil
+	mb.mu.Unlock()
+	return msgs
+}
+
+// BroadcastMessage sends a message to all agents in the pool.
+func (p *AgentPool) BroadcastMessage(from, subject, body string) {
+	p.mu.RLock()
+	names := make([]string, 0, len(p.agents))
+	for name := range p.agents {
+		names = append(names, name)
+	}
+	p.mu.RUnlock()
+
+	for _, name := range names {
+		mb := p.getMailbox(name)
+		mb.mu.Lock()
+		mb.messages = append(mb.messages, AgentMessage{
+			From:    from,
+			To:      name,
+			Subject: subject,
+			Body:    body,
+			SentAt:  time.Now(),
+		})
+		mb.cond.Signal()
+		mb.mu.Unlock()
 	}
 }
 
@@ -449,6 +772,33 @@ func (p *AgentPool) cleanWorkspace(inst *AgentInstance) {
 
 // Remove removes an agent by name, cancels any running task, waits for the
 // worker to finish, and cleans up its workspace.
+func (p *AgentPool) cleanOrphanedWorkspaces() {
+	if p.cfg.WorkspaceDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(p.cfg.WorkspaceDir)
+	if err != nil {
+		return
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "temp-") {
+			continue
+		}
+		agentName := strings.TrimPrefix(entry.Name(), "temp-")
+		if _, exists := p.agents[agentName]; !exists {
+			orphanPath := filepath.Join(p.cfg.WorkspaceDir, entry.Name())
+			if err := os.RemoveAll(orphanPath); err != nil {
+				zap.S().Warnw("failed to remove orphaned workspace",
+					"path", orphanPath, "error", err)
+			} else {
+				zap.S().Infow("removed orphaned workspace", "path", orphanPath)
+			}
+		}
+	}
+}
+
 func (p *AgentPool) Remove(name string) bool {
 	p.mu.Lock()
 	inst, ok := p.agents[name]
@@ -468,14 +818,12 @@ func (p *AgentPool) Remove(name string) bool {
 		}
 		inst.mu.Unlock()
 
-		inst.taskChCloseOnce.Do(func() {
-			close(inst.taskCh)
-		})
+		inst.closeTasks()
 
 		// Wait for worker to exit (with timeout to prevent deadlock)
 		select {
 		case <-inst.doneCh:
-		case <-time.After(5 * time.Second):
+		case <-time.After(p.cfg.WorkerStopTimeout):
 			zap.S().Warnw("timeout waiting for agent worker to exit",
 				"name", name,
 			)
@@ -490,9 +838,17 @@ func (p *AgentPool) Remove(name string) bool {
 // Shutdown gracefully stops the pool: cancels all tasks, waits for goroutines, cleans up.
 func (p *AgentPool) Shutdown() {
 	zap.S().Infow("agent pool shutting down...")
-	p.cancel()  // Cancel all tasks
+	p.cancel() // Cancel all tasks
+
+	// Close all agent task queues to wake up workers
+	p.mu.RLock()
+	for _, inst := range p.agents {
+		inst.closeTasks()
+	}
+	p.mu.RUnlock()
+
 	p.wg.Wait() // Wait for all goroutines
-	close(p.resultCh)
+	p.results.close()
 	// Clean up all coordinator-created workspaces
 	p.mu.Lock()
 	for name, inst := range p.agents {
@@ -526,6 +882,19 @@ func (p *AgentPool) reapIdleAgents() {
 			p.mu.Lock()
 			var reap []*AgentInstance
 			for name, inst := range p.agents {
+				// Check for stale error agents first
+				inst.mu.RLock()
+				st := inst.status
+				cr := inst.createdAt
+				inst.mu.RUnlock()
+				if st == "error" && p.cfg.MaxStaleDuration > 0 && time.Since(cr) > p.cfg.MaxStaleDuration {
+					zap.S().Infow("reaping stale error agent", "name", name)
+					delete(p.agents, name)
+					agentPoolSize.Add(-1)
+					inst.closeTasks()
+					reap = append(reap, inst)
+					continue
+				}
 				if inst.Kind == AgentBuildin {
 					continue // buildin agents are persistent
 				}
@@ -544,9 +913,7 @@ func (p *AgentPool) reapIdleAgents() {
 					zap.S().Infow("reaping idle coordinator-created agent", "name", name)
 					delete(p.agents, name)
 					agentPoolSize.Add(-1)
-					inst.taskChCloseOnce.Do(func() {
-						close(inst.taskCh)
-					})
+					inst.closeTasks()
 					reap = append(reap, inst)
 				}
 			}
@@ -555,17 +922,28 @@ func (p *AgentPool) reapIdleAgents() {
 			}
 			p.mu.Unlock()
 
+			// Clean up orphaned temp directories (no matching agent in pool)
+			p.cleanOrphanedWorkspaces()
+
 			// Wait for workers to exit and clean up (outside the lock)
 			for _, inst := range reap {
 				select {
 				case <-inst.doneCh:
-				case <-time.After(5 * time.Second):
+				case <-time.After(p.cfg.WorkerStopTimeout):
 					zap.S().Warnw("timeout waiting for reaped agent worker", "name", inst.Def.Name)
 				}
 				p.cleanWorkspace(inst)
 			}
 		}
 	}
+}
+
+// truncateString truncates a string to maxLen, appending "..." if truncated.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // filterTool wraps an mcp.Tool with a pre-check function.

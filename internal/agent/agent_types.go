@@ -2,6 +2,36 @@ package agent
 
 import "time"
 
+// Priority controls task scheduling order within an agent's queue.
+type Priority int
+
+const (
+	PriLow      Priority = 0
+	PriNormal   Priority = 1
+	PriHigh     Priority = 2
+	PriCritical Priority = 3
+)
+
+// TaskEventType labels events during a task lifecycle.
+type TaskEventType string
+
+const (
+	TaskDispatched TaskEventType = "dispatched"
+	TaskProcessing TaskEventType = "processing"
+	TaskToolCall   TaskEventType = "tool_call"
+	TaskToolResult TaskEventType = "tool_result"
+	TaskCompleted  TaskEventType = "completed"
+	TaskFailed     TaskEventType = "failed"
+	TaskCancelled  TaskEventType = "cancelled"
+)
+
+// TaskEvent records a single event in a task lifecycle.
+type TaskEvent struct {
+	Type      TaskEventType `json:"type"`
+	Timestamp time.Time     `json:"timestamp"`
+	Detail    string        `json:"detail,omitempty"`
+}
+
 // AgentKind distinguishes user-created agents from coordinator-created ones.
 type AgentKind int
 
@@ -34,24 +64,36 @@ type AgentDef struct {
 	Model     string   `yaml:"model,omitempty" json:"model,omitempty"`
 	Workspace string   `yaml:"workspace,omitempty" json:"workspace,omitempty"`
 	Timeout   int      `yaml:"timeout,omitempty" json:"timeout,omitempty"` // per-task timeout (seconds)
+	Group     string   `yaml:"group,omitempty" json:"group,omitempty"`     // concurrency group, e.g. "research", "coding"
 }
 
 // Task is a unit of work sent to an agent.
 type Task struct {
-	ID      string `json:"id"`
-	Input   string `json:"input"`
-	Timeout int    `json:"timeout,omitempty"` // seconds, 0 = use agent default
+	ID       string   `json:"id"`
+	Input    string   `json:"input"`
+	Timeout  int      `json:"timeout,omitempty"`  // seconds, 0 = use agent default
+	Priority Priority `json:"priority,omitempty"` // scheduling priority, 0 = normal
 }
 
 // TaskResult is the structured result from a completed agent task.
 type TaskResult struct {
-	TaskID     string `json:"task_id"`
-	AgentName  string `json:"agent_name"`
-	Success    bool   `json:"success"`
-	Output     string `json:"output"`
-	Error      string `json:"error,omitempty"`
-	DurationMs int64  `json:"duration_ms"`
-	Status     string `json:"status"` // completed / cancelled / timeout / error
+	TaskID     string      `json:"task_id"`
+	AgentName  string      `json:"agent_name"`
+	Success    bool        `json:"success"`
+	Output     string      `json:"output"`
+	Error      string      `json:"error,omitempty"`
+	DurationMs int64       `json:"duration_ms"`
+	Status     string      `json:"status"` // completed / cancelled / timeout / error
+	Events     []TaskEvent `json:"events,omitempty"`
+}
+
+// AgentMessage is a message sent between agents in the pool.
+type AgentMessage struct {
+	From    string    `json:"from"`
+	To      string    `json:"to"`      // "" = broadcast
+	Subject string    `json:"subject"` // message type label
+	Body    string    `json:"body"`
+	SentAt  time.Time `json:"sent_at"`
 }
 
 // AgentStatus tracks runtime state of an agent in the pool.
