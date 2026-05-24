@@ -7,6 +7,8 @@
   <meta name="description" content="{{ .Params.description | default .Site.Params.description }}">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐬</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>document.documentElement.classList.add('theme-'+(localStorage.getItem('dolphin-theme')||'auto'))</script>
   {{ block "extrahead" . }}{{ end }}
 </head>
 <body>
@@ -16,6 +18,15 @@
   </main>
   {{ partial "footer.html" . }}
   <script src="/js/copy.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        fontFamily: 'inherit',
+      }
+    });
+  </script>
   <script>
 (function() {
   var theme = localStorage.getItem('dolphin-theme') || 'auto';
