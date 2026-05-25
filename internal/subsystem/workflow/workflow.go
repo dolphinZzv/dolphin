@@ -108,7 +108,9 @@ func (m *Manager) Load() error {
 			wf := parseWorkflowFile(data, name)
 			if wf != nil {
 				wf.Source = dir
-				m.workflows[wf.Name] = wf
+				if _, exists := m.workflows[wf.Name]; !exists {
+					m.workflows[wf.Name] = wf
+				}
 			}
 		}
 	}

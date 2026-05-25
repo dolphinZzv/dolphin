@@ -20,6 +20,7 @@ import (
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/subsystem"
+	"dolphin/internal/transport"
 
 	"github.com/rs/xid"
 	"go.uber.org/zap"
@@ -102,6 +103,18 @@ func (c *Coordinator) registerCoordinatorTools() {
 			"required": []string{"to", "body"},
 		},
 		c.handleSendMessage,
+	)
+	c.registerCoordTool("agent_send_to_user",
+		"Send a message to the user. Use this when the user needs to see your output directly.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"agent":   map[string]any{"type": "string", "description": "Your agent name (the name you were given)"},
+				"message": map[string]any{"type": "string", "description": "Message to display to the user"},
+			},
+			"required": []string{"agent", "message"},
+		},
+		c.handleSendToUser,
 	)
 	c.registerCoordTool("search_mcp_tools",
 		"Search available MCP tools by name or description. Use this when you need a tool not in your current tool list.",
@@ -590,10 +603,19 @@ func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage
 		Group:     params.Group,
 	}
 
-	c.pool.Add(params.Name, def, AgentCoord, c.agent, c.agent.toolReg)
+	// Register with MultiIO for @-message routing
+	var subAgentIO transport.UserIO
+	if c.multiIO != nil {
+		subAgentIO = c.multiIO.RegisterAgent(params.Name)
+	}
+
+	c.pool.Add(params.Name, def, AgentCoord, c.agent, c.agent.toolReg, subAgentIO)
 
 	result := fmt.Sprintf("Temporary agent '%s' created (workspace: %s). Use dispatch_task to send it work.",
 		params.Name, workspace)
+	if subAgentIO != nil {
+		result += " The agent can receive @-messages."
+	}
 	return &mcp.ToolResult{Content: result}, nil
 }
 
@@ -689,6 +711,26 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 		fmt.Fprintf(&sb, "- %s: %s%s\n", d.Name, d.Description, usage)
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) handleSendToUser(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Agent   string `json:"agent"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Agent == "" || params.Message == "" {
+		return &mcp.ToolResult{Content: "agent and message are required", IsError: true}, nil
+	}
+	if c.multiIO == nil {
+		return &mcp.ToolResult{Content: "no user IO available", IsError: true}, nil
+	}
+	if err := c.multiIO.WriteToUser(params.Agent, params.Message); err != nil {
+		return &mcp.ToolResult{Content: "write to user failed: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	return &mcp.ToolResult{Content: "Message sent to user."}, nil
 }
 
 // autoLoadMCPTools pre-loads MCP tools that are enabled in config so the LLM
@@ -1442,7 +1484,13 @@ func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessag
 	}
 	os.MkdirAll(loadedDef.Workspace, 0700)
 
-	c.pool.Add(params.Name, loadedDef, AgentUser, c.agent, c.agent.toolReg)
+	// Register with MultiIO for @-message routing
+	var subAgentIO transport.UserIO
+	if c.multiIO != nil {
+		subAgentIO = c.multiIO.RegisterAgent(params.Name)
+	}
+
+	c.pool.Add(params.Name, loadedDef, AgentUser, c.agent, c.agent.toolReg, subAgentIO)
 	zap.S().Infow("installed agent from repo", "name", params.Name, "url", found.URL)
 	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q installed successfully from %s.", params.Name, found.URL)}, nil
 }
@@ -1582,7 +1630,13 @@ func (c *Coordinator) handleEnableAgent(_ context.Context, input json.RawMessage
 	}
 	os.MkdirAll(def.Workspace, 0700)
 
-	c.pool.Add(params.Name, def, AgentUser, c.agent, c.agent.toolReg)
+	// Register with MultiIO for @-message routing
+	var subAgentIO transport.UserIO
+	if c.multiIO != nil {
+		subAgentIO = c.multiIO.RegisterAgent(params.Name)
+	}
+
+	c.pool.Add(params.Name, def, AgentUser, c.agent, c.agent.toolReg, subAgentIO)
 	zap.S().Infow("enabled agent", "name", params.Name, "tools", def.Tools)
 	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q enabled and added to the pool.", params.Name)}, nil
 }

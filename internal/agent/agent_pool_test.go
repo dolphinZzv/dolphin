@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
+	"dolphin/internal/transport"
 )
 
 func TestAgentInstanceStatus(t *testing.T) {
@@ -452,5 +453,91 @@ func TestWrapSkillTools_NoOpWhenAllowedEmpty(t *testing.T) {
 	reg2 := wrapSkillTools(reg, []string{})
 	if reg2 != reg {
 		t.Error("expected same registry back when allowed is empty")
+	}
+}
+
+func TestE2EMultiIOAtMessageRouting(t *testing.T) {
+	cfg := config.DefaultConfig()
+	config.SetSessionsDir(t.TempDir())
+	cfg.LLM.MaxContextTokens = 100000
+
+	prov := &mockProvider{
+		responses: []*provider.ProviderResponse{
+			{Content: provider.TextContent("我是 sheller agent，我可以执行 shell 命令、管理文件等"), Usage: &provider.Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
+		},
+	}
+
+	agt := newTestAgent(cfg, prov)
+	pool := NewAgentPool(context.Background(), PoolConfig{
+		MaxConcurrency:    2,
+		DefaultTimeout:    10,
+		MaxPendingResults: 16,
+	})
+	defer pool.Shutdown()
+
+	// 1. Add agent to pool (without SubAgentIO — simulating startup persistent agent)
+	def := &AgentDef{Name: "sheller", Role: "shell executor", Tools: []string{"test_tool"}}
+	pool.Add("sheller", def, AgentUser, agt, agt.toolReg)
+
+	// 2. Wrap mockIO in MultiIO
+	inner := &mockIO{lines: []string{"@sheller 你会什么?", "exit"}}
+	multiIO := transport.NewMultiIO(inner)
+
+	// 3. Register existing agent with MultiIO (simulating Fix 4)
+	subIO := multiIO.RegisterAgent("sheller")
+	if subIO == nil {
+		t.Fatal("RegisterAgent returned nil")
+	}
+	if ok := pool.SetIO("sheller", subIO); !ok {
+		t.Fatal("SetIO returned false")
+	}
+
+	// 4. Wire OnUserMessage callback to pool.Dispatch
+	multiIO.OnUserMessage = func(agentName, message string) {
+		err := pool.Dispatch(agentName, Task{
+			ID:       "e2e-task-1",
+			Input:    message,
+			Priority: PriHigh,
+		})
+		if err != nil {
+			t.Logf("Dispatch: %v", err)
+		}
+	}
+
+	// 5. Read from MultiIO — should intercept @-message and return ""
+	line, err := multiIO.ReadLine()
+	if err != nil {
+		t.Fatalf("ReadLine error: %v", err)
+	}
+	if line != "" {
+		t.Fatalf("expected empty string after @-intercept, got %q", line)
+	}
+	t.Log("PASS: @-message intercepted, MultiIO returned empty")
+
+	// 6. Wait briefly for agent to process the task
+	time.Sleep(2 * time.Second)
+
+	// 7. Collect and verify results
+	results := pool.Collect()
+	if len(results) == 0 {
+		// May need more time
+		time.Sleep(3 * time.Second)
+		results = pool.Collect()
+	}
+	if len(results) == 0 {
+		t.Fatal("no results collected — agent did not process the dispatched task")
+	}
+	t.Logf("Collected %d result(s)", len(results))
+
+	r := results[0]
+	if !r.Success {
+		t.Fatalf("task failed: %s", r.Error)
+	}
+	if r.Output == "" {
+		t.Fatal("task returned empty output")
+	}
+	t.Logf("PASS: agent result: %s", r.Output)
+	if r.AgentName != "sheller" {
+		t.Fatalf("expected AgentName 'sheller', got %q", r.AgentName)
 	}
 }

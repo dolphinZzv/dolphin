@@ -85,6 +85,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(NewResetCmd())
 	cmd.AddCommand(NewNewCmd())
 	cmd.AddCommand(NewUpdateCmd())
+	cmd.AddCommand(NewInstallCmd())
 	cmd.AddCommand(NewInitCmd())
 	cmd.AddCommand(NewVersionCmd())
 	cmd.AddCommand(NewStatusCmd())
@@ -105,6 +106,18 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Apply language config override (empty = auto-detect from env)
+	if cfg.Language != "" {
+		switch cfg.Language {
+		case "en":
+			i18n.SetLang(i18n.EN)
+		case "zh":
+			i18n.SetLang(i18n.ZH)
+		default:
+			zap.S().Warnw("unsupported language, falling back to auto-detect", "language", cfg.Language)
+		}
 	}
 
 	// Apply --verbose/--quiet log level override
@@ -137,6 +150,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Register built-in tools
 	if cfg.MCP.Shell.Enabled {
 		toolRegistry.Register(mcpshell.New(cfg))
+		toolRegistry.Register(mcpshell.NewProcessReaderTool())
 		zap.S().Infow("shell tool registered")
 	}
 	var cdpTool *cdp.Tool
@@ -265,11 +279,32 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		coord := agent.NewCoordinator(agt, pool)
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
+		coord.SetWorkflowManager(wfmr)
 		coord.SetCronManager(cronMgr)
 		return coord
 	}
 
-	printBanner(cfg)
+	// Determine which config file is active (for startup display)
+	configPath := cfgFile
+	if configPath == "" {
+		projectCfg := filepath.Join(config.ProjectConfigDir, config.ConfigFileName+".yaml")
+		if abs, err := filepath.Abs(projectCfg); err == nil {
+			projectCfg = abs
+		}
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			candidates := []string{
+				projectCfg,
+				filepath.Join(homeDir, config.UserConfigDir, config.ConfigFileName+".yaml"),
+			}
+			for _, p := range candidates {
+				if _, err := os.Stat(p); err == nil {
+					configPath = p
+					break
+				}
+			}
+		}
+	}
+	printBanner(cfg, configPath)
 	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
 }
 
@@ -300,7 +335,7 @@ func initSkillManager(cfg *config.Config) *skill.Manager {
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		userSkillsDir := filepath.Join(homeDir, config.UserConfigDir, "skills")
 		if userSkillsDir != cfg.Skills.Dir {
-			skillDirs = append([]string{userSkillsDir}, skillDirs...)
+			skillDirs = append(skillDirs, userSkillsDir)
 		}
 	}
 	mgr := skill.NewManager(skillDirs...)
@@ -329,7 +364,7 @@ func initCommandManager(cfg *config.Config) *command.Manager {
 	cmdDirs := []string{filepath.Join(config.ProjectConfigDir, "commands")}
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		userCmdDir := filepath.Join(homeDir, config.UserConfigDir, "commands")
-		cmdDirs = append([]string{userCmdDir}, cmdDirs...)
+		cmdDirs = append(cmdDirs, userCmdDir)
 	}
 	mgr := command.NewManager(cmdDirs...)
 	mgr.Load()
@@ -356,7 +391,7 @@ func initWorkflowManager(cfg *config.Config) *workflowpkg.Manager {
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		userWfDir := filepath.Join(homeDir, config.UserConfigDir, "workflows")
 		if userWfDir != cfg.Workflows.Dir {
-			wfDirs = append([]string{userWfDir}, wfDirs...)
+			wfDirs = append(wfDirs, userWfDir)
 		}
 	}
 	mgr := workflowpkg.NewManager(wfDirs...)
@@ -370,7 +405,7 @@ func initWorkflowManager(cfg *config.Config) *workflowpkg.Manager {
 
 // runActorGroup builds and runs the actor group for all enabled transports and services.
 
-func printBanner(cfg *config.Config) {
+func printBanner(cfg *config.Config, configPath string) {
 	providers := cfg.LLM.EffectiveProviders()
 	providerName := ""
 	providerModel := ""
@@ -424,6 +459,7 @@ func printBanner(cfg *config.Config) {
 		fmt.Fprintf(os.Stderr, "  Model:   %s  %s\n", providerModel, providerName)
 	}
 	fmt.Fprintf(os.Stderr, "  Transport: %s\n", transportStr)
+	fmt.Fprintf(os.Stderr, "  Config:  %s\n", configPath)
 	fmt.Fprintln(os.Stderr, "==============================================================================")
 	fmt.Fprintln(os.Stderr)
 }
@@ -436,7 +472,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	{
 		sigCh := make(chan os.Signal, 1)
 		g.Add(func() error {
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			signal.Notify(sigCh, syscall.SIGTERM)
 			sig := <-sigCh
 			zap.S().Infow("shutting down", "signal", sig)
 			return fmt.Errorf("received signal %v", sig)
@@ -445,6 +481,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			close(sigCh)
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			mcpshell.Shutdown()
 			if err := telemetry.Shutdown(shutdownCtx); err != nil {
 				zap.S().Warnw("telemetry shutdown error", "error", err)
 			}

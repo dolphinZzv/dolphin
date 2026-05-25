@@ -70,6 +70,14 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 	provider, selIdx := selectProvider(cfg)
 
 	b := ctxpkg.NewBuilder()
+	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("workspace",
+		func(agentName string) string {
+			if agentName != "" {
+				return ""
+			}
+			return "## Workspace\n" + cfg.Workspace
+		},
+	), ctxpkg.PriorityWorkspace, "WORKSPACE")
 	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("subsystems",
 		func(agentName string) string { return subsystem.ContextMD() },
 	), ctxpkg.PrioritySubSystems, "SUBSYSTEMS.md")
@@ -870,6 +878,15 @@ func (a *Agent) buildTurnToolDefs(extraTools map[string]bool, toolReg *mcp.Regis
 	return toolDefs
 }
 
+// toolNames extracts all tool names from a registry for use as extraTools.
+func toolNames(toolReg *mcp.Registry) map[string]bool {
+	names := make(map[string]bool)
+	for _, def := range toolReg.List() {
+		names[def.Name] = true
+	}
+	return names
+}
+
 func (a *Agent) fireBeforeLLM(ctx context.Context, state *LoopState, req *provider.ProviderRequest) error {
 	if a.hooks == nil {
 		return nil
@@ -1016,14 +1033,22 @@ func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (j
 		outBlocks = append(outBlocks, map[string]any{"type": "text", "text": result.text})
 	}
 	for _, tc := range result.toolCalls {
+		args := tc.Arguments
+		if len(args) == 0 {
+			args = json.RawMessage("{}")
+		}
 		outBlocks = append(outBlocks, map[string]any{
 			"type":  "tool_use",
 			"id":    tc.ID,
 			"name":  tc.Name,
-			"input": tc.Arguments,
+			"input": args,
 		})
 	}
-	content, _ := json.Marshal(outBlocks)
+	content, err := json.Marshal(outBlocks)
+	if err != nil {
+		zap.S().Errorw("failed to marshal assistant message content", "error", err)
+		content = json.RawMessage("[]")
+	}
 	return content, result.toolCalls
 }
 
@@ -1053,7 +1078,7 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 		)
 		if a.cfg.LogLevel == "debug" && io != nil {
 			io.WriteLine(fmt.Sprintf("turn: %d model: %s sess: %s tokens: in=%d [cache=%d miss=%d] out=%d (total: in=%d out=%d cache=%d miss=%d)",
-				state.Sess.Turn, a.availableProviders[a.providerIndex].Model, state.Sess.ID, usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
+				state.Sess.Turn, a.cfg.LLM.Model, state.Sess.ID, usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
 				state.TotalInputTokens, state.TotalOutputTokens, state.TotalCachedTokens, state.TotalMissedTokens))
 		}
 	} else if a.cfg.LogLevel == "debug" && io != nil {
@@ -1346,7 +1371,7 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 // and tool registry. It creates a new session, runs one turn, and returns the
 // final assistant response text. parentSessionID links this task to the parent
 // conversation for audit tracing (empty string means no link).
-func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, tools *mcp.Registry, parentSessionID session.SessionID) (TaskResult, error) {
+func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, tools *mcp.Registry, parentSessionID session.SessionID, io transport.UserIO) (TaskResult, error) {
 	var sess *session.Session
 	var err error
 	if parentSessionID != "" {
@@ -1369,7 +1394,13 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	}()
 
 	start := time.Now()
-	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task), tools, nil)
+	// Use provided io if available, otherwise create ChannelIO
+	taskIO := io
+	if taskIO == nil {
+		taskIO = NewChannelIO(task)
+	}
+	// Pass all tool names as extraTools so the LLM can see and call them
+	taskErr := a.runTurn(ctx, state, systemPrompt, taskIO, tools, toolNames(tools))
 
 	result := TaskResult{
 		TaskID:     string(sess.ID),

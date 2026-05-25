@@ -98,12 +98,15 @@ type AgentMessage struct {
 
 // AgentStatus tracks runtime state of an agent in the pool.
 type AgentStatus struct {
-	Name       string    `json:"name"`
-	Kind       string    `json:"kind"` // "user" or "temp"
-	Role       string    `json:"role"`
-	Status     string    `json:"status"` // idle / busy / error
-	TasksDone  int       `json:"tasks_done"`
-	Workspace  string    `json:"workspace"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastTaskAt time.Time `json:"last_task_at,omitempty"`
+	Name          string    `json:"name"`
+	Kind          string    `json:"kind"` // "user" or "temp"
+	Role          string    `json:"role"`
+	Status        string    `json:"status"` // idle / busy / error
+	TasksDone     int       `json:"tasks_done"`
+	Workspace     string    `json:"workspace"`
+	CreatedAt     time.Time `json:"created_at"`
+	LastTaskAt    time.Time `json:"last_task_at,omitempty"`
+	SessionID     string    `json:"session_id,omitempty"`
+	CurrentTaskID string    `json:"current_task_id,omitempty"`
+	Tools         []string  `json:"tools,omitempty"`
 }

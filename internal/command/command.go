@@ -87,7 +87,9 @@ func (m *Manager) Load() error {
 			cmd := parseCommandFile(data, entry.Name())
 			if cmd != nil {
 				cmd.Source = dir
-				m.cmds[cmd.Name] = cmd
+				if _, exists := m.cmds[cmd.Name]; !exists {
+					m.cmds[cmd.Name] = cmd
+				}
 			}
 		}
 	}

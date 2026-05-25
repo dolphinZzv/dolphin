@@ -48,7 +48,7 @@ func (c *Coordinator) onboardConsole() {
 	})
 	con.Add(&console.Command{
 		Name: "agents", Desc: i18n.TL(i18n.KeyHelpAgents),
-		Handler: func(args []string, io transport.UserIO) { c.printAgents(io) },
+		Handler: func(args []string, io transport.UserIO) { c.printAgents(io, args) },
 	})
 	con.Add(&console.Command{
 		Name: "crontab", Desc: i18n.TL(i18n.KeyHelpCron),
@@ -75,12 +75,36 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.printCommands(io) },
 	})
 	con.Add(&console.Command{
+		Name: "workflow", Desc: i18n.TL(i18n.KeyHelpWorkflow),
+		Children: []*console.Command{
+			{Name: "new", Desc: "Create a new workflow template", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowNew(args, io) }},
+			{Name: "delete", Desc: "Delete a workflow", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowDelete(args, io) }},
+			{Name: "show", Desc: "Show workflow content", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowShow(args, io) }},
+		},
+		Handler: func(args []string, io transport.UserIO) { c.printWorkflows(io) },
+	})
+	con.Add(&console.Command{
 		Name: "model", Desc: i18n.TL(i18n.KeyHelpModel),
 		Handler: func(args []string, io transport.UserIO) { c.handleModelCmd(args, io) },
 	})
 	con.Add(&console.Command{
 		Name: "cancel", Desc: "Cancel running tasks",
 		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
+	})
+	con.Add(&console.Command{
+		Name: "forget", Desc: "Reset conversation context for an agent",
+		Handler: func(args []string, io transport.UserIO) {
+			if len(args) == 0 {
+				io.WriteLine("Usage: /forget <agentname>")
+				io.WriteLine("Example: /forget sheller")
+				return
+			}
+			if err := c.pool.Forget(args[0]); err != nil {
+				io.WriteLine(fmt.Sprintf("Error: %v", err))
+			} else {
+				io.WriteLine(fmt.Sprintf("Agent %q conversation context reset.", args[0]))
+			}
+		},
 	})
 	con.Add(&console.Command{
 		Name: "context", Desc: i18n.TL(i18n.KeyHelpContext),
@@ -132,12 +156,16 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	sb.WriteString(i18n.TL(i18n.KeyHelpCancel))
 	sb.WriteString("\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpCancelID))
-	sb.WriteString("\n\n")
+	sb.WriteString("\n")
+	sb.WriteString("\n")
+	sb.WriteString("  /forget <name>: Reset conversation context for an agent\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpAgents))
 	sb.WriteString("\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpSkills))
 	sb.WriteString("\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpCommands))
+	sb.WriteString("\n")
+	sb.WriteString(i18n.TL(i18n.KeyHelpWorkflow))
 	sb.WriteString("\n\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpSessions))
 	sb.WriteString("\n")
@@ -169,21 +197,58 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(sb.String())
 }
 
-func (c *Coordinator) printAgents(io transport.UserIO) {
+func (c *Coordinator) printAgents(io transport.UserIO, args []string) {
 	agents := c.pool.List()
 
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyAgentHeader), "AGENT", "STATUS", "TYPE", "TASKS"))
+	// Filter by agent name if argument provided
+	filterName := ""
+	if len(args) > 0 && args[0] != "" {
+		filterName = args[0]
+		// Show detailed info for a single agent
+		for _, a := range agents {
+			if a.Name == filterName {
+				io.WriteLine(fmt.Sprintf("Agent:     %s", a.Name))
+				io.WriteLine(fmt.Sprintf("Status:    %s", a.Status))
+				io.WriteLine(fmt.Sprintf("Type:      %s", a.Kind))
+				io.WriteLine(fmt.Sprintf("Role:      %s", a.Role))
+				io.WriteLine(fmt.Sprintf("Tasks:     %d", a.TasksDone))
+				io.WriteLine(fmt.Sprintf("Workspace: %s", a.Workspace))
+				io.WriteLine(fmt.Sprintf("Session:   %s", a.SessionID))
+				io.WriteLine(fmt.Sprintf("Task ID:   %s", a.CurrentTaskID))
+				io.WriteLine(fmt.Sprintf("Tools:     %v", a.Tools))
+				io.WriteLine("")
+				return
+			}
+		}
+		// Built-in agents check
+		if c.buildinRegistry != nil {
+			for _, ba := range c.buildinRegistry.List() {
+				if ba.Name() == filterName {
+					io.WriteLine(fmt.Sprintf("Agent:     %s", ba.Name()))
+					io.WriteLine(fmt.Sprintf("Status:    active"))
+					io.WriteLine(fmt.Sprintf("Type:      buildin"))
+					io.WriteLine("")
+					return
+				}
+			}
+		}
+		io.WriteLine(fmt.Sprintf("Agent %q not found.", filterName))
+		io.WriteLine("")
+		return
+	}
+
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyAgentHeader), "AGENT", "STATUS", "TYPE", "SESSION", "TASKS"))
 	io.WriteLine("------------------------------------------------")
 	for _, a := range agents {
-		io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
-			a.Name, a.Status, a.Kind, a.TasksDone))
+		io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %-22s %d",
+			a.Name, a.Status, a.Kind, a.SessionID, a.TasksDone))
 	}
 
 	// Built-in agents from registry
 	if c.buildinRegistry != nil {
 		for _, ba := range c.buildinRegistry.List() {
-			io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
-				ba.Name(), "active", "buildin", 0))
+			io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %-12s %d",
+				ba.Name(), "active", "buildin", "-", 0))
 		}
 	}
 
@@ -338,6 +403,88 @@ func (c *Coordinator) printCommands(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
 	io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
 	io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
+	io.WriteLine("")
+}
+
+func (c *Coordinator) printWorkflows(io transport.UserIO) {
+	if c.workflows == nil {
+		return
+	}
+	wfs := c.workflows.List()
+	if len(wfs) == 0 {
+		io.WriteLine("No workflows found.")
+		io.WriteLine("Use `dolphin workflow new <name>` or `dolphin workflow init` to create one.")
+		return
+	}
+	for _, w := range wfs {
+		io.WriteLine(fmt.Sprintf("/%s: %s", w.Name, w.Description))
+	}
+	io.WriteLine("")
+	io.WriteLine("Use `dolphin workflow show <name>` to view steps.")
+}
+
+func (c *Coordinator) handleWorkflowNew(args []string, io transport.UserIO) {
+	if c.workflows == nil {
+		return
+	}
+	if len(args) == 0 {
+		io.WriteLine("Usage: /workflow new <name>")
+		return
+	}
+	name := args[0]
+	if err := c.workflows.NewTemplate(name, ""); err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to create workflow: %v", err))
+		return
+	}
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyWorkflowCLICreated), name, c.workflows.Dir()))
+	io.WriteLine(i18n.TL(i18n.KeyWorkflowCLIEdit))
+}
+
+func (c *Coordinator) handleWorkflowDelete(args []string, io transport.UserIO) {
+	if c.workflows == nil {
+		return
+	}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
+	if name == "" {
+		io.WriteLine("Usage: /workflow delete <name>")
+		return
+	}
+	if _, ok := c.workflows.Get(name); !ok {
+		io.WriteLine(fmt.Sprintf("Workflow %q not found.", name))
+		return
+	}
+	if err := c.workflows.Unregister(name); err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to delete workflow: %v", err))
+		return
+	}
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyWorkflowCLIDeleted), name))
+}
+
+func (c *Coordinator) handleWorkflowShow(args []string, io transport.UserIO) {
+	if c.workflows == nil {
+		return
+	}
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
+	}
+	if name == "" {
+		io.WriteLine("Usage: /workflow show <name>")
+		return
+	}
+	w, ok := c.workflows.Get(name)
+	if !ok {
+		io.WriteLine(fmt.Sprintf("Workflow %q not found.", name))
+		return
+	}
+	io.WriteLine(fmt.Sprintf("--- %s ---", w.Name))
+	if w.Description != "" {
+		io.WriteLine(fmt.Sprintf("Description: %s", w.Description))
+	}
+	io.WriteLine(w.Content)
 	io.WriteLine("")
 }
 

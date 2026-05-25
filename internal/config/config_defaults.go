@@ -5,6 +5,8 @@ import "github.com/spf13/viper"
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("name", "dolphin")
 
+	v.SetDefault("workspace", ".")
+
 	v.SetDefault("llm.type", "openai")
 	v.SetDefault("llm.base_url", "https://api.openai.com/v1")
 	v.SetDefault("llm.model", "gpt-4o")

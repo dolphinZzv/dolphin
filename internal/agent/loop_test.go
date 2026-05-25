@@ -503,6 +503,7 @@ func TestRunTaskBasic(t *testing.T) {
 		"system prompt",
 		agt.toolReg,
 		"",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("RunTask error: %v", err)
@@ -1023,6 +1024,7 @@ func TestRunTaskWithParentSession(t *testing.T) {
 		"prompt",
 		agt.toolReg,
 		"parent-session-id",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("RunTask error: %v", err)

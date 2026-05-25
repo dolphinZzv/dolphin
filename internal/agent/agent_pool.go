@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -16,8 +17,10 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/mcp/shell"
 	"dolphin/internal/session"
+	"dolphin/internal/transport"
 
 	"dolphin/internal/agent/compressor"
+	"dolphin/internal/agent/provider"
 
 	"go.uber.org/zap"
 )
@@ -150,6 +153,7 @@ type AgentInstance struct {
 	lastTaskAt    time.Time
 	cancel        context.CancelFunc // cancels the current task
 	currentTaskID string             // task ID currently being processed
+	sessionID     session.SessionID  // parent coordinator session ID
 	doneCh        chan struct{}      // closed when the worker goroutine exits
 
 	// Priority task queue (replaces taskCh)
@@ -160,6 +164,11 @@ type AgentInstance struct {
 	taskCloseOnce sync.Once
 
 	sem chan struct{} // semaphore for this instance (group or global)
+
+	io transport.UserIO // SubAgentIO for this agent (nil if not available)
+
+	// loopState holds persistent conversation state across dispatches
+	loopState *LoopState
 }
 
 func (inst *AgentInstance) Status() string {
@@ -314,7 +323,7 @@ func (p *AgentPool) SetParentSessionID(id session.SessionID) {
 func (p *AgentPool) ParentSessionID() session.SessionID { return p.parentSessionID }
 
 // Add registers a new agent in the pool and starts its worker goroutine.
-func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent, tools *mcp.Registry) *AgentInstance {
+func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent, tools *mcp.Registry, io ...transport.UserIO) *AgentInstance {
 	// Build filtered tool registry
 	filteredTools := tools.FilteredView(def.Tools)
 
@@ -364,6 +373,9 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	} else {
 		inst.sem = p.sem
 	}
+	if len(io) > 0 && io[0] != nil {
+		inst.io = io[0]
+	}
 
 	p.mu.Lock()
 	p.agents[name] = inst
@@ -393,9 +405,11 @@ func (p *AgentPool) workerLoop(inst *AgentInstance) {
 	defer close(inst.doneCh)
 	defer func() {
 		if r := recover(); r != nil {
+			stack := debug.Stack()
 			zap.S().Errorw("agent panic recovered",
 				"name", inst.Def.Name,
 				"recover", fmt.Sprintf("%v", r),
+				"stack", string(stack),
 			)
 			inst.mu.Lock()
 			inst.status = "error"
@@ -404,7 +418,7 @@ func (p *AgentPool) workerLoop(inst *AgentInstance) {
 				AgentName: inst.Def.Name,
 				Success:   false,
 				Status:    "error",
-				Error:     fmt.Sprintf("panic: %v", r),
+				Error:     fmt.Sprintf("panic: %v\n%s", r, string(stack)),
 			}) {
 				zap.S().Warnw("result queue closed or full, dropping panic result",
 					"name", inst.Def.Name,
@@ -443,6 +457,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	inst.status = "busy"
 	inst.tasksDone++
 	inst.currentTaskID = task.ID
+	inst.sessionID = p.parentSessionID
 	inst.mu.Unlock()
 	activeAgents.Add(1)
 	if TelemetryCallbacks.OnActiveAgents != nil {
@@ -507,6 +522,10 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		zap.S().Errorw("build agent context failed", "agent", inst.Def.Name, "error", err)
 		systemPrompt = "You are a helpful assistant."
 	}
+	// Prepend agent role so the LLM sees its core instructions
+	if inst.Def.Role != "" {
+		systemPrompt = inst.Def.Role + "\n\n" + systemPrompt
+	}
 
 	zap.S().Debugw("agent processing task",
 		"agent", inst.Def.Name,
@@ -514,23 +533,72 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		"timeout", timeout,
 	)
 
+	// Initialize persistent session on first task
+	if inst.loopState == nil {
+		sess, err := inst.agent.sessMgr.NewSessionWithParent(inst.agent.cfg.Session.MaxLoop, p.parentSessionID)
+		if err != nil {
+			zap.S().Errorw("create session for agent failed", "agent", inst.Def.Name, "error", err)
+			p.results.push(TaskResult{
+				AgentName:  inst.Def.Name,
+				TaskID:     task.ID,
+				Success:    false,
+				Status:     "error",
+				Error:      fmt.Sprintf("create session: %v", err),
+				DurationMs: 0,
+				Events:     append(events, TaskEvent{Type: TaskFailed, Timestamp: time.Now()}),
+			})
+			return
+		}
+		inst.loopState = &LoopState{Sess: sess}
+	}
+	inst.loopState.Turn++
+	inst.loopState.Sess.Turn = inst.loopState.Turn
+	inst.loopState.Messages = append(inst.loopState.Messages,
+		provider.Message{Role: "user", Content: provider.TextContent(task.Input)})
+
+	// Create IO for this task
+	taskIO := inst.io
+	if taskIO == nil {
+		taskIO = NewChannelIO(task.Input)
+	}
+
 	var taskEnd func()
 	if TelemetryCallbacks.OnTaskSpan != nil {
 		taskEnd = TelemetryCallbacks.OnTaskSpan(taskCtx, inst.Def.Name, task.ID)
 	}
-	result, err := inst.agent.RunTask(taskCtx, task.Input, systemPrompt, inst.agent.toolReg, p.parentSessionID)
+	start := time.Now()
+	taskErr := inst.agent.runTurn(taskCtx, inst.loopState, systemPrompt, taskIO, inst.agent.toolReg, toolNames(inst.agent.toolReg))
 	if taskEnd != nil {
 		taskEnd()
 	}
-	if err != nil {
+
+	result := TaskResult{
+		AgentName:  inst.Def.Name,
+		TaskID:     task.ID,
+		DurationMs: time.Since(start).Milliseconds(),
+		Events:     events,
+	}
+	if taskErr != nil {
 		zap.S().Debugw("agent task finished with error",
 			"agent", inst.Def.Name,
 			"task_id", task.ID,
-			"error", err,
+			"error", taskErr,
 		)
+		result.Success = false
+		result.Error = taskErr.Error()
+		switch {
+		case strings.Contains(result.Error, "cancel"):
+			result.Status = "cancelled"
+		case strings.Contains(result.Error, "deadline") || strings.Contains(result.Error, "timeout"):
+			result.Status = "timeout"
+		default:
+			result.Status = "error"
+		}
+	} else {
+		result.Output = extractFinalResponse(inst.loopState.Messages)
+		result.Success = true
+		result.Status = "completed"
 	}
-	result.AgentName = inst.Def.Name
-	result.TaskID = task.ID
 
 	// Track task result
 	if result.Success {
@@ -745,12 +813,15 @@ func (p *AgentPool) List() []AgentStatus {
 	for name, inst := range p.agents {
 		inst.mu.RLock()
 		s := AgentStatus{
-			Name:      name,
-			Kind:      inst.Kind.String(),
-			Role:      inst.Def.Role,
-			Status:    inst.status,
-			TasksDone: inst.tasksDone,
-			Workspace: inst.Def.Workspace,
+			Name:          name,
+			Kind:          inst.Kind.String(),
+			Role:          inst.Def.Role,
+			Status:        inst.status,
+			TasksDone:     inst.tasksDone,
+			Workspace:     inst.Def.Workspace,
+			SessionID:     string(inst.sessionID),
+			CurrentTaskID: inst.currentTaskID,
+			Tools:         inst.Def.Tools,
 		}
 		inst.mu.RUnlock()
 		list = append(list, s)
@@ -829,13 +900,70 @@ func (p *AgentPool) Remove(name string) bool {
 			)
 		}
 
+		p.cleanupSession(inst)
 		p.cleanWorkspace(inst)
 		return true
 	}
 	return false
 }
 
+// Forget resets the persistent conversation context for an agent.
+// Generates a summary of the current session and creates a fresh session on next dispatch.
+// Returns an error if the agent is not found or is currently busy.
+func (p *AgentPool) Forget(name string) error {
+	p.mu.RLock()
+	inst, ok := p.agents[name]
+	p.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("agent not found: %s", name)
+	}
+
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	if inst.status == "busy" {
+		return fmt.Errorf("agent %s is busy, cannot forget context", name)
+	}
+
+	if inst.loopState == nil {
+		return nil // no context to forget
+	}
+
+	// Generate summary and close the persistent session
+	inst.agent.generateSummary(inst.loopState.Sess, inst.loopState)
+	inst.loopState.Sess.Close()
+	inst.agent.sessMgr.Remove(inst.loopState.Sess.ID)
+	inst.loopState = nil
+
+	zap.S().Infow("agent context forgotten", "name", name)
+	return nil
+}
+
 // Shutdown gracefully stops the pool: cancels all tasks, waits for goroutines, cleans up.
+// SetIO sets the SubAgentIO for an existing agent instance.
+func (p *AgentPool) SetIO(name string, io transport.UserIO) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	inst, ok := p.agents[name]
+	if !ok {
+		return false
+	}
+	inst.io = io
+	return true
+}
+
+// cleanupSession closes the persistent session for an agent instance,
+// generating a summary and removing it from the session manager.
+func (p *AgentPool) cleanupSession(inst *AgentInstance) {
+	if inst.loopState == nil {
+		return
+	}
+	inst.agent.generateSummary(inst.loopState.Sess, inst.loopState)
+	inst.loopState.Sess.Close()
+	inst.agent.sessMgr.Remove(inst.loopState.Sess.ID)
+	inst.loopState = nil
+}
+
 func (p *AgentPool) Shutdown() {
 	zap.S().Infow("agent pool shutting down...")
 	p.cancel() // Cancel all tasks
@@ -932,6 +1060,7 @@ func (p *AgentPool) reapIdleAgents() {
 				case <-time.After(p.cfg.WorkerStopTimeout):
 					zap.S().Warnw("timeout waiting for reaped agent worker", "name", inst.Def.Name)
 				}
+				p.cleanupSession(inst)
 				p.cleanWorkspace(inst)
 			}
 		}

@@ -140,6 +140,7 @@ const (
 	// /context
 	KeyHelpContext       = "help_context"
 	KeyHelpReload        = "help_reload"
+	KeyHelpWorkflow      = "help_workflow"
 	KeyContextSummaryHd  = "context_summary_hd"
 	KeyContextSectionNF  = "context_section_nf"
 	KeyContextSectionHd  = "context_section_hd"
@@ -246,6 +247,8 @@ const (
 	KeyCmdUpdateUse            = "cmd_update_use"
 	KeyCmdUpdateShort          = "cmd_update_short"
 	KeyCmdUpdateLong           = "cmd_update_long"
+	KeyCmdInstallUse           = "cmd_install_use"
+	KeyCmdInstallShort         = "cmd_install_short"
 	KeyCmdVersionUse           = "cmd_version_use"
 	KeyCmdVersionShort         = "cmd_version_short"
 	KeyCmdConfigFlag           = "cmd_config_flag"
@@ -518,6 +521,9 @@ const (
 	KeyWorkflowCLIEnabled      = "workflow_cli_enabled"
 	KeyWorkflowCLIDeleted      = "workflow_cli_deleted"
 	KeyWorkflowCLIEdit         = "workflow_cli_edit"
+	KeyCmdWorkflowInitUse      = "cmd_workflow_init_use"
+	KeyCmdWorkflowInitShort    = "cmd_workflow_init_short"
+	KeyCmdWorkflowInitComplete = "cmd_workflow_init_complete"
 
 	// Cleanup common
 	KeyCleanupComplete = "cleanup_complete"

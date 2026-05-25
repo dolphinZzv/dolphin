@@ -46,6 +46,10 @@ func New(cfg *config.Config) *Tool {
 				"type":        "integer",
 				"description": "Timeout in seconds (optional)",
 			},
+			"background": map[string]any{
+				"type":        "boolean",
+				"description": "Run in background and return immediately with a PID. Use read_process_output to check output (default: false)",
+			},
 		},
 		"required": []string{"command"},
 	})
@@ -68,8 +72,9 @@ func (s *Tool) Definition() mcp.ToolDefinition {
 
 func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
-		Command string `json:"command"`
-		Timeout int    `json:"timeout,omitempty"`
+		Command    string `json:"command"`
+		Timeout    int    `json:"timeout,omitempty"`
+		Background bool   `json:"background,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
@@ -92,7 +97,7 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	// When allow_unrestricted is true, allowed_commands is ignored
 	// and the command runs directly via sh -c.
 	if s.cfg.AllowUnrestricted {
-		return s.executeUnrestricted(ctx, params.Command, params.Timeout)
+		return s.executeUnrestricted(ctx, params.Command, params.Timeout, params.Background)
 	}
 
 	if len(allowed) > 0 {
@@ -104,6 +109,19 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 				return &mcp.ToolResult{Content: fmt.Sprintf("shell metacharacters not allowed in arguments: %q", arg), IsError: true}, nil
 			}
 		}
+	}
+
+	if params.Background {
+		cmd := shellCommand(context.Background(), params.Command)
+		if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
+			cmd.Dir = wd
+		}
+		pid, err := startBackground(cmd, params.Command, s.cfg.OutputMaxBytes)
+		if err != nil {
+			return &mcp.ToolResult{Content: fmt.Sprintf("failed to start background process: %v", err), IsError: true}, nil
+		}
+		zap.S().Infow("started background process", "pid", pid, "command", truncateCommand(params.Command))
+		return &mcp.ToolResult{Content: fmt.Sprintf("Process started in background. PID: %d\nUse read_process_output(pid=%d) to check output.", pid, pid)}, nil
 	}
 
 	timeout := s.cfg.TimeoutSeconds
@@ -169,7 +187,20 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 
 // executeUnrestricted runs the command via sh -c with no allowlist checks.
 // Used when AllowUnrestricted is true.
-func (s *Tool) executeUnrestricted(ctx context.Context, command string, timeoutSec int) (*mcp.ToolResult, error) {
+func (s *Tool) executeUnrestricted(ctx context.Context, command string, timeoutSec int, background bool) (*mcp.ToolResult, error) {
+	if background {
+		cmd := shellCommand(context.Background(), command)
+		if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
+			cmd.Dir = wd
+		}
+		pid, err := startBackground(cmd, command, s.cfg.OutputMaxBytes)
+		if err != nil {
+			return &mcp.ToolResult{Content: fmt.Sprintf("failed to start background process: %v", err), IsError: true}, nil
+		}
+		zap.S().Infow("started background process", "pid", pid, "command", truncateCommand(command))
+		return &mcp.ToolResult{Content: fmt.Sprintf("Process started in background. PID: %d\nUse read_process_output(pid=%d) to check output.", pid, pid)}, nil
+	}
+
 	timeout := s.cfg.TimeoutSeconds
 	if timeoutSec > 0 {
 		timeout = timeoutSec

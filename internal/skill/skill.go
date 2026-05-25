@@ -91,7 +91,9 @@ func (m *Manager) Load() error {
 				skill := parseSkillFile(data, name+".md")
 				if skill != nil {
 					skill.Source = dir
-					m.skills[skill.Name] = skill
+					if _, exists := m.skills[skill.Name]; !exists {
+						m.skills[skill.Name] = skill
+					}
 				}
 			} else if strings.HasSuffix(name, ".md") {
 				// Backward compat: flat .md files at top level
@@ -102,7 +104,9 @@ func (m *Manager) Load() error {
 				skill := parseSkillFile(data, name)
 				if skill != nil {
 					skill.Source = dir
-					m.skills[skill.Name] = skill
+					if _, exists := m.skills[skill.Name]; !exists {
+						m.skills[skill.Name] = skill
+					}
 				}
 			}
 		}

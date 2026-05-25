@@ -41,7 +41,7 @@ var zhMessages = map[string]string{
 	KeyHelpSkillsAvail:     "\n技能：%d 个可用（使用 /skills 列出，search_skills 查找）",
 	KeyNoAgents:            "未配置代理。",
 	KeyNoAgentsHint:        "在 .dolphin/agents/<name>/agent.yaml 中创建代理",
-	KeyAgentHeader:         "%-16s %-10s %-6s %s",
+	KeyAgentHeader:         "%-16s %-10s %-6s %-22s %s",
 	KeySkillsNotAvail:      "技能系统不可用。",
 	KeyNoSkills:            "未找到技能。",
 	KeyNoSkillsHint:        "将 .md 文件添加到 .dolphin/skills/",
@@ -116,6 +116,7 @@ var zhMessages = map[string]string{
 
 	// /context
 	KeyHelpReload:        "  /reload       - 重新加载（重启）代理",
+	KeyHelpWorkflow:      "  /workflow     - 列出和查看可用 workflow（CLI: workflow list）",
 	KeyHelpConfig:        "  /config       - 列出所有配置  |  /config get <路径>  |  /config set <路径> <值>",
 	KeyHelpContext:       "  /context       - 上下文摘要 (/context system /context current /context <章节>)",
 	KeyContextSummaryHd:  "=== 上下文摘要 ===",
@@ -299,6 +300,8 @@ dolphin agent 会话。
   dolphin update          更新到最新版本
   dolphin update v1.0.0   更新到指定版本`,
 
+	KeyCmdInstallUse:   "install",
+	KeyCmdInstallShort: "安装 dolphin 二进制文件到系统 PATH",
 	KeyCmdVersionUse:   "version",
 	KeyCmdVersionShort: "打印版本号",
 
@@ -567,6 +570,9 @@ dolphin agent 会话。
 	KeyWorkflowCLIEnabled:      "工作流 %q 已启用。",
 	KeyWorkflowCLIDeleted:      "工作流 %q 已删除。",
 	KeyWorkflowCLIEdit:         "编辑工作流文件以定义步骤。",
+	KeyCmdWorkflowInitUse:      "init [name] [description]",
+	KeyCmdWorkflowInitShort:    "基于项目文档和代码，使用 AI 生成 workflow",
+	KeyCmdWorkflowInitComplete: "已生成 workflow %q。",
 	// Cleanup common
 	KeyCleanupComplete: "清理完成: %d 项已移除",
 	KeyNotExistSkip:    "（未找到，跳过）",

@@ -3,11 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"dolphin/internal/agent/buildin"
@@ -20,10 +23,12 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
+	"dolphin/internal/mcp/shell"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/subsystem"
+	workflowpkg "dolphin/internal/subsystem/workflow"
 	"dolphin/internal/transport"
 
 	"github.com/rs/xid"
@@ -36,6 +41,7 @@ type Coordinator struct {
 	pool             *AgentPool
 	skills           *skill.Manager
 	commands         *command.Manager
+	workflows        *workflowpkg.Manager
 	cronMgr          *scheduler.Manager
 	console          *console.Console
 	basePrompt       string
@@ -45,6 +51,7 @@ type Coordinator struct {
 	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
 	currentSess      *session.Session    // current session for buildin logging
 	reloadRequested  bool                // set by reload tool to trigger clean exit
+	multiIO          *transport.MultiIO  // multi-IO routing for subagent communication
 
 	// cumulative token usage across the entire session (for /context display)
 	totalInputTokens  int
@@ -120,6 +127,11 @@ func (c *Coordinator) SetCommandManager(mgr *command.Manager) {
 	c.commands = mgr
 }
 
+// SetWorkflowManager sets the workflow manager for workflow definitions.
+func (c *Coordinator) SetWorkflowManager(mgr *workflowpkg.Manager) {
+	c.workflows = mgr
+}
+
 // SetCronManager sets the cron task manager for scheduled tasks.
 func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 	c.cronMgr = mgr
@@ -140,7 +152,7 @@ func (c *Coordinator) initBuildinAgents(ctx context.Context) {
 		if c.currentSess != nil {
 			parentID = c.currentSess.ID
 		}
-		result, err := c.agent.RunTask(ctx, prompt, c.basePrompt, c.agent.toolReg, parentID)
+		result, err := c.agent.RunTask(ctx, prompt, c.basePrompt, c.agent.toolReg, parentID, nil)
 		if err != nil {
 			return taskID, err
 		}
@@ -195,8 +207,44 @@ var (
 func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	zap.S().Infow("coordinator starting")
 
-	// Wrap non-streaming transports with BufferedIO so all writes are
-	// buffered until Flush() is called (auto-flushed on ReadLine).
+	// Wrap in MultiIO for @-message routing and subagent IO
+	multiIO := transport.NewMultiIO(io)
+	io = multiIO
+	c.multiIO = multiIO
+
+	// Inject workspace as shell working directory
+	if wd := c.agent.cfg.Workspace; wd != "" {
+		ctx = shell.WithWorkdir(ctx, wd)
+		zap.S().Infow("workspace set as shell workdir", "workspace", wd)
+	}
+
+	// Route @-messages to agents via pool.Dispatch
+	multiIO.OnUserMessage = func(agentName, message string) {
+		if c.pool == nil {
+			zap.S().Warnw("pool not available for @-message", "agent", agentName)
+			return
+		}
+		task := Task{
+			ID:       xid.New().String(),
+			Input:    message,
+			Priority: PriHigh,
+		}
+		if err := c.pool.Dispatch(agentName, task); err != nil {
+			zap.S().Warnw("failed to dispatch @-message", "agent", agentName, "error", err)
+		}
+	}
+
+	// Register existing pool agents with MultiIO and set their SubAgentIO
+	if c.pool != nil {
+		for _, info := range c.pool.List() {
+			subIO := c.multiIO.RegisterAgent(info.Name)
+			if subIO != nil {
+				c.pool.SetIO(info.Name, subIO)
+			}
+		}
+	}
+
+	// Wrap non-streaming transports with BufferedIO
 	if !io.Capabilities().Streaming {
 		io = transport.NewBufferedIO(io)
 	}
@@ -299,6 +347,36 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Coordinator Ready", c.agent.version, runtime.GOOS, runtime.Version(), c.agent.commitHash))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
 
+	// Set up SIGINT handling: first SIGINT cancels current turn and returns
+	// to prompt; second SIGINT force-exits the process.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+
+	var (
+		turnCancelMu sync.Mutex
+		turnCancelFn context.CancelFunc
+	)
+
+	go func() {
+		<-sigCh
+
+		turnCancelMu.Lock()
+		fn := turnCancelFn
+		turnCancelMu.Unlock()
+
+		if fn != nil {
+			fn()
+			fmt.Fprintln(os.Stderr, "[Interrupted]")
+			<-sigCh
+			fmt.Fprintln(os.Stderr, "[Force exit]")
+			os.Exit(1)
+		} else {
+			fmt.Fprintln(os.Stderr, "[Exiting]")
+			os.Exit(0)
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -373,6 +451,52 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case c.console.Execute(line, io):
 			continue
 		case line == "":
+			// @-message consumed by MultiIO; poll briefly for results
+			if c.pool != nil {
+				pollInterval := parseDurationOpt(c.agent.cfg.Pool.PollInterval, 200*time.Millisecond)
+				deadline := time.Now().Add(5 * time.Second)
+				for time.Now().Before(deadline) {
+					agents := c.pool.List()
+					hasBusy := false
+					for _, a := range agents {
+						if a.Status == "busy" {
+							hasBusy = true
+							break
+						}
+					}
+					if !hasBusy {
+						break
+					}
+					time.Sleep(pollInterval)
+				}
+				collected := c.pool.Collect()
+				c.pending = append(c.pending, collected...)
+				for _, r := range collected {
+					// Skip agents with SubAgentIO — their output was already streamed
+					// to the user in real-time via SubAgentIO passthrough.
+					if c.multiIO != nil {
+						registered := false
+						for _, name := range c.multiIO.AgentNames() {
+							if name == r.AgentName {
+								registered = true
+								break
+							}
+						}
+						if registered {
+							continue
+						}
+					}
+					prefix := ""
+					if r.AgentName != "" {
+						prefix = "[" + r.AgentName + "] "
+					}
+					if r.Success {
+						io.WriteLine(prefix + r.Output)
+					} else {
+						io.WriteLine(prefix + "Error: " + r.Error)
+					}
+				}
+			}
 			continue
 		}
 
@@ -461,9 +585,28 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// Save LLM request content for /context current
 		c.lastLLMSystemPrompt = dynamicPrompt
 		c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
-		if err := c.agent.runTurn(ctx, state, dynamicPrompt, io, c.agent.toolReg, c.loadedTools); err != nil {
-			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
-			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
+
+		turnCtx, turnCancel := context.WithCancel(ctx)
+		turnCancelMu.Lock()
+		turnCancelFn = turnCancel
+		turnCancelMu.Unlock()
+
+		turnErr := c.agent.runTurn(turnCtx, state, dynamicPrompt, io, c.agent.toolReg, c.loadedTools)
+
+		turnCancelMu.Lock()
+		turnCancelFn = nil
+		turnCancelMu.Unlock()
+		turnCancel()
+
+		if turnErr != nil {
+			if errors.Is(turnErr, context.Canceled) {
+				if err := io.Flush(); err != nil {
+					zap.S().Warnw("flush failed after interrupt", "error", err)
+				}
+				continue
+			}
+			zap.S().Errorw("turn failed", "turn", state.Turn, "error", turnErr)
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), turnErr))
 		}
 
 		// Post-turn: collect sub-agent results and synthesize.
@@ -909,7 +1052,7 @@ func stripOrphanedToolUses(content json.RawMessage, validIDs map[string]bool) js
 	if err := json.Unmarshal(content, &blocks); err != nil {
 		return content
 	}
-	var cleaned []map[string]any
+	cleaned := make([]map[string]any, 0)
 	for _, b := range blocks {
 		if b["type"] == "tool_use" {
 			id, _ := b["id"].(string)
@@ -954,7 +1097,7 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 					TaskInput: task.Task,
 				})
 			}
-			result, err := c.agent.RunTask(ctx, task.Task, c.basePrompt, c.agent.toolReg, parentSessionID)
+			result, err := c.agent.RunTask(ctx, task.Task, c.basePrompt, c.agent.toolReg, parentSessionID, nil)
 			if err != nil {
 				c.cronMgr.AddResult(task.Name, false, "", err.Error())
 				zap.S().Errorw("scheduled task failed", "name", task.Name, "error", err)

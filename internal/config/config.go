@@ -28,6 +28,8 @@ var (
 type Config struct {
 	Name        string            `mapstructure:"name"`
 	ID          string            `mapstructure:"id"`
+	Workspace   string            `mapstructure:"workspace"`
+	Language    string            `mapstructure:"language"`
 	LLM         LLMConfig         `mapstructure:"llm"`
 	Session     SessionConfig     `mapstructure:"session"`
 	Transport   TransportConfig   `mapstructure:"transport"`
@@ -249,6 +251,20 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_UPDATE_AUTO_INSTALL"); v != "" {
 		cfg.Update.AutoInstall = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_WORKSPACE"); v != "" {
+		cfg.Workspace = v
+	}
+	if v := os.Getenv("DZ_LANGUAGE"); v != "" {
+		cfg.Language = v
+	}
+
+	// Resolve workspace to absolute path.
+	if cfg.Workspace == "" {
+		cfg.Workspace = "."
+	}
+	if abs, err := filepath.Abs(cfg.Workspace); err == nil {
+		cfg.Workspace = abs
 	}
 
 	// Auto-generate MQTT broker account if broker is enabled and no accounts configured.

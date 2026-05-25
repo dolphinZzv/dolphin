@@ -91,7 +91,7 @@ func stripOrphanedToolUses(content json.RawMessage, validIDs map[string]bool) js
 	if err := json.Unmarshal(content, &blocks); err != nil {
 		return content
 	}
-	var cleaned []map[string]any
+	cleaned := make([]map[string]any, 0)
 	for _, b := range blocks {
 		if b["type"] == "tool_use" {
 			id, _ := b["id"].(string)

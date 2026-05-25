@@ -20,6 +20,7 @@ import (
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
+	workflowpkg "dolphin/internal/subsystem/workflow"
 )
 
 func TestMain(m *testing.M) {
@@ -727,6 +728,25 @@ func TestCoordinatorSetSkillManager(t *testing.T) {
 		t.Error("SetSkillManager failed")
 	}
 }
+func TestCoordinatorSetWorkflowManager(t *testing.T) {
+	wfMgr := workflowpkg.NewManager(t.TempDir())
+	c := &Coordinator{}
+	c.SetWorkflowManager(wfMgr)
+	if c.workflows != wfMgr {
+		t.Error("SetWorkflowManager failed")
+	}
+}
+
+func TestCoordinatorPrintWorkflowsEmpty(t *testing.T) {
+	io := &mockIO{}
+	c := &Coordinator{}
+	c.SetWorkflowManager(workflowpkg.NewManager(t.TempDir()))
+	c.printWorkflows(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "No workflows found") {
+		t.Error("expected empty message, got:", output)
+	}
+}
 
 func TestCoordinatorPrintSkillsNil(t *testing.T) {
 	io := &mockIO{}
@@ -879,7 +899,7 @@ func TestCoordinatorPrintAgentsEmpty(t *testing.T) {
 	io := &mockIO{}
 	pool := NewAgentPool(context.Background(), PoolConfig{})
 	c := &Coordinator{pool: pool}
-	c.printAgents(io)
+	c.printAgents(io, nil)
 	output := io.writes.String()
 	if !strings.Contains(output, "No agents configured") {
 		t.Error("expected no agents message, got:", output)
@@ -896,7 +916,7 @@ func TestCoordinatorPrintAgentsPopulated(t *testing.T) {
 
 	io := &mockIO{}
 	c := &Coordinator{pool: pool}
-	c.printAgents(io)
+	c.printAgents(io, nil)
 	output := io.writes.String()
 	if !strings.Contains(output, "worker1") {
 		t.Error("expected worker1 in agents listing, got:", output)
@@ -1247,6 +1267,7 @@ func TestE2ERunTaskGeneratesSummary(t *testing.T) {
 		"sub-agent system prompt",
 		agt.toolReg,
 		"parent-session-123",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("RunTask: %v", err)
@@ -1293,6 +1314,7 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 		"child prompt",
 		agt.toolReg,
 		parentSess.ID,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("RunTask: %v", err)

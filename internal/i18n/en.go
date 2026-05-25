@@ -41,7 +41,7 @@ var enMessages = map[string]string{
 	KeyHelpSkillsAvail:     "\nSkills: %d available (use /skills to list, search_skills to find)",
 	KeyNoAgents:            "No agents configured.",
 	KeyNoAgentsHint:        "Create agents in .dolphin/agents/<name>/agent.yaml",
-	KeyAgentHeader:         "%-16s %-10s %-6s %s",
+	KeyAgentHeader:         "%-16s %-10s %-6s %-22s %s",
 	KeySkillsNotAvail:      "Skills system not available.",
 	KeyNoSkills:            "No skills found.",
 	KeyNoSkillsHint:        "Add .md files to .dolphin/skills/",
@@ -117,6 +117,7 @@ var enMessages = map[string]string{
 
 	// /context
 	KeyHelpReload:        "  /reload       - Reload (restart) the agent",
+	KeyHelpWorkflow:      "  /workflow     - List and show available workflows (CLI: workflow list)",
 	KeyHelpConfig:        "  /config       - View or modify config (/config help for subcommands)",
 	KeyHelpContext:       "  /context      - Context summary (/context system /context current)",
 	KeyContextSummaryHd:  "=== Context Summary ===",
@@ -301,6 +302,8 @@ Examples:
   dolphin update          Update to the latest release
   dolphin update v1.0.0   Update to a specific version`,
 
+	KeyCmdInstallUse:   "install",
+	KeyCmdInstallShort: "Install dolphin binary to system PATH",
 	KeyCmdVersionUse:   "version",
 	KeyCmdVersionShort: "Print the version number",
 
@@ -570,6 +573,9 @@ Examples:
 	KeyWorkflowCLIEnabled:      "Enabled workflow %q.",
 	KeyWorkflowCLIDeleted:      "Deleted workflow %q.",
 	KeyWorkflowCLIEdit:         "Edit the workflow file to define the steps.",
+	KeyCmdWorkflowInitUse:      "init [name] [description]",
+	KeyCmdWorkflowInitShort:    "Generate workflows using AI based on project docs and code",
+	KeyCmdWorkflowInitComplete: "Generated workflow %q.",
 	// Cleanup common
 	KeyCleanupComplete: "Cleanup complete: %d items removed",
 	KeyNotExistSkip:    " (not found, skipped)",

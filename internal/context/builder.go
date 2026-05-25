@@ -24,13 +24,15 @@ type ToolInfo struct {
 const (
 	PrioritySoul          = 1
 	PriorityPreface       = 2
-	PriorityBuiltinSkills = 3
-	PrioritySelfEvoSkills = 4
-	PriorityAgents        = 5
-	PriorityRules         = 6
-	PriorityUser          = 7
-	PrioritySystem        = 8
-	PrioritySubSystems    = 9
+	PriorityWorkspace     = 3
+	PriorityBuiltinSkills = 4
+	PrioritySelfEvoSkills = 5
+	PriorityCLAUDE        = 6
+	PriorityAgents        = 7
+	PriorityRules         = 8
+	PriorityUser          = 9
+	PrioritySystem        = 10
+	PrioritySubSystems    = 11
 )
 
 // section holds a single prompt section with its priority.
@@ -166,8 +168,9 @@ type Builder struct {
 	toolLister func() []ToolInfo
 
 	// SectionPriority overrides default section priorities.
-	// Key is section provider name: "soul", "preface", "builtin_skills",
-	// "self_evo_skills", "agents", "rules", "user", "system", "subsystems".
+	// Key is section provider name: "soul", "preface", "workspace",
+	// "builtin_skills", "self_evo_skills", "claude", "agents", "rules",
+	// "user", "system", "subsystems".
 	// Value is the priority (lower = earlier in prompt).
 	SectionPriority map[string]int
 
@@ -232,9 +235,14 @@ func registerBuiltinProviders(b *Builder) {
 		b: b, name: "soul", filename: "SOUL.md", heading: "## Soul\n",
 	}, PrioritySoul, "SOUL.md")
 
-	// PREFACE (embedded, always)
+	// PREFACE (embedded, only for main coordinator, skipped for sub-agents)
 	b.RegisterSectionProvider(NewSectionProviderFunc("preface",
-		func(agentName string) string { return DefaultPreface },
+		func(agentName string) string {
+			if agentName != "" {
+				return ""
+			}
+			return DefaultPreface
+		},
 	), PriorityPreface, "PREFACE.md")
 
 	// BUILTIN SKILLS (dynamic from tool registry, falls back to embedded)
@@ -256,6 +264,21 @@ func registerBuiltinProviders(b *Builder) {
 			return SelfEvolutionSkills
 		},
 	), PrioritySelfEvoSkills, "SELF_EVOLUTION.md")
+
+	// CLAUDE.md (project > user > system — skip if AGENTS.md exists)
+	b.RegisterSectionProvider(NewSectionProviderFunc("claude",
+		func(agentName string) string {
+			// AGENTS.md takes precedence; skip CLAUDE.md if AGENTS.md is present.
+			if b.loadFileFallback("", "AGENTS.md") != "" {
+				return ""
+			}
+			content := b.loadFileFallback("", "CLAUDE.md")
+			if content == "" {
+				return ""
+			}
+			return "## Project Instructions\n" + content
+		},
+	), PriorityCLAUDE, "CLAUDE.md")
 
 	// AGENTS.md (agent > project > user > system, agent-specific)
 	b.RegisterSectionProvider(&fileProvider{
