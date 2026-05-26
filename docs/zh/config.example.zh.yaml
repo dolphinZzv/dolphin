@@ -48,7 +48,6 @@ llm:
 
 # ── 会话 ──────────────────────────────────────────────────
 session:
-  dir: .dolphin/sessions
   max_loop: 50                # 每次会话最大轮数
   summary: true               # 自动生成会话摘要
   max_age: 24h                # 超过此时间的会话文件自动清理
@@ -70,6 +69,15 @@ mcp:
     priority: 500
   servers: {}                 # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
   repos: []                   # 清单仓库，如 ["dolphinv/mcp"]
+
+# ── 内置服务器（进程内独立服务）─────────────────────────────
+servers:
+  mqtt_broker:
+    enabled: false            # 内嵌 MQTT 代理（从 transport.mqtt.embedded 迁移至此）
+    addr: :1883
+    accounts:
+      - username: dolphin
+        password: ""          # 为空时自动生成；可手动设置覆盖
 
 # ── Agent 池 ──────────────────────────────────────────────
 agent_pool:
@@ -99,9 +107,11 @@ transport:
   mqtt:
     enabled: false
     broker: tcp://localhost:1883
-    topic: dolphin/agent/command
-    response_topic: dolphin/agent/response
+    subscribe_topic: dolphin/agent/command
+    publish_topic: dolphin/agent/response
     client_id: dolphin-agent
+    username: ""              # 连接 broker 的客户端凭据
+    password: ""              # 为空时自动取第一个 mqtt_broker 账户密码
   email:
     enabled: false
     smtp_host: ""

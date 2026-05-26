@@ -83,7 +83,6 @@ Controls session persistence, auto-checkpoint, and cleanup.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `session.dir` | `string` | `"/tmp/dolphin"` | Directory for session files. |
 | `session.max_loop` | `int` | `50` | Max turns per session before a checkpoint summary is saved. |
 | `session.summary` | `bool` | `true` | Auto-generate a session summary on checkpoint. |
 | `session.max_age` | `string` | `"24h"` | Auto-delete sessions older than this duration (e.g. `"72h"`, `"7d"`). Env: `DZ_SESSION_MAX_AGE`. |
@@ -108,6 +107,7 @@ Executes shell commands.
 | `mcp.shell.max_command_length` | `int` | `4096` | Max characters per command. |
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | Allowlist of command names (empty = allow all). Populated automatically in restrictive mode. |
 | `mcp.shell.output_max_bytes` | `int` | `65536` | Stdout/stderr truncation limit in bytes. |
+| `mcp.shell.allow_unrestricted` | `bool` | `false` | Opt-in to unrestricted shell execution when `allowed_commands` is empty. When false, requires explicit `allowed_commands`. |
 
 ### CDP Browser
 
@@ -225,6 +225,17 @@ mcp:
 |-------|------|---------|-------------|
 | `mcp.repos` | `[]string` | `[]` | Manifest repository URLs for discovering community MCP tools, e.g. `["dolphinv/mcp"]`. |
 
+### WebHost (`mcp.webhost`)
+
+Native desktop browser control (WKWebView on macOS, WebView2 on Windows). Requires the WebHost native app to be running.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mcp.webhost.enabled` | `bool` | `false` | Enable the WebHost browser tool. |
+| `mcp.webhost.url` | `string` | `"http://localhost:9223/mcp/call"` | WebHost HTTP server URL. |
+| `mcp.webhost.priority` | `int` | `100` | Tool listing priority. |
+| `mcp.webhost.timeout_seconds` | `int` | `30` | HTTP client timeout in seconds. |
+
 ---
 
 ## Agent Pool
@@ -243,6 +254,11 @@ Controls concurrent sub-agent execution.
 | `agent_pool.poll_interval` | `string` | `"200ms"` | Sub-agent ready poll interval (e.g. `"200ms"`, `"1s"`). |
 | `agent_pool.min_reap_interval` | `string` | `"5s"` | Minimum idle reap check interval. |
 | `agent_pool.max_reap_interval` | `string` | `"30s"` | Maximum idle reap check interval. |
+| `agent_pool.dispatch_timeout` | `string` | `"5s"` | Blocking dispatch fallback timeout (e.g. `"5s"`, `"10s"`). |
+| `agent_pool.worker_stop_timeout` | `string` | `"5s"` | Worker shutdown grace period before force kill (e.g. `"5s"`, `"10s"`). |
+| `agent_pool.max_stale_duration` | `string` | `"1h"` | Max age for errored agents before workspace cleanup (e.g. `"1h"`, `"30m"`). |
+| `agent_pool.enable_agent_log` | `bool` | `false` | Write agent execution log to `workspace/agent.log`. |
+| `agent_pool.max_agent_messages` | `int` | `100` | Max conversation messages retained per subagent. `0` = unlimited. |
 
 ---
 
@@ -269,6 +285,8 @@ Local terminal I/O.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `transport.stdio.enabled` | `bool` | `true` | Enable local terminal interaction. Env: `DZ_TRANSPORT_STDIO_ENABLED`. |
+| `transport.stdio.markdown_render` | `bool` | `true` | Render markdown in stdio terminal output. |
+| `transport.stdio.markdown_style` | `string` | `"auto"` | CSS theme for rendered markdown (e.g. `"dracula"`, `"github"`). |
 
 ### SSH
 
@@ -293,14 +311,11 @@ MQTT messaging transport.
 |-------|------|---------|-------------|
 | `transport.mqtt.enabled` | `bool` | `false` | Enable MQTT transport. Env: `DZ_TRANSPORT_MQTT_ENABLED`. |
 | `transport.mqtt.broker` | `string` | `"tcp://localhost:1883"` | MQTT broker URL. Env: `DZ_MQTT_BROKER`. |
-| `transport.mqtt.topic` | `string` | `"dolphin/agent/command"` | Command subscription topic. Env: `DZ_MQTT_TOPIC`. |
-| `transport.mqtt.response_topic` | `string` | `"dolphin/agent/response"` | Response publication topic. Env: `DZ_MQTT_RESPONSE_TOPIC`. |
+| `transport.mqtt.subscribe_topic` | `string` | `"/agent/dolphin"` | Command subscription topic. Env: `DZ_MQTT_SUBSCRIBE_TOPIC`. |
+| `transport.mqtt.publish_topic` | `string` | `"/agent/dolphin/message"` | Response publication topic. Env: `DZ_MQTT_PUBLISH_TOPIC`. |
 | `transport.mqtt.client_id` | `string` | `"dolphin-agent"` | MQTT client ID. |
-| `transport.mqtt.embedded` | `bool` | `true` | Run an embedded MQTT broker. Env: `DZ_MQTT_EMBEDDED`. |
-| `transport.mqtt.embedded_addr` | `string` | `":1883"` | Listen address for the embedded broker. Env: `DZ_MQTT_EMBEDDED_ADDR`. |
-| `transport.mqtt.embedded_accounts` | `[]object` | `[]` | Credentials for the embedded broker. If empty and embedded is enabled, one account is auto-generated. Each entry has: `username` (string), `password` (string). Env: `DZ_MQTT_USER` / `DZ_MQTT_PASSWORD` set the first account. |
-| `transport.mqtt.username` | `string` | `""` | Client username for broker connection (not the embedded broker). |
-| `transport.mqtt.password` | `string` | `""` | Client password for broker connection. Auto-populated from the first embedded account if empty. |
+| `transport.mqtt.username` | `string` | `""` | Client username for broker connection. Auto-populated from the first servers.mqtt_broker account if empty. |
+| `transport.mqtt.password` | `string` | `""` | Client password for broker connection. Auto-populated from the first servers.mqtt_broker account if empty. |
 | `transport.mqtt.keep_alive_seconds` | `int` | `60` | MQTT KeepAlive interval in seconds. |
 | `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping response timeout in seconds. |
 | `transport.mqtt.max_reconnect_seconds` | `int` | `30` | Maximum reconnect backoff interval in seconds. |
@@ -398,7 +413,7 @@ Agent-to-Agent (A2A) JSON-RPC communication over HTTP. Implements Google's Agent
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `transport.a2a.enabled` | `bool` | `false` | Enable A2A transport. |
-| `transport.a2a.listen_addr` | `string` | `":8080"` | HTTP listen address. |
+| `transport.a2a.listen_addr` | `string` | `":8334"` | HTTP listen address. |
 | `transport.a2a.agent_id` | `string` | `""` | Unique agent identifier. |
 | `transport.a2a.agent_name` | `string` | `""` | Human-readable agent name. |
 | `transport.a2a.agent_version` | `string` | `""` | Agent version string. |
@@ -413,6 +428,23 @@ Agent-to-Agent (A2A) JSON-RPC communication over HTTP. Implements Google's Agent
 | `transport.a2a.agent_card_path` | `string` | `"/.well-known/agent.json"` | Agent Card endpoint path. |
 | `transport.a2a.read_header_timeout` | `int` | `10` | HTTP server `ReadHeaderTimeout` in seconds. |
 | `transport.a2a.shutdown_timeout` | `int` | `5` | Server shutdown context timeout in seconds. |
+
+---
+
+## Servers (`servers`)
+
+Standalone in-process servers independent of transport clients.
+
+### MQTT Broker (`servers.mqtt_broker`)
+
+Embedded MQTT broker (replaces the deprecated `transport.mqtt.embedded*` fields).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `servers.mqtt_broker.enabled` | `bool` | `false` | Enable the embedded MQTT broker. Env: `DZ_SERVERS_MQTT_BROKER_ENABLED`. |
+| `servers.mqtt_broker.addr` | `string` | `":1883"` | Listen address. Env: `DZ_SERVERS_MQTT_BROKER_ADDR`. |
+| `servers.mqtt_broker.accounts[].username` | `string` | `"dolphin"` | Broker account username. Env: `DZ_SERVERS_MQTT_BROKER_USER`. |
+| `servers.mqtt_broker.accounts[].password` | `string` | `""` | Broker account password. Auto-generated if empty. Env: `DZ_SERVERS_MQTT_BROKER_PASSWORD`. |
 
 ---
 
@@ -481,7 +513,7 @@ Automatic update checking and installation.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `update.enabled` | `bool` | `false` | Enable automatic update checks. |
+| `update.enabled` | `bool` | `true` | Enable automatic update checks. |
 | `update.check_interval` | `string` | `"24h"` | How often to check for updates (e.g. `"24h"`, `"12h"`). |
 | `update.channel` | `string` | `"stable"` | Release channel: `"stable"` or `"pre-release"`. |
 | `update.auto_install` | `bool` | `false` | Automatically download and install updates. |
@@ -507,6 +539,18 @@ HTTP health check endpoint.
 |-------|------|---------|-------------|
 | `log_level` | `string` | `"info"` | Log level. One of: `"debug"`, `"info"`, `"warn"`, `"error"`, `"dpanic"`, `"panic"`, `"fatal"`. Env: `DZ_LOG_LEVEL`. |
 | `log_file` | `string` | `".dolphin/logs/agent.log"` | Log file path. Env: `DZ_LOG_FILE`. |
+| `log_max_size` | `int` | `100` | Log file size in MB before rotation. Env: `DZ_LOG_MAX_SIZE`. |
+| `log_max_age` | `int` | `30` | Days to retain old log files. Env: `DZ_LOG_MAX_AGE`. |
+| `log_max_backup` | `int` | `3` | Max old log files to keep. Env: `DZ_LOG_MAX_BACKUP`. |
+
+---
+
+## Workspace
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `workspace` | `string` | `""` | Working directory for the agent. Env: `DZ_WORKSPACE`. |
+| `language` | `string` | `""` | Language preference (e.g. `"en"`, `"zh"`). Env: `DZ_LANGUAGE`. |
 
 ---
 
@@ -521,6 +565,23 @@ Go pprof profiling endpoints. For debugging performance issues.
 
 ---
 
+## Telemetry (`telemetry`)
+
+OpenTelemetry tracing configuration.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `telemetry.enabled` | `bool` | `false` | Enable OpenTelemetry tracing. |
+| `telemetry.service_name` | `string` | `"dolphin"` | Service name for traces. |
+| `telemetry.exporter` | `string` | `"otlp-grpc"` | Exporter type: `"otlp-grpc"`, `"otlp-http"`, or `"stdout"`. |
+| `telemetry.otlp_endpoint` | `string` | `""` | OTLP collector endpoint (e.g. `"localhost:4317"`). |
+| `telemetry.otlp_headers` | `map[string]string` | `{}` | Custom headers for OTLP exporter. |
+| `telemetry.sample_rate` | `float` | `1.0` | Trace sampling rate (0.0–1.0). |
+| `telemetry.logs_enabled` | `bool` | `false` | Enable log export via OpenTelemetry. |
+| `telemetry.metrics_enabled` | `bool` | `false` | Enable metric export via OpenTelemetry. |
+
+---
+
 ## Metrics
 
 Prometheus-style metrics endpoint.
@@ -529,6 +590,40 @@ Prometheus-style metrics endpoint.
 |-------|------|---------|-------------|
 | `metrics.enabled` | `bool` | `false` | Enable metrics HTTP server. |
 | `metrics.addr` | `string` | `"127.0.0.1:9090"` | Listen address (e.g. `":9090"` for all interfaces). |
+
+---
+
+## Resource Monitor (`resource`)
+
+Periodic system resource monitoring.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `resource.enabled` | `bool` | `false` | Enable periodic resource monitoring. |
+| `resource.interval` | `string` | `"30s"` | Sampling interval (e.g. `"30s"`, `"1m"`). |
+| `resource.disk_paths` | `[]string` | `[]` | Filesystem paths to monitor (e.g. `["/", "/data"]`). |
+| `resource.max_bandwidth` | `uint64` | `125000000` | Max network bandwidth in bytes/s for % calculation (default 125MB/s = 1Gbps). |
+| `resource.thresholds` | `[]float64` | `[20, 40, 60, 80]` | Percentage thresholds to alert on, sorted ascending. |
+
+## Flags (`flags`)
+
+Optional feature flags.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `flags.self_evolution` | `bool` | `false` | Enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands. |
+
+## Credentials (`credentials`)
+
+Credential management for external services.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `credentials.enabled` | `bool` | `false` | Enable credential management. |
+| `credentials.store` | `string` | `""` | Credential store type (e.g. `"file"`, `"keychain"`). |
+| `credentials.path` | `string` | `""` | Path to credential storage file. |
+| `credentials.safe_fields` | `[]string` | `[]` | Field names considered safe to log (never log API keys, tokens). |
+| `credentials.allow_only` | `[]string` | `[]` | Only allow these credential keys to be accessed. |
 
 ---
 
@@ -549,14 +644,26 @@ All settings can be overridden via `DZ_`-prefixed environment variables at runti
 | `DZ_TRANSPORT_STDIO_ENABLED` | `transport.stdio.enabled` | Enable stdio transport |
 | `DZ_TRANSPORT_MQTT_ENABLED` | `transport.mqtt.enabled` | Enable MQTT transport |
 | `DZ_MQTT_BROKER` | `transport.mqtt.broker` | MQTT broker URL |
-| `DZ_MQTT_TOPIC` | `transport.mqtt.topic` | MQTT command topic |
-| `DZ_MQTT_RESPONSE_TOPIC` | `transport.mqtt.response_topic` | MQTT response topic |
-| `DZ_MQTT_EMBEDDED` | `transport.mqtt.embedded` | Enable embedded broker |
-| `DZ_MQTT_EMBEDDED_ADDR` | `transport.mqtt.embedded_addr` | Embedded broker address |
-| `DZ_MQTT_USER` | `transport.mqtt.embedded_accounts[0].username` | First embedded account username |
-| `DZ_MQTT_PASSWORD` | `transport.mqtt.embedded_accounts[0].password` | First embedded account password |
+| `DZ_MQTT_SUBSCRIBE_TOPIC` | `transport.mqtt.subscribe_topic` | MQTT subscribe topic |
+| `DZ_MQTT_PUBLISH_TOPIC` | `transport.mqtt.publish_topic` | MQTT publish topic |
+| `DZ_SERVERS_MQTT_BROKER_ENABLED` | `servers.mqtt_broker.enabled` | Enable embedded MQTT broker |
+| `DZ_SERVERS_MQTT_BROKER_ADDR` | `servers.mqtt_broker.addr` | Embedded MQTT broker address |
+| `DZ_SERVERS_MQTT_BROKER_USER` | `servers.mqtt_broker.accounts[0].username` | Embedded broker account username |
+| `DZ_SERVERS_MQTT_BROKER_PASSWORD` | `servers.mqtt_broker.accounts[0].password` | Embedded broker account password |
 | `DZ_EMAIL_USERNAME` | `transport.email.username` | Email username |
 | `DZ_EMAIL_PASSWORD` | `transport.email.password` | Email password |
+| `DZ_DINGTALK_ENABLED` | `transport.dingtalk.enabled` | Enable DingTalk transport |
+| `DZ_DINGTALK_CLIENT_ID` | `transport.dingtalk.client_id` | DingTalk AppKey |
+| `DZ_DINGTALK_CLIENT_SECRET` | `transport.dingtalk.client_secret` | DingTalk AppSecret |
+| `DZ_UPDATE_ENABLED` | `update.enabled` | Enable update checks |
+| `DZ_UPDATE_CHECK_INTERVAL` | `update.check_interval` | Update check interval |
+| `DZ_UPDATE_CHANNEL` | `update.channel` | Update channel (stable/pre-release) |
+| `DZ_UPDATE_AUTO_INSTALL` | `update.auto_install` | Auto-install updates |
+| `DZ_WORKSPACE` | `workspace` | Agent working directory |
+| `DZ_LANGUAGE` | `language` | Language preference |
+| `DZ_LOG_MAX_SIZE` | `log_max_size` | Log file rotation size (MB) |
+| `DZ_LOG_MAX_AGE` | `log_max_age` | Log retention days |
+| `DZ_LOG_MAX_BACKUP` | `log_max_backup` | Max old log files |
 
 ---
 

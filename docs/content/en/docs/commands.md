@@ -1,4 +1,9 @@
-# Commands
+---
+title: Commands
+description: Built-in slash commands for Dolphin agent
+slug: commands
+weight: 12
+---
 
 Dolphin provides built-in slash commands available in any transport (terminal, SSH, email, chat, etc.). Use `/help` in-session to see the full list.
 
@@ -16,13 +21,13 @@ Dolphin provides built-in slash commands available in any transport (terminal, S
 
 | Command | Description |
 |---------|-------------|
-| `/help` | Show this help text |
+| `/help` | Display help information |
 | `/mcp` | List all registered MCP tools with descriptions |
-| `/agents [name]` | List agents and their status; specify a name for detailed info |
+| `/agents [name]` | List agents and their status; specify a name for details |
 | `/skills [sub]` | List available skills. Subcommands: `new`, `delete`, `show` |
 | `/commands [sub]` | List user-defined commands. Subcommands: `new`, `delete`, `show` |
 | `/workflow [sub]` | List available workflows. Subcommands: `new`, `delete`, `show` |
-| `/sessions [sub]` | List past sessions. Subcommand: `dump <id>` |
+| `/sessions [sub]` | List historical sessions. Subcommand: `dump <id>` |
 | `/context [sub]` | Show context summary. Subcommands: `system`, `current`, `<section>` |
 | `/transport` | Show enabled transports |
 
@@ -32,9 +37,9 @@ Dolphin provides built-in slash commands available in any transport (terminal, S
 |---------|-------------|
 | `/config [sub]` | View or modify configuration. Subcommands: `get`, `set` |
 | `/model [name]` | List or switch the LLM model |
-| `/provider [sub]` | List or switch the LLM provider. Subcommand: `switch [name]` |
+| `/provider [sub]` | List or switch LLM provider. Subcommand: `switch [name]` |
 
-## Tasks
+## Task Management
 
 | Command | Description |
 |---------|-------------|
@@ -44,12 +49,14 @@ Dolphin provides built-in slash commands available in any transport (terminal, S
 
 | Command | Description |
 |---------|-------------|
-| `/forget <name>` | Reset conversation context for a specific agent |
+| `/forget <name>` | Reset conversation context for an agent |
 | `/feedback` | Send feedback to the development team via email |
 
 ## Usage Notes
 
-- Subcommands are specified as `/command subcommand [args]`. For example: `/skills new`
-- Use `/help <command>` for detailed usage on a specific command
-- Commands work in all transport modes — terminal, SSH, email, MQTT, and DingTalk
-- User-defined commands (from `.dolphin/commands/`) are also invoked with `/` prefix
+- Subcommands are used as `/command subcommand [args]`, e.g. `/skills new`
+- Use `/help <command>` for detailed usage of a specific command
+- All commands work in every transport — terminal, SSH, email, MQTT, DingTalk
+- User-defined commands (from `.dolphin/commands/`) also use the `/` prefix
+
+> Last modified: 2026-05-26

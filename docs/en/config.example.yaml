@@ -44,7 +44,6 @@ llm:
 
 # ── Sessions ──────────────────────────────────────────────
 session:
-  dir: .dolphin/sessions
   max_loop: 50                # max turns per session
   summary: true               # auto-generate session summary
   max_age: 24h                # auto-delete sessions older than this
@@ -66,6 +65,15 @@ mcp:
     priority: 500
   servers: {}                 # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
   repos: []                   # manifest repos, e.g. ["dolphinv/mcp"]
+
+# ── Servers (standalone in-process servers) ────────────────
+servers:
+  mqtt_broker:
+    enabled: false            # embedded MQTT broker (moved from transport.mqtt.embedded)
+    addr: :1883
+    accounts:
+      - username: dolphin
+        password: ""          # auto-generated if empty; set manually to override
 
 # ── Agent Pool ────────────────────────────────────────────
 agent_pool:
@@ -95,16 +103,12 @@ transport:
   mqtt:
     enabled: false
     broker: tcp://localhost:1883
-    topic: dolphin/agent/command
-    response_topic: dolphin/agent/response
+    subscribe_topic: dolphin/agent/command
+    publish_topic: dolphin/agent/response
     client_id: dolphin-agent
-    embedded: true
-    embedded_addr: :1883
-    embedded_accounts:
-      - username: dolphin
-        password: ""          # auto-generated if empty; set manually to override
+    # Embedded broker and client credentials moved to servers.mqtt_broker
     username: ""              # client credentials for broker connection
-    password: ""              # auto-populated from first embedded account if empty
+    password: ""              # auto-populated from first mqtt_broker account if empty
   email:
     enabled: false
     smtp_host: ""

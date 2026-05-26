@@ -88,7 +88,6 @@ llm:
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `session.dir` | `string` | `"/tmp/dolphin"` | 会话文件存储目录。 |
 | `session.max_loop` | `int` | `50` | 每次会话最大轮数，超出后保存检查点摘要。 |
 | `session.summary` | `bool` | `true` | 是否在检查点时自动生成会话摘要。 |
 | `session.max_age` | `string` | `"24h"` | 超过此时间的会话文件自动清理（如 `"72h"`、`"7d"`）。环境变量：`DZ_SESSION_MAX_AGE`。 |
@@ -113,6 +112,7 @@ llm:
 | `mcp.shell.max_command_length` | `int` | `4096` | 每条命令的最大字符数。 |
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | 命令白名单（空列表 = 允许所有）。限制模式下自动设置。 |
 | `mcp.shell.output_max_bytes` | `int` | `65536` | 标准输出/错误截断字节上限。 |
+| `mcp.shell.allow_unrestricted` | `bool` | `false` | 当 `allowed_commands` 为空时，允许无限制 shell 执行。为 false 时需要明确的命令白名单。 |
 
 ### CDP 浏览器
 
@@ -230,6 +230,17 @@ mcp:
 |------|------|--------|------|
 | `mcp.repos` | `[]string` | `[]` | 社区 MCP 工具的清单仓库 URL，如 `["dolphinv/mcp"]`。 |
 
+### WebHost (`mcp.webhost`)
+
+原生桌面浏览器控制（macOS 使用 WKWebView，Windows 使用 WebView2）。需要 WebHost 原生应用正在运行。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `mcp.webhost.enabled` | `bool` | `false` | 启用 WebHost 浏览器工具。 |
+| `mcp.webhost.url` | `string` | `"http://localhost:9223/mcp/call"` | WebHost HTTP 服务器 URL。 |
+| `mcp.webhost.priority` | `int` | `100` | 工具列表优先级。 |
+| `mcp.webhost.timeout_seconds` | `int` | `30` | HTTP 客户端超时秒数。 |
+
 ---
 
 ## Agent 池
@@ -248,6 +259,11 @@ mcp:
 | `agent_pool.poll_interval` | `string` | `"200ms"` | 子 agent 就绪轮询间隔（如 `"200ms"`、`"1s"`）。 |
 | `agent_pool.min_reap_interval` | `string` | `"5s"` | 空闲回收最小检查间隔。 |
 | `agent_pool.max_reap_interval` | `string` | `"30s"` | 空闲回收最大检查间隔。 |
+| `agent_pool.dispatch_timeout` | `string` | `"5s"` | 阻塞分发回退超时（如 `"5s"`、`"10s"`）。 |
+| `agent_pool.worker_stop_timeout` | `string` | `"5s"` | 工作线程关闭优雅等待时间，超时后强制终止（如 `"5s"`、`"10s"`）。 |
+| `agent_pool.max_stale_duration` | `string` | `"1h"` | 出错 agent 在清理工作区前的最大存活时间（如 `"1h"`、`"30m"`）。 |
+| `agent_pool.enable_agent_log` | `bool` | `false` | 将 agent 执行日志写入 `workspace/agent.log`。 |
+| `agent_pool.max_agent_messages` | `int` | `100` | 每个子 agent 保留的最大对话消息数。`0` = 不限。 |
 
 ---
 
@@ -274,6 +290,8 @@ mcp:
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `transport.stdio.enabled` | `bool` | `true` | 启用本地终端交互。环境变量：`DZ_TRANSPORT_STDIO_ENABLED`。 |
+| `transport.stdio.markdown_render` | `bool` | `true` | 在 stdio 终端输出中渲染 Markdown。 |
+| `transport.stdio.markdown_style` | `string` | `"auto"` | 渲染 Markdown 的 CSS 主题（如 `"dracula"`、`"github"`）。 |
 
 ### SSH
 
@@ -298,14 +316,11 @@ MQTT 消息传输。
 |------|------|--------|------|
 | `transport.mqtt.enabled` | `bool` | `false` | 启用 MQTT 传输层。环境变量：`DZ_TRANSPORT_MQTT_ENABLED`。 |
 | `transport.mqtt.broker` | `string` | `"tcp://localhost:1883"` | MQTT 代理 URL。环境变量：`DZ_MQTT_BROKER`。 |
-| `transport.mqtt.topic` | `string` | `"dolphin/agent/command"` | 命令订阅主题。环境变量：`DZ_MQTT_TOPIC`。 |
-| `transport.mqtt.response_topic` | `string` | `"dolphin/agent/response"` | 响应发布主题。环境变量：`DZ_MQTT_RESPONSE_TOPIC`。 |
+| `transport.mqtt.subscribe_topic` | `string` | `"/agent/dolphin"` | 命令订阅主题。环境变量：`DZ_MQTT_SUBSCRIBE_TOPIC`。 |
+| `transport.mqtt.publish_topic` | `string` | `"/agent/dolphin/message"` | 响应发布主题。环境变量：`DZ_MQTT_PUBLISH_TOPIC`。 |
 | `transport.mqtt.client_id` | `string` | `"dolphin-agent"` | MQTT 客户端 ID。 |
-| `transport.mqtt.embedded` | `bool` | `true` | 运行内嵌 MQTT 代理。环境变量：`DZ_MQTT_EMBEDDED`。 |
-| `transport.mqtt.embedded_addr` | `string` | `":1883"` | 内嵌代理的监听地址。环境变量：`DZ_MQTT_EMBEDDED_ADDR`。 |
-| `transport.mqtt.embedded_accounts` | `[]object` | `[]` | 内嵌代理的账户凭据。如果内嵌代理启用且未配置账户，会自动生成一个。每个条目包含：`username`（string）、`password`（string）。环境变量 `DZ_MQTT_USER` / `DZ_MQTT_PASSWORD` 可设置第一个账户。 |
-| `transport.mqtt.username` | `string` | `""` | 连接 broker 的客户端用户名（非内嵌 broker 用）。 |
-| `transport.mqtt.password` | `string` | `""` | 连接 broker 的客户端密码。为空时自动取第一个内嵌账户的密码。 |
+| `transport.mqtt.username` | `string` | `""` | 连接 broker 的客户端用户名。为空时自动取第一个 servers.mqtt_broker 账户的用户名。 |
+| `transport.mqtt.password` | `string` | `""` | 连接 broker 的客户端密码。为空时自动取第一个 servers.mqtt_broker 账户的密码。 |
 | `transport.mqtt.keep_alive_seconds` | `int` | `60` | MQTT KeepAlive 间隔秒数。 |
 | `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping 响应超时秒数。 |
 | `transport.mqtt.max_reconnect_seconds` | `int` | `30` | 最大重连回退间隔秒数。 |
@@ -403,7 +418,7 @@ Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `transport.a2a.enabled` | `bool` | `false` | 启用 A2A 传输。 |
-| `transport.a2a.listen_addr` | `string` | `":8080"` | HTTP 监听地址。 |
+| `transport.a2a.listen_addr` | `string` | `":8334"` | HTTP 监听地址。 |
 | `transport.a2a.agent_id` | `string` | `""` | 唯一智能体标识。 |
 | `transport.a2a.agent_name` | `string` | `""` | 可读智能体名称。 |
 | `transport.a2a.agent_version` | `string` | `""` | 智能体版本号。 |
@@ -418,6 +433,23 @@ Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 
 | `transport.a2a.agent_card_path` | `string` | `"/.well-known/agent.json"` | Agent Card 端点路径。 |
 | `transport.a2a.read_header_timeout` | `int` | `10` | HTTP 服务器 `ReadHeaderTimeout`（秒）。 |
 | `transport.a2a.shutdown_timeout` | `int` | `5` | 服务器关闭上下文超时（秒）。 |
+
+---
+
+## 内置服务器 (`servers`)
+
+独立于传输层的进程内服务。
+
+### MQTT 代理 (`servers.mqtt_broker`)
+
+内嵌 MQTT 代理（替代已废弃的 `transport.mqtt.embedded*` 字段）。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `servers.mqtt_broker.enabled` | `bool` | `false` | 启用内嵌 MQTT 代理。环境变量：`DZ_SERVERS_MQTT_BROKER_ENABLED`。 |
+| `servers.mqtt_broker.addr` | `string` | `":1883"` | 监听地址。环境变量：`DZ_SERVERS_MQTT_BROKER_ADDR`。 |
+| `servers.mqtt_broker.accounts[].username` | `string` | `"dolphin"` | 代理账户用户名。环境变量：`DZ_SERVERS_MQTT_BROKER_USER`。 |
+| `servers.mqtt_broker.accounts[].password` | `string` | `""` | 代理账户密码。为空时自动生成。环境变量：`DZ_SERVERS_MQTT_BROKER_PASSWORD`。 |
 
 ---
 
@@ -486,7 +518,7 @@ plugins:
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `update.enabled` | `bool` | `false` | 启用自动更新检查。 |
+| `update.enabled` | `bool` | `true` | 启用自动更新检查。 |
 | `update.check_interval` | `string` | `"24h"` | 更新检查间隔（如 `"24h"`、`"12h"`）。 |
 | `update.channel` | `string` | `"stable"` | 发布频道：`"stable"` 或 `"pre-release"`。 |
 | `update.auto_install` | `bool` | `false` | 自动下载并安装更新。 |
@@ -512,6 +544,18 @@ HTTP 健康检查端点。
 |------|------|--------|------|
 | `log_level` | `string` | `"info"` | 日志级别。可选：`"debug"`、`"info"`、`"warn"`、`"error"`、`"dpanic"`、`"panic"`、`"fatal"`。环境变量：`DZ_LOG_LEVEL`。 |
 | `log_file` | `string` | `".dolphin/logs/agent.log"` | 日志文件路径。环境变量：`DZ_LOG_FILE`。 |
+| `log_max_size` | `int` | `100` | 日志文件大小（MB），超过后滚动。环境变量：`DZ_LOG_MAX_SIZE`。 |
+| `log_max_age` | `int` | `30` | 旧日志保留天数。环境变量：`DZ_LOG_MAX_AGE`。 |
+| `log_max_backup` | `int` | `3` | 保留的旧日志文件数。环境变量：`DZ_LOG_MAX_BACKUP`。 |
+
+---
+
+## 工作区
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `workspace` | `string` | `""` | agent 工作目录。环境变量：`DZ_WORKSPACE`。 |
+| `language` | `string` | `""` | 语言偏好（如 `"en"`、`"zh"`）。环境变量：`DZ_LANGUAGE`。 |
 
 ---
 
@@ -526,6 +570,23 @@ Go pprof 性能分析端点。用于调试性能问题。
 
 ---
 
+## 遥测 (`telemetry`)
+
+OpenTelemetry 链路追踪配置。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `telemetry.enabled` | `bool` | `false` | 启用 OpenTelemetry 追踪。 |
+| `telemetry.service_name` | `string` | `"dolphin"` | 追踪服务名称。 |
+| `telemetry.exporter` | `string` | `"otlp-grpc"` | 导出器类型：`"otlp-grpc"`、`"otlp-http"` 或 `"stdout"`。 |
+| `telemetry.otlp_endpoint` | `string` | `""` | OTLP 采集器端点（如 `"localhost:4317"`）。 |
+| `telemetry.otlp_headers` | `map[string]string` | `{}` | OTLP 导出器自定义请求头。 |
+| `telemetry.sample_rate` | `float` | `1.0` | 链路采样率（0.0–1.0）。 |
+| `telemetry.logs_enabled` | `bool` | `false` | 通过 OpenTelemetry 导出日志。 |
+| `telemetry.metrics_enabled` | `bool` | `false` | 通过 OpenTelemetry 导出指标。 |
+
+---
+
 ## 指标
 
 Prometheus 风格指标端点。
@@ -534,6 +595,40 @@ Prometheus 风格指标端点。
 |------|------|--------|------|
 | `metrics.enabled` | `bool` | `false` | 启用指标 HTTP 服务。 |
 | `metrics.addr` | `string` | `"127.0.0.1:9090"` | 监听地址（如 `":9090"` 表示监听所有接口）。 |
+
+---
+
+## 资源监控 (`resource`)
+
+系统资源定期监控。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `resource.enabled` | `bool` | `false` | 启用资源监控。 |
+| `resource.interval` | `string` | `"30s"` | 采样间隔（如 `"30s"`、`"1m"`）。 |
+| `resource.disk_paths` | `[]string` | `[]` | 监控的文件系统路径（如 `["/", "/data"]`）。 |
+| `resource.max_bandwidth` | `uint64` | `125000000` | 最大网络带宽字节/秒，用于百分比计算（默认 125MB/s = 1Gbps）。 |
+| `resource.thresholds` | `[]float64` | `[20, 40, 60, 80]` | 告警百分比阈值，升序排列。 |
+
+## 功能标记 (`flags`)
+
+可选功能开关。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `flags.self_evolution` | `bool` | `false` | 启用自我进化：BUILTIN_SKILLS.md + LLM 对技能/命令的增删改工具。 |
+
+## 凭据 (`credentials`)
+
+外部服务的凭据管理。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `credentials.enabled` | `bool` | `false` | 启用凭据管理。 |
+| `credentials.store` | `string` | `""` | 凭据存储类型（如 `"file"`、`"keychain"`）。 |
+| `credentials.path` | `string` | `""` | 凭据存储文件路径。 |
+| `credentials.safe_fields` | `[]string` | `[]` | 可安全记录日志的字段名（API key、token 等永不记录）。 |
+| `credentials.allow_only` | `[]string` | `[]` | 仅允许访问这些凭据键。 |
 
 ---
 
@@ -554,14 +649,26 @@ Prometheus 风格指标端点。
 | `DZ_TRANSPORT_STDIO_ENABLED` | `transport.stdio.enabled` | 启用 stdio 传输 |
 | `DZ_TRANSPORT_MQTT_ENABLED` | `transport.mqtt.enabled` | 启用 MQTT 传输 |
 | `DZ_MQTT_BROKER` | `transport.mqtt.broker` | MQTT 代理 URL |
-| `DZ_MQTT_TOPIC` | `transport.mqtt.topic` | MQTT 命令主题 |
-| `DZ_MQTT_RESPONSE_TOPIC` | `transport.mqtt.response_topic` | MQTT 响应主题 |
-| `DZ_MQTT_EMBEDDED` | `transport.mqtt.embedded` | 启用内嵌代理 |
-| `DZ_MQTT_EMBEDDED_ADDR` | `transport.mqtt.embedded_addr` | 内嵌代理地址 |
-| `DZ_MQTT_USER` | `transport.mqtt.embedded_accounts[0].username` | 第一个内嵌账户的用户名 |
-| `DZ_MQTT_PASSWORD` | `transport.mqtt.embedded_accounts[0].password` | 第一个内嵌账户的密码 |
+| `DZ_MQTT_SUBSCRIBE_TOPIC` | `transport.mqtt.subscribe_topic` | MQTT 订阅主题 |
+| `DZ_MQTT_PUBLISH_TOPIC` | `transport.mqtt.publish_topic` | MQTT 发布主题 |
+| `DZ_SERVERS_MQTT_BROKER_USER` | `servers.mqtt_broker.accounts[0].username` | 内嵌代理账户用户名 |
+| `DZ_SERVERS_MQTT_BROKER_PASSWORD` | `servers.mqtt_broker.accounts[0].password` | 内嵌代理账户密码 |
 | `DZ_EMAIL_USERNAME` | `transport.email.username` | 邮箱用户名 |
 | `DZ_EMAIL_PASSWORD` | `transport.email.password` | 邮箱密码 |
+| `DZ_SERVERS_MQTT_BROKER_ENABLED` | `servers.mqtt_broker.enabled` | 启用内嵌 MQTT 代理 |
+| `DZ_SERVERS_MQTT_BROKER_ADDR` | `servers.mqtt_broker.addr` | 内嵌 MQTT 代理地址 |
+| `DZ_DINGTALK_ENABLED` | `transport.dingtalk.enabled` | 启用钉钉传输 |
+| `DZ_DINGTALK_CLIENT_ID` | `transport.dingtalk.client_id` | 钉钉 AppKey |
+| `DZ_DINGTALK_CLIENT_SECRET` | `transport.dingtalk.client_secret` | 钉钉 AppSecret |
+| `DZ_UPDATE_ENABLED` | `update.enabled` | 启用更新检查 |
+| `DZ_UPDATE_CHECK_INTERVAL` | `update.check_interval` | 更新检查间隔 |
+| `DZ_UPDATE_CHANNEL` | `update.channel` | 更新频道（stable/pre-release） |
+| `DZ_UPDATE_AUTO_INSTALL` | `update.auto_install` | 自动安装更新 |
+| `DZ_WORKSPACE` | `workspace` | Agent 工作目录 |
+| `DZ_LANGUAGE` | `language` | 语言偏好 |
+| `DZ_LOG_MAX_SIZE` | `log_max_size` | 日志滚动大小（MB） |
+| `DZ_LOG_MAX_AGE` | `log_max_age` | 日志保留天数 |
+| `DZ_LOG_MAX_BACKUP` | `log_max_backup` | 保留旧日志文件数 |
 
 ---
 

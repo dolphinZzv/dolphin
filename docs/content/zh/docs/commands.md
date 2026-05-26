@@ -1,4 +1,9 @@
-# 内部命令
+---
+title: 内部命令
+description: Dolphin agent 内置斜杠命令参考
+slug: commands
+weight: 12
+---
 
 dolphin 提供内置的斜杠命令，在所有传输层（终端、SSH、邮件、MQTT、钉钉）中均可使用。在会话中输入 `/help` 可查看完整列表。
 
@@ -53,3 +58,5 @@ dolphin 提供内置的斜杠命令，在所有传输层（终端、SSH、邮件
 - 使用 `/help <command>` 查看具体命令的详细用法
 - 所有命令在所有传输模式中均可使用 —— 终端、SSH、邮件、MQTT、钉钉
 - 用户自定义命令（来自 `.dolphin/commands/`）同样使用 `/` 前缀调用
+
+> Last modified: 2026-05-26
