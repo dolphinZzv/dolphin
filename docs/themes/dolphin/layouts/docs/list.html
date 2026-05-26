@@ -1,19 +1,79 @@
 {{ define "main" }}
-<div class="doc-layout">
-  <article class="doc-content">
+<div class="docs-index">
+  <div class="docs-index-header">
     <h1>{{ .Title }}</h1>
-    {{ if .Params.description }}<p class="doc-description">{{ .Params.description }}</p>{{ end }}
-    {{ .Content }}
+    {{ if .Params.description }}<p class="docs-index-desc">{{ .Params.description }}</p>{{ end }}
+  </div>
+
+  {{ .Content }}
+
+  {{ $pages := .Pages.ByWeight }}
+
+  {{/* Getting Started: weight < 12 */}}
+  {{ $started := where $pages "Weight" "le" 10 }}
+  {{ if $started }}
+  <section class="doc-category">
+    <h2 class="doc-category-title">{{ if eq .Site.Language.Lang "zh" }}快速开始{{ else }}Getting Started{{ end }}</h2>
+    <p class="doc-category-desc">{{ if eq .Site.Language.Lang "zh" }}从零开始安装和配置 Dolphin。{{ else }}Install and configure Dolphin from scratch.{{ end }}</p>
     <div class="section-grid">
-      {{ range .Pages.ByWeight }}
-      <a href="{{ .RelPermalink }}" style="text-decoration: none; color: inherit;">
+      {{ range $started }}
+      <a href="{{ .RelPermalink }}" class="section-card-link">
         <div class="section-card">
+          <div class="section-card-icon">
+            {{ if eq .Weight 5 }}⚡{{ else if eq .Weight 10 }}📦{{ end }}
+          </div>
           <h3>{{ .Title }}</h3>
           {{ with .Params.description }}<p>{{ . }}</p>{{ end }}
         </div>
       </a>
       {{ end }}
     </div>
-  </article>
+  </section>
+  {{ end }}
+
+  {{/* Core: weight 12-20 */}}
+  {{ $core := where $pages "Weight" "ge" 12 }}
+  {{ $core = where $core "Weight" "le" 20 }}
+  {{ if $core }}
+  <section class="doc-category">
+    <h2 class="doc-category-title">{{ if eq .Site.Language.Lang "zh" }}核心概念{{ else }}Core Concepts{{ end }}</h2>
+    <p class="doc-category-desc">{{ if eq .Site.Language.Lang "zh" }}了解 Dolphin 的核心功能和架构。{{ else }}Learn about Dolphin's core features and architecture.{{ end }}</p>
+    <div class="section-grid">
+      {{ range $core }}
+      <a href="{{ .RelPermalink }}" class="section-card-link">
+        <div class="section-card">
+          <div class="section-card-icon">
+            {{ if eq .Weight 12 }}💬{{ else if eq .Weight 15 }}🔌{{ else if eq .Weight 17 }}📋{{ else if eq .Weight 20 }}⚙️{{ end }}
+          </div>
+          <h3>{{ .Title }}</h3>
+          {{ with .Params.description }}<p>{{ . }}</p>{{ end }}
+        </div>
+      </a>
+      {{ end }}
+    </div>
+  </section>
+  {{ end }}
+
+  {{/* Advanced: weight > 20 */}}
+  {{ $advanced := where $pages "Weight" "gt" 20 }}
+  {{ if $advanced }}
+  <section class="doc-category">
+    <h2 class="doc-category-title">{{ if eq .Site.Language.Lang "zh" }}进阶指南{{ else }}Advanced{{ end }}</h2>
+    <p class="doc-category-desc">{{ if eq .Site.Language.Lang "zh" }}深入探索 Dolphin 的高级特性和扩展能力。{{ else }}Explore advanced features and extensibility.{{ end }}</p>
+    <div class="section-grid">
+      {{ range $advanced }}
+      <a href="{{ .RelPermalink }}" class="section-card-link">
+        <div class="section-card">
+          <div class="section-card-icon">
+            {{ if eq .Weight 25 }}🧠{{ else if eq .Weight 30 }}🔧{{ end }}
+          </div>
+          <h3>{{ .Title }}</h3>
+          {{ with .Params.description }}<p>{{ . }}</p>{{ end }}
+        </div>
+      </a>
+      {{ end }}
+    </div>
+  </section>
+  {{ end }}
 </div>
 {{ end }}

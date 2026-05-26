@@ -520,23 +520,77 @@ footer {
 /* ── Section grid (doc index) ── */
 .section-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 16px;
-  margin: 24px 0;
+  margin: 20px 0;
+}
+.section-card-link {
+  text-decoration: none !important;
+  color: inherit !important;
+  display: block;
 }
 .section-card {
   background: var(--bg-secondary);
   border: 1px solid transparent;
   border-radius: 12px;
-  padding: 20px;
+  padding: 24px 20px;
   transition: all 0.2s ease;
+  height: 100%;
 }
 .section-card:hover {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--bg-secondary) 85%, var(--accent));
 }
-.section-card h3 { margin-top: 0; border: none; font-size: 1em; font-family: Inter, sans-serif; }
-.section-card p { font-size: 0.9em; color: var(--text-secondary); margin-bottom: 0; }
+.section-card-icon {
+  font-size: 1.5em;
+  display: block;
+  margin-bottom: 12px;
+  line-height: 1;
+}
+.section-card h3 {
+  margin-top: 0;
+  border: none;
+  font-size: 1.05em;
+  font-family: Inter, sans-serif;
+  margin-bottom: 6px;
+}
+.section-card p {
+  font-size: 0.85em;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+  line-height: 1.5;
+}
+
+/* ── Docs index page ── */
+.docs-index-header {
+  margin-bottom: 32px;
+}
+.docs-index-header h1 {
+  margin-bottom: 8px;
+}
+.docs-index-desc {
+  font-size: 1.05em;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 640px;
+}
+.doc-category {
+  margin-bottom: 36px;
+}
+.doc-category-title {
+  font-family: "Cormorant Garamond", "Times New Roman", serif;
+  font-size: 1.3em;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px 0;
+  padding: 0;
+  border: none;
+}
+.doc-category-desc {
+  font-size: 0.9em;
+  color: var(--text-secondary);
+  margin-bottom: 0;
+}
 
 /* ── Post navigation ── */
 .post-nav {
