@@ -22,7 +22,7 @@ dolphin doesn't care which door you knock on — it answers them all. The same a
 
 **Run commands and automate workflows.** The shell tool gives it access to your filesystem, git, package managers, build tools — anything you'd type into a terminal. Timeouts and optional allowlists keep it safe.
 
-**Drive a browser.** Through the CDP (Chrome DevTools Protocol) tool, it can open pages, click around, fill forms, take screenshots, and extract data. Useful for testing, scraping, or automating web tasks that don't have an API.
+**Drive a browser — two ways.** The **CDP** tool uses headless Chrome (DevTools Protocol) for scripting: open pages, click, fill forms, screenshots, data extraction. The **WebHost** tool controls a native desktop browser (WKWebView on macOS, WebView2 on Windows) with an actual window — useful when you need interactive mode, tab management, JavaScript dialogs, or visual debugging.
 
 **Coordinate multiple agents.** Need a code review, a security audit, and a deployment check at the same time? The coordinator dispatches tasks to specialized sub-agents that run in parallel. You define persistent agents for recurring roles, or the coordinator creates temporary ones on the fly.
 
