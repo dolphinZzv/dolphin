@@ -24,3 +24,9 @@ other = "编辑此页"
 
 [switchLang]
 other = "语言"
+
+[quickstart]
+other = "快速开始"
+
+[capabilities]
+other = "能力"

@@ -1,4 +1,0 @@
-<button class="tab-header" onclick="switchTab(this)" data-tab="{{ .Get "id" }}">{{ .Get "title" }}</button>
-<div class="tab-panel" data-tab="{{ .Get "id" }}"{{ if eq (.Get "active") "true" }} style="display:block" data-active="true"{{ end }}>
-{{ .Inner | markdownify }}
-</div>

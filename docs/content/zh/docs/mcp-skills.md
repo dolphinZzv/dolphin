@@ -1,11 +1,11 @@
 ---
 title: 能力
-description: 通过外部 MCP 服务器和可加载技能扩展 Dolphin 的能力
+description: 通过外部 MCP 服务器、工作流和可加载技能扩展 Dolphin 的能力
 slug: capabilities
 weight: 30
 ---
 
-Dolphin 通过两个互补的系统扩展能力：**MCP 服务器**（模型上下文协议）和 **Skills**（领域知识包）。
+Dolphin 通过三个互补的系统扩展能力：**MCP 服务器**（模型上下文协议）、**工作流**（结构化流程）和 **Skills**（领域知识包）。
 
 ---
 
@@ -242,9 +242,116 @@ Skills are specialized capabilities you can load on demand with load_skill.
 
 ---
 
-## MCP + Skills 结合使用
+## 工作流
 
-MCP 工具和 Skills 协同工作：
+工作流是结构化的逐步流程，LLM 必须严格遵守。与 Skills（知识储备）不同，工作流是行为约束——当任务匹配时，LLM 使用 `run_workflow` 执行每个步骤，不可跳过或即兴发挥。
+
+适用于 **部署检查**、**代码审查**、**事件响应** 和 **合规流程**。
+
+### 文件结构
+
+工作流存储在 `.dolphin/workflows/` 目录下，每个工作流一个子目录：
+
+```
+.dolphin/workflows/
+  deploy-check/
+    WORKFLOW.md
+  code-review/
+    WORKFLOW.md
+```
+
+每个 `WORKFLOW.md` 文件使用 YAML frontmatter：
+
+```markdown
+---
+name: deploy-check
+description: 检查部署健康状态
+---
+
+当我要你执行部署检查时，请按以下步骤操作：
+1. 执行 `kubectl get pods --all-namespaces`
+2. 执行 `kubectl get nodes`
+3. 汇总结果
+```
+
+### LLM 工具
+
+| 工具 | 说明 |
+|------|------|
+| `list_workflows` | 列出所有可用工作流 |
+| `load_workflow` | 加载指定工作流的完整内容 |
+| `run_workflow` | 执行工作流——LLM 必须严格遵循每一步 |
+
+启用 `flags.self_evolution: true` 后额外支持：`create_workflow`、`update_workflow`、`delete_workflow`、`enable_workflow`、`disable_workflow`。
+
+### CLI 与会话内命令
+
+- CLI：`dolphin workflow list | show <name> | new <name> | delete <name> | disable <name> | enable <name>`
+- 会话内：`/workflow` 命令，子命令 `new`、`delete`、`show`
+
+---
+
+## 多 Agent 协作
+
+Dolphin 可以将复杂任务委派给 **子 Agent（sub-agent）**——独立的 LLM 实例并行工作，向协调 Agent 汇报结果。
+
+### 工作原理
+
+1. 协调 Agent 接收任务并拆分为子任务
+2. 每个子任务分配给一个独立的子 Agent，运行在各自的工作区
+3. 子 Agent 在独立的 LLM 会话中并发执行
+4. 协调 Agent 轮询结果并综合为最终回复
+
+### Agent 池配置
+
+```yaml
+agent_pool:
+  max_concurrency: 5        # 最大并行子任务数
+  default_timeout: 300      # 每任务超时秒数
+  workspace_dir: .dolphin/workspaces
+  idle_timeout: 600         # 空闲回收秒数
+```
+
+### 适用场景
+
+- **并行代码审查**——多个文件由不同 Agent 同时审查
+- **研究综合**——每个子 Agent 研究一个主题，协调 Agent 合并结论
+- **多步骤工作流**——每一步由独立的聚焦 Agent 处理
+
+子 Agent 完全隔离——每个拥有独立的对话历史、工作区目录和工具访问范围。协调 Agent 仅获取结果，不关注中间推理过程。
+
+---
+
+## 上下文压缩
+
+Dolphin 在对话接近 `max_context_tokens` 的 70% 时自动压缩消息历史，防止 LLM 因 token 限制拒绝请求。
+
+所有策略共享通用前导逻辑：估算 token → 低于 70% 跳过 → 消息数 ≤6 跳过 → 找到 `keepStart`（最后一个用户消息及之后所有内容）→ 丢弃之前的内容。
+
+### 压缩策略
+
+| 模式 | 策略 | 适用场景 |
+|------|------|----------|
+| `drop`（默认） | DropCompressor — 从前面删除完整轮次组，无 LLM | 短会话、交互式使用 |
+| `segment` | SegmentCompressor — 多级拼接摘要金字塔 | 非常长的会话 |
+| `tiered` | TieredCompressor — 三层缓存：L2（远）→ L1（中）→ 原始（最近3对），LLM 摘要 | 需要详细近期上下文 |
+| `incremental` | IncrementalCompressor — 单运行摘要，每 N 轮 LLM 更新 | 连贯运行叙事 |
+| `topic` | TopicCompressor — 按主题边界分区（消息长度 >2x 平均），每主题摘要 | 多主题会话 |
+
+### 配置
+
+```yaml
+llm:
+  compress_mode: drop            # drop | segment | tiered | incremental | topic
+  segment_merge_limit: 100       # 合并前片段数（segment 模式）
+  compress_timeout_seconds: 15   # LLM 调用超时
+```
+
+---
+
+## 综合运用
+
+MCP 工具、Skills、工作流和压缩机制协同工作：
 
 - **MCP 工具**赋予 agent 新的*行动能力*（调用 API、执行命令、浏览网页）。
 - **Skills**赋予 agent 新的*知识储备*（最佳实践、编码规范、领域上下文）。
@@ -255,4 +362,4 @@ MCP 工具和 Skills 协同工作：
 2. 创建一个包含团队 issue 分类规范的技能文件。
 3. Agent 加载技能、学习你的分类规则，然后用 `issue-tracker:search_issues` 和 `issue-tracker:transition_issue` 按规则处理 issue。
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-26

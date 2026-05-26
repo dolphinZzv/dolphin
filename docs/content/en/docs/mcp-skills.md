@@ -1,11 +1,11 @@
 ---
 title: MCP & Capabilities
-description: How to extend Dolphin with external MCP servers and loadable skills
+description: How to extend Dolphin with external MCP servers, workflows, and loadable skills
 slug: capabilities
 weight: 30
 ---
 
-Dolphin can be extended with external tools and specialized capabilities through two complementary systems: **MCP servers** (Model Context Protocol) and **Skills** (domain-specific knowledge packs).
+Dolphin can be extended with external tools and specialized capabilities through three complementary systems: **MCP servers** (Model Context Protocol), **Workflows** (structured procedures), and **Skills** (domain-specific knowledge packs).
 
 ---
 
@@ -242,9 +242,116 @@ Skills are watched for file changes. When you edit a `.md` file in the skills di
 
 ---
 
-## Combining MCP + Skills
+## Workflows
 
-MCP tools and skills work together:
+Workflows are structured, step-by-step procedures that the LLM must follow exactly. Unlike skills (which are knowledge), workflows are behavioral constraints — when a task matches, the LLM uses `run_workflow` and follows every step.
+
+Useful for **deployment checks**, **code reviews**, **incident response runbooks**, and **compliance procedures**.
+
+### File Structure
+
+Workflows live in `.dolphin/workflows/`, one directory per workflow:
+
+```
+.dolphin/workflows/
+  deploy-check/
+    WORKFLOW.md
+  code-review/
+    WORKFLOW.md
+```
+
+Each `WORKFLOW.md` uses YAML frontmatter:
+
+```markdown
+---
+name: deploy-check
+description: Check deployment health
+---
+
+When I ask you to run the deployment check, follow these steps:
+1. Run `kubectl get pods --all-namespaces`
+2. Run `kubectl get nodes`
+3. Summarize findings
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_workflows` | List all available workflows |
+| `load_workflow` | Load a workflow's full content |
+| `run_workflow` | Execute a workflow — the LLM MUST follow every step |
+
+With `flags.self_evolution: true`: `create_workflow`, `update_workflow`, `delete_workflow`, `enable_workflow`, `disable_workflow`.
+
+### CLI & In-Session
+
+- CLI: `dolphin workflow list | show <name> | new <name> | delete <name> | disable <name> | enable <name>`
+- In-session: `/workflow` with subcommands `new`, `delete`, `show`
+
+---
+
+## Multi-Agent Collaboration
+
+Dolphin can delegate complex tasks to **sub-agents** — independent LLM instances that work in parallel and report back to a coordinator agent.
+
+### How It Works
+
+1. The coordinator agent receives a task and breaks it into subtasks
+2. Each subtask is assigned to a sub-agent running in its own workspace
+3. Sub-agents work concurrently in separate LLM sessions
+4. The coordinator polls results and synthesizes them into a final response
+
+### Agent Pool Configuration
+
+```yaml
+agent_pool:
+  max_concurrency: 5       # max simultaneous sub-agent tasks
+  default_timeout: 300     # seconds per task
+  workspace_dir: .dolphin/workspaces
+  idle_timeout: 600        # seconds before reaping idle agents
+```
+
+### Use Cases
+
+- **Parallel code review** — multiple files reviewed simultaneously by separate agents
+- **Research synthesis** — each sub-agent researches a different topic, coordinator merges findings
+- **Multi-step workflows** — each step handled by a focused agent with its own context
+
+Sub-agents are fully isolated — each has its own conversation history, workspace directory, and tool access scope. The coordinator sees only the results, not the intermediate reasoning.
+
+---
+
+## Context Compression
+
+Dolphin automatically compresses long conversations when the context approaches 70% of `max_context_tokens`, preventing LLM rejection due to token limits.
+
+All strategies share a common preamble: estimate tokens → if <70% skip → if ≤6 messages skip → find `keepStart` (last user message + everything after) → drop everything before.
+
+### Strategies
+
+| Mode | Strategy | Best For |
+|------|----------|----------|
+| `drop` (default) | DropCompressor — drops complete turn groups from front, no LLM | Short sessions, interactive use |
+| `segment` | SegmentCompressor — multi-level pyramid of concatenated summaries | Very long sessions, predictable growth |
+| `tiered` | TieredCompressor — three-tier cache: L2 (far) → L1 (mid) → raw (last 3 pairs), LLM summaries | Sessions needing detailed recent context |
+| `incremental` | IncrementalCompressor — single running summary, updated every N turns via LLM | Coherent running narrative |
+| `topic` | TopicCompressor — partitions by topic boundaries (msg length >2x avg), summarizes per topic | Multi-topic sessions |
+
+### Configuration
+
+```yaml
+llm:
+  compress_mode: drop            # drop | segment | tiered | incremental | topic
+  segment_merge_limit: 100       # segments before merging (segment mode)
+  compress_timeout_seconds: 15   # LLM call timeout
+```
+
+---
+
+## Putting It All Together
+
+MCP tools, skills, workflows, and compression work together:
 
 - **MCP tools** give the agent new *actions* (call APIs, run commands, browse web pages).
 - **Skills** give the agent new *knowledge* (best practices, conventions, domain context).
@@ -255,4 +362,4 @@ Example workflow:
 2. Create a skill with your team's issue triage conventions.
 3. The agent loads the skill, learns your triage rules, then calls `issue-tracker:search_issues` and `issue-tracker:transition_issue` using those rules.
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-26

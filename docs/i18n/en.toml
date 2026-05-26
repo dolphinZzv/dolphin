@@ -24,3 +24,9 @@ other = "Edit this page"
 
 [switchLang]
 other = "Language"
+
+[quickstart]
+other = "Quickstart"
+
+[capabilities]
+other = "Capabilities"

@@ -1,46 +1,48 @@
 /* ── Design tokens ──
-   Inspired by Anthropic/Claude design language:
-   warm cream canvas, coral accent, dark navy code surfaces.
+   Ocean-inspired palette: warm cream canvas, deep teal accent, gold companion.
    ────────────────────────────────────── */
 :root,
 .theme-auto,
 .theme-light {
-  --bg: #faf9f5;
-  --bg-secondary: #efe9de;
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f5;
   --text: #141413;
   --text-secondary: #6c6a64;
-  --accent: #cc785c;
-  --accent-hover: #a9583e;
-  --border: #e6dfd8;
-  --code-bg: #181715;
-  --nav-bg: #faf9f5;
+  --accent: #1a8a7d;
+  --accent-hover: #137a6e;
+  --gold: #c9954a;
+  --border: #ddd8ce;
+  --code-bg: #1a1d23;
+  --nav-bg: #ffffff;
   --max-width: 960px;
 }
 
 @media (prefers-color-scheme: dark) {
   .theme-auto {
-    --bg: #181715;
-    --bg-secondary: #252320;
+    --bg: #1a1d23;
+    --bg-secondary: #252830;
     --text: #faf9f5;
     --text-secondary: #a09d96;
-    --accent: #cc785c;
-    --accent-hover: #d9917a;
-    --border: #3a3834;
-    --code-bg: #1f1e1b;
-    --nav-bg: #181715;
+    --accent: #1a8a7d;
+    --accent-hover: #2a9d8f;
+    --gold: #c9954a;
+    --border: #3a3e48;
+    --code-bg: #1f2229;
+    --nav-bg: #1a1d23;
   }
 }
 
 .theme-dark {
-  --bg: #181715;
-  --bg-secondary: #252320;
+  --bg: #1a1d23;
+  --bg-secondary: #252830;
   --text: #faf9f5;
   --text-secondary: #a09d96;
-  --accent: #cc785c;
-  --accent-hover: #d9917a;
-  --border: #3a3834;
-  --code-bg: #1f1e1b;
-  --nav-bg: #181715;
+  --accent: #1a8a7d;
+  --accent-hover: #2a9d8f;
+  --gold: #c9954a;
+  --border: #3a3e48;
+  --code-bg: #1f2229;
+  --nav-bg: #1a1d23;
 }
 
 /* ── Reset ── */
@@ -103,16 +105,26 @@ nav {
   text-decoration: none !important;
   font-family: Inter, sans-serif;
 }
-.dolphin-logo { flex-shrink: 0; display: block; }
+.dolphin-logo { flex-shrink: 0; display: block; color: var(--accent); }
 .nav-links { display: flex; gap: 16px; margin-left: auto; align-items: center; }
 .nav-links a {
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
   font-family: Inter, sans-serif;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
 .nav-links a:hover { color: var(--text); text-decoration: none; }
 .nav-links .active { color: var(--accent); }
+.nav-gh {
+  display: flex;
+  align-items: center;
+  color: var(--text-secondary) !important;
+  transition: color 0.15s;
+}
+.nav-gh:hover { color: var(--text) !important; }
 .lang-switch {
   display: flex;
   gap: 4px;
@@ -170,7 +182,7 @@ code {
 pre {
   background: var(--code-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 20px;
   margin-bottom: 24px;
   overflow-x: auto;
@@ -207,9 +219,15 @@ pre:hover .copy-btn { opacity: 1; }
 .copy-btn:hover { background: rgba(255,255,255,0.15); color: #fff; border-color: var(--accent); }
 
 /* ── Tabs ── */
-.tabs { margin-bottom: 20px; white-space: nowrap; overflow-x: auto; }
+.tabs {
+  margin-bottom: 20px;
+}
+.tab-headers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
 .tab-header {
-  display: inline-block;
   padding: 8px 16px;
   font-size: 0.9em;
   background: none;
@@ -229,17 +247,15 @@ pre:hover .copy-btn { opacity: 1; }
 }
 .tab-panel {
   display: none;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 0 6px 6px 6px;
-  padding: 20px;
   background: var(--bg-secondary);
 }
 .tab-panel pre {
   margin-bottom: 0;
+  padding: 16px;
   border: none;
-  border-radius: 0;
-  padding: 0;
-  background: none;
 }
 
 /* ── Tables ── */
@@ -268,7 +284,7 @@ blockquote {
   padding: 16px 20px;
   margin-bottom: 24px;
   background: var(--bg-secondary);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 6px 6px 0;
 }
 blockquote p:last-child { margin-bottom: 0; }
 
@@ -278,26 +294,6 @@ blockquote p:last-child { margin-bottom: 0; }
   padding: 80px 0 60px;
   position: relative;
   overflow: hidden;
-}
-.hero::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 60%);
-  pointer-events: none;
-}
-.hero::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0.25;
 }
 .hero-logo {
   margin-bottom: 20px;
@@ -333,7 +329,7 @@ blockquote p:last-child { margin-bottom: 0; }
 .hero-links a {
   display: inline-block;
   padding: 10px 24px;
-  border-radius: 8px;
+  border-radius: 6px;
   font-weight: 500;
   font-size: 15px;
   transition: all 0.2s ease;
@@ -376,7 +372,7 @@ blockquote p:last-child { margin-bottom: 0; }
 .feature-card {
   background: var(--bg-secondary);
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 28px 24px;
   transition: all 0.25s ease;
   animation: card-fade-in 0.5s ease both;
@@ -397,12 +393,6 @@ blockquote p:last-child { margin-bottom: 0; }
 }
 .feature-card h3 { margin-top: 0; border: none; font-size: 1.1em; font-family: Inter, sans-serif; }
 .feature-card p { color: var(--text-secondary); font-size: 0.95em; margin-bottom: 0; line-height: 1.6; }
-.feature-card .feature-icon {
-  font-size: 1.6em;
-  display: block;
-  margin-bottom: 12px;
-  line-height: 1;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .hero-logo { animation: none; }
@@ -432,7 +422,7 @@ footer {
 /* ── Callouts ── */
 .callout {
   padding: 16px 20px;
-  border-radius: 8px;
+  border-radius: 6px;
   margin-bottom: 24px;
   font-size: 0.9em;
   border-left: 4px solid var(--accent);
@@ -509,7 +499,7 @@ footer {
 .toc {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 16px 24px;
   margin-bottom: 24px;
 }
@@ -532,7 +522,7 @@ footer {
 .section-card {
   background: var(--bg-secondary);
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 24px 20px;
   transition: all 0.2s ease;
   height: 100%;
@@ -603,7 +593,7 @@ footer {
 .post-nav a {
   font-size: 14px;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
   color: var(--text-secondary);
@@ -619,6 +609,16 @@ footer {
 .doc-section { margin-bottom: 48px; }
 
 /* ── Responsive ── */
+
+/* Chinese text: PingFang SC on Mac, Microsoft YaHei on Windows */
+html[lang="zh"] body {
+  font-family: "PingFang SC", "Microsoft YaHei", "微软雅黑", Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Chinese paragraph indent - homepage only */
+html[lang="zh"] main > p {
+  text-indent: 2em;
+}
 @media (max-width: 640px) {
   main { padding: 24px 16px; }
   .hero h1 { font-size: 2em; }

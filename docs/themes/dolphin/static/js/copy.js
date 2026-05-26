@@ -39,11 +39,12 @@
       first.classList.add('active');
     }
   });
+
 })();
 
 // Tab switching (called from onclick)
 function switchTab(btn) {
-  var tabs = btn.parentElement;
+  var tabs = btn.closest('.tabs');
   var id = btn.getAttribute('data-tab');
 
   tabs.querySelectorAll('.tab-header').forEach(function(h) { h.classList.remove('active'); });
