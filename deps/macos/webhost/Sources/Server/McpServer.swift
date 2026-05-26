@@ -58,6 +58,18 @@ class McpServer {
             return waitForElement(arguments: arguments, requestId: requestId)
         case "web_dialog_response":
             return dialogResponse(arguments: arguments, requestId: requestId)
+        case "tab_list":
+            return tabList(arguments: arguments, requestId: requestId)
+        case "tab_switch":
+            return tabSwitch(arguments: arguments, requestId: requestId)
+        case "tab_create":
+            return tabCreate(arguments: arguments, requestId: requestId)
+        case "tab_close":
+            return tabClose(arguments: arguments, requestId: requestId)
+        case "go_back":
+            return goBack(arguments: arguments, requestId: requestId)
+        case "go_forward":
+            return goForward(arguments: arguments, requestId: requestId)
         default:
             return JsonRpcResponse(id: requestId, error: .methodNotFound)
         }
@@ -89,7 +101,8 @@ class McpServer {
                     "type": "object",
                     "properties": [
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
-                        "url": ["type": "string", "description": "URL to navigate to"]
+                        "url": ["type": "string", "description": "URL to navigate to"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to operate on"]
                     ],
                     "required": ["sessionId", "url"]
                 ] as [String: Any]
@@ -102,7 +115,8 @@ class McpServer {
                     "properties": [
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
                         "script": ["type": "string", "description": "JavaScript code to execute"],
-                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 10000)"]
+                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 10000)"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to operate on"]
                     ],
                     "required": ["sessionId", "script"]
                 ] as [String: Any]
@@ -113,7 +127,8 @@ class McpServer {
                 "inputSchema": [
                     "type": "object",
                     "properties": [
-                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"]
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to capture"]
                     ],
                     "required": ["sessionId"]
                 ] as [String: Any]
@@ -125,7 +140,8 @@ class McpServer {
                     "type": "object",
                     "properties": [
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
-                        "interactive": ["type": "boolean", "description": "Whether to enable interactive mode"]
+                        "interactive": ["type": "boolean", "description": "Whether to enable interactive mode"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to toggle"]
                     ],
                     "required": ["sessionId"]
                 ] as [String: Any]
@@ -160,7 +176,8 @@ class McpServer {
                     "properties": [
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
                         "css": ["type": "string", "description": "CSS to inject into the page"],
-                        "js": ["type": "string", "description": "JavaScript to inject into the page"]
+                        "js": ["type": "string", "description": "JavaScript to inject into the page"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to inject into"]
                     ],
                     "required": ["sessionId"]
                 ] as [String: Any]
@@ -173,7 +190,8 @@ class McpServer {
                     "properties": [
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
                         "selector": ["type": "string", "description": "CSS selector to wait for"],
-                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 30000)"]
+                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 30000)"],
+                        "tabId": ["type": "string", "description": "Optional tab ID to watch"]
                     ],
                     "required": ["sessionId", "selector"]
                 ] as [String: Any]
@@ -187,28 +205,106 @@ class McpServer {
                         "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
                         "dialogId": ["type": "string", "description": "Dialog ID to respond to"],
                         "action": ["type": "string", "description": "Action: accept or dismiss"],
-                        "text": ["type": "string", "description": "Text to enter for prompt dialogs"]
+                        "text": ["type": "string", "description": "Text to enter for prompt dialogs"],
+                        "tabId": ["type": "string", "description": "Optional tab ID that has the dialog"]
                     ],
                     "required": ["sessionId", "dialogId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "tab_list",
+                "description": "List all browser tabs in a session",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "tab_switch",
+                "description": "Switch to a specific browser tab",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "tabId": ["type": "string", "description": "Tab ID to switch to"]
+                    ],
+                    "required": ["sessionId", "tabId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "tab_create",
+                "description": "Create a new browser tab",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "url": ["type": "string", "description": "Optional URL to open in the new tab"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "tab_close",
+                "description": "Close a browser tab",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "tabId": ["type": "string", "description": "Tab ID to close"]
+                    ],
+                    "required": ["sessionId", "tabId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "go_back",
+                "description": "Navigate back to the previous page in the browsing history",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "tabId": ["type": "string", "description": "Optional tab ID"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "go_forward",
+                "description": "Navigate forward to the next page in the browsing history",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "tabId": ["type": "string", "description": "Optional tab ID"]
+                    ],
+                    "required": ["sessionId"]
                 ] as [String: Any]
             ]
         ]
     }
 
     private func createSession(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
-        lock.lock()
-        defer { lock.unlock() }
-
         let viewport = parseViewport(arguments)
         let sessionId = UUID().uuidString
-        let session = WebKitSession(id: sessionId, viewport: viewport)
 
+        // WKWebView and NSWindow MUST be created on the main thread.
+        var session: WebKitSession?
+        DispatchQueue.main.sync {
+            let newSession = WebKitSession(id: sessionId, viewport: viewport)
+            newSession.showWindow()
+            session = newSession
+        }
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .internalError)
+        }
+
+        lock.lock()
         sessions[sessionId] = session
         sessionManager.add(sessionId: sessionId)
-
-        DispatchQueue.main.async {
-            session.showWindow()
-        }
+        lock.unlock()
 
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, sessionId: sessionId))
     }
@@ -231,11 +327,16 @@ class McpServer {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
         }
 
-        DispatchQueue.main.async {
-            session.navigate(to: url)
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
-        let title = session.getTitle()
+        var title = ""
+        DispatchQueue.main.sync {
+            session.navigate(to: url)
+            title = session.getTitle()
+        }
+
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(
             success: true,
             url: urlString,
@@ -261,13 +362,22 @@ class McpServer {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
         }
 
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
         let timeoutMs = (arguments?["timeout"]?.value as? Int) ?? 10000
 
         do {
             let result = try session.evaluateSync(script: script, timeout: timeoutMs)
             return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, value: result))
+        } catch let err as WebHostError {
+            if err == .scriptTimeout {
+                return JsonRpcResponse(id: requestId, error: .scriptTimeout)
+            }
+            return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: false, value: "WebHost error: \(err)"))
         } catch {
-            return JsonRpcResponse(id: requestId, error: .internalError)
+            return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: false, value: "JS error: \(error.localizedDescription)"))
         }
     }
 
@@ -282,6 +392,10 @@ class McpServer {
 
         guard let session = session else {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
         do {
@@ -306,6 +420,10 @@ class McpServer {
 
         guard let session = session else {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
         session.setInteractive(interactive)
@@ -334,8 +452,28 @@ class McpServer {
         }
 
         lock.lock()
-        sessions.removeValue(forKey: sessionId)
+        let session = sessions[sessionId]
         lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        // Cleanup and release on main thread. cleanup() must be called while
+        // the session is still alive (before removal from dictionary) to
+        // prevent WKWebView delegate callbacks from firing on a
+        // partially-deallocated object.
+        let work = {
+            session.cleanup()
+            self.lock.lock()
+            self.sessions.removeValue(forKey: sessionId)
+            self.lock.unlock()
+        }
+        if Thread.isMainThread {
+            work()
+        } else {
+            DispatchQueue.main.sync { work() }
+        }
 
         sessionManager.remove(sessionId: sessionId)
 
@@ -353,6 +491,10 @@ class McpServer {
 
         guard let session = session else {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
         let css = arguments?["css"]?.value as? String
@@ -380,6 +522,10 @@ class McpServer {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
         }
 
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
         let timeout = (arguments?["timeout"]?.value as? Int) ?? 30000
 
         do {
@@ -403,11 +549,161 @@ class McpServer {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
         }
 
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
         let dialogId = arguments?["dialogId"]?.value as? String
         let action = arguments?["action"]?.value as? String
         let text = arguments?["text"]?.value as? String
 
         session.resolveDialog(dialogId: dialogId ?? "", action: action ?? "dismiss", text: text)
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
+    }
+
+    private func tabList(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        var tabs: [[String: String]] = []
+        DispatchQueue.main.sync {
+            tabs = session.tabList()
+        }
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, extra: ["tabs": tabs]))
+    }
+
+    private func tabSwitch(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String,
+              let tabId = arguments?["tabId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        var success = false
+        DispatchQueue.main.sync {
+            success = session.tabSwitch(tabId)
+        }
+
+        if !success {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
+    }
+
+    private func tabCreate(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        let url = arguments?["url"]?.value as? String
+        var tabId = ""
+        DispatchQueue.main.sync {
+            tabId = session.createTab()
+            if let urlStr = url, let url = URL(string: urlStr) {
+                session.navigate(to: url)
+            }
+        }
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, extra: ["tabId": tabId]))
+    }
+
+    private func tabClose(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String,
+              let tabId = arguments?["tabId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        var success = false
+        DispatchQueue.main.sync {
+            success = session.tabClose(tabId)
+        }
+
+        if !success {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
+    }
+
+    private func goBack(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        DispatchQueue.main.sync {
+            session.goBack()
+        }
+
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
+    }
+
+    private func goForward(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        lock.lock()
+        let session = sessions[sessionId]
+        lock.unlock()
+
+        guard let session = session else {
+            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+        }
+
+        if !switchToTabIfNeeded(arguments: arguments, session: session) {
+            return JsonRpcResponse(id: requestId, error: .invalidParams)
+        }
+
+        DispatchQueue.main.sync {
+            session.goForward()
+        }
 
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
     }
@@ -420,6 +716,27 @@ class McpServer {
             return Viewport()
         }
         return Viewport(width: width, height: height)
+    }
+
+    /// Switch to a specific tab if tabId is provided. Returns false if the tab doesn't exist.
+    private func switchToTabIfNeeded(arguments: [String: AnyCodable]?, session: WebKitSession) -> Bool {
+        guard let tabId = arguments?["tabId"]?.value as? String else { return true }
+        var ok = false
+        DispatchQueue.main.sync {
+            ok = session.tabSwitch(tabId)
+        }
+        return ok
+    }
+
+    func toggleInspectorAll() {
+        lock.lock()
+        let activeSessions = Array(sessions.values)
+        lock.unlock()
+        for session in activeSessions {
+            DispatchQueue.main.async {
+                session.toggleInspector()
+            }
+        }
     }
 }
 

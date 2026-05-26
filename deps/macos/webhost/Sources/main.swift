@@ -2,11 +2,119 @@ import AppKit
 import Foundation
 import Network
 import os
+import SnapKit
 
 let server = McpServer()
 
-let app = NSApplication.shared
-app.setActivationPolicy(.regular)
+// MARK: - App Delegate
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    var statusItem: NSStatusItem!
+    var mainWindow: NSWindow!
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        mainWindow = createWindow()
+        setupStatusBar()
+
+        // Keyboard shortcuts: Cmd+T new tab, Cmd+W close tab
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            guard event.modifierFlags.contains(.command) else { return event }
+
+            switch event.charactersIgnoringModifiers {
+            case "t":
+                self.createNewTab()
+                return nil
+            case "w":
+                self.closeActiveTab()
+                return nil
+            default:
+                return event
+            }
+        }
+    }
+
+    func setupStatusBar() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+
+        if let button = statusItem.button {
+            if #available(macOS 11.0, *) {
+                button.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "WebHost")
+            } else {
+                button.title = "WH"
+            }
+        }
+
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "WebHost Running", action: nil, keyEquivalent: ""))
+        menu.addItem(NSMenuItem.separator())
+
+        let showItem = NSMenuItem(title: "Show Window", action: #selector(toggleWindow), keyEquivalent: "w")
+        showItem.target = self
+        menu.addItem(showItem)
+
+        let openItem = NSMenuItem(title: "Open in Browser", action: #selector(openInBrowser), keyEquivalent: "o")
+        openItem.target = self
+        menu.addItem(openItem)
+
+        let inspectorItem = NSMenuItem(title: "Toggle Web Inspector", action: #selector(toggleWebInspector), keyEquivalent: "i")
+        inspectorItem.target = self
+        menu.addItem(inspectorItem)
+
+        menu.addItem(NSMenuItem.separator())
+        let quitItem = NSMenuItem(title: "Quit WebHost", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+    }
+
+    @objc func toggleWindow() {
+        guard let window = mainWindow else { return }
+        if window.isVisible {
+            window.orderOut(nil)
+        } else {
+            window.makeKeyAndOrderFront(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    }
+
+    @objc func openInBrowser() {
+        if let url = URL(string: "http://localhost:9223/health") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc func toggleWebInspector() {
+        server.toggleInspectorAll()
+    }
+
+    @objc func createNewTab() {
+        guard let session = firstActiveSession() else { return }
+        DispatchQueue.main.async {
+            let tabId = session.createTab()
+            _ = session.tabSwitch(tabId)
+        }
+    }
+
+    @objc func closeActiveTab() {
+        guard let session = firstActiveSession() else { return }
+        let tabId = session.activeTabIdStr()
+        guard tabId != "main" else { return }
+        DispatchQueue.main.async {
+            _ = session.tabClose(tabId)
+        }
+    }
+
+    private func firstActiveSession() -> WebKitSession? {
+        server.lock.lock()
+        defer { server.lock.unlock() }
+        return server.sessions.first?.value
+    }
+}
+
+let delegate = AppDelegate()
+NSApplication.shared.delegate = delegate
+NSApplication.shared.setActivationPolicy(.accessory)
 
 func createWindow() -> NSWindow {
     let window = NSWindow(
@@ -18,24 +126,61 @@ func createWindow() -> NSWindow {
     window.title = "WebHost - Dolphin Browser"
     window.center()
 
-    let label = NSTextField(labelWithString: "WebHost starting...")
-    label.font = NSFont.systemFont(ofSize: 16)
-    label.textColor = .green
-    window.contentView?.addSubview(label)
-    label.translatesAutoresizingMaskIntoConstraints = false
-    NSLayoutConstraint.activate([
-        label.centerXAnchor.constraint(equalTo: window.contentView!.centerXAnchor),
-        label.centerYAnchor.constraint(equalTo: window.contentView!.centerYAnchor)
-    ])
+    guard let contentView = window.contentView else { return window }
+    let stack = NSStackView(frame: contentView.bounds)
+    stack.orientation = .vertical
+    stack.spacing = 8
+    stack.alignment = .centerX
+    stack.distribution = .fill
+
+    let iconView: NSView
+    if #available(macOS 11.0, *) {
+        let imgView: NSImageView
+        if let image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) {
+            imgView = NSImageView(image: image)
+        } else {
+            imgView = NSImageView()
+        }
+        imgView.setFrameSize(NSSize(width: 48, height: 48))
+        imgView.contentTintColor = .controlAccentColor
+        iconView = imgView
+    } else {
+        let label = NSTextField(labelWithString: "WebHost")
+        label.font = NSFont.boldSystemFont(ofSize: 24)
+        iconView = label
+    }
+
+    let statusLabel = NSTextField(labelWithString: "WebHost starting...")
+    statusLabel.font = NSFont.systemFont(ofSize: 14)
+    statusLabel.textColor = .secondaryLabelColor
+    statusLabel.tag = 42
+
+    let portLabel = NSTextField(labelWithString: "Port: 9223")
+    portLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    portLabel.textColor = .tertiaryLabelColor
+
+    stack.addArrangedSubview(NSView(frame: .zero)) // spacer
+    stack.addArrangedSubview(iconView)
+    stack.addArrangedSubview(statusLabel)
+    stack.addArrangedSubview(portLabel)
+
+    contentView.addSubview(stack)
+    stack.snp.makeConstraints { make in
+        make.centerX.centerY.equalTo(contentView)
+        make.leading.greaterThanOrEqualTo(contentView).offset(40)
+        make.trailing.lessThanOrEqualToSuperview().offset(-40)
+    }
 
     return window
 }
 
-var mainWindow = createWindow()
-
 func startServer(port: UInt16 = 9223) {
     let params = NWParameters.tcp
-    guard let listener = try? NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!) else {
+    guard let port = NWEndpoint.Port(rawValue: port), port.rawValue > 0 else {
+        print("Invalid port: \(port)")
+        return
+    }
+    guard let listener = try? NWListener(using: params, on: port) else {
         print("Failed to create listener")
         return
     }
@@ -45,9 +190,9 @@ func startServer(port: UInt16 = 9223) {
             switch state {
             case .ready:
                 print("WebHost started on localhost:\(port)")
-                mainWindow.makeKeyAndOrderFront(nil)
-                if let label = mainWindow.contentView?.subviews.first as? NSTextField {
+                if let label = delegate.mainWindow?.contentView?.viewWithTag(42) as? NSTextField {
                     label.stringValue = "WebHost running on port \(port)"
+                    label.textColor = .green
                 }
             case .failed(let err):
                 print("Listener failed: \(err.localizedDescription)")
@@ -73,8 +218,6 @@ func handleConnection(_ conn: NWConnection) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 32768) { data, _, isComplete, error in
             if let data = data { receivedData.append(data) }
 
-            // Process immediately once we have a complete HTTP request,
-            // without waiting for the client to close the connection.
             if let request = parseRequest(receivedData) {
                 handleRequest(request, conn: conn)
                 return
@@ -149,8 +292,7 @@ struct HttpResponse {
 func handleRequest(_ request: HttpRequest, conn: NWConnection) {
         let response: HttpResponse
 
-        do {
-            if request.uri == "/health" && request.method == "GET" {
+        if request.uri == "/health" && request.method == "GET" {
                 response = HttpResponse(statusCode: 200, body: "{\"status\":\"ok\"}".data(using: .utf8)!)
             }
             else if request.uri == "/mcp/call" && request.method == "POST" {
@@ -234,10 +376,6 @@ func handleRequest(_ request: HttpRequest, conn: NWConnection) {
             else {
                 response = HttpResponse(statusCode: 404, body: "{\"error\":\"not found\"}".data(using: .utf8)!)
             }
-        } catch {
-            response = HttpResponse(statusCode: 500, body: "{\"error\":\"internal error\"}".data(using: .utf8)!)
-        }
-
         sendResponse(response, conn: conn)
     }
 
@@ -247,5 +385,19 @@ func sendResponse(_ response: HttpResponse, conn: NWConnection) {
     })
 }
 
-startServer()
-app.run()
+// MARK: - App Lifecycle
+
+let port: UInt16
+if let portArg = CommandLine.arguments.last,
+   let p = UInt16(portArg),
+   p > 0 {
+    port = p
+} else if let envPort = ProcessInfo.processInfo.environment["WEBHOST_PORT"],
+          let p = UInt16(envPort),
+          p > 0 {
+    port = p
+} else {
+    port = 9223
+}
+startServer(port: port)
+NSApplication.shared.run()

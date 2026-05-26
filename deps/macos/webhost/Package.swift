@@ -6,11 +6,13 @@ let package = Package(
     platforms: [
         .macOS(.v13)
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/SnapKit/SnapKit.git", from: "5.7.1")
+    ],
     targets: [
         .executableTarget(
             name: "WebHost",
-            dependencies: [],
+            dependencies: ["SnapKit"],
             path: "Sources"
         ),
         .testTarget(
