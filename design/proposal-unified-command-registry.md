@@ -80,6 +80,6 @@ REPL 输入 `/workflow show x`:
 | P2 | config + sessions | cmd/config.go, cmd/sessions.go |
 | P3 | skills + commands | cmd/skills.go, coordinator_tools.go |
 | P4 | agent + mcp + cron | 剩余命令 |
-| P5 | 接口收紧 | 移除旧的 ToolDefs() |
+| P5 | 接口收紧 | 删除死代码, 更新注释, 清理已迁移 handler |
 
-<!-- last-modified: 2026-05-27 -->
+<!-- last-modified: 2026-05-28 -->

@@ -24,6 +24,7 @@ import (
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp/shell"
+	"dolphin/internal/registry"
 	"dolphin/internal/scheduler"
 	scope "dolphin/internal/scope"
 	"dolphin/internal/session"
@@ -45,6 +46,8 @@ type Coordinator struct {
 	workflows        *workflowpkg.Manager
 	cronMgr          *scheduler.Manager
 	console          *console.Console
+	reg              *registry.Registry          // unified command registry
+	consoleDisp      *registry.ConsoleDispatcher // REPL dispatcher
 	basePrompt       string
 	pending          []TaskResult    // results collected but not yet in LLM context
 	loadedTools      map[string]bool // MCP tools loaded by LLM via load_mcp_tools
@@ -133,6 +136,26 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		buildinRegistry:  buildin.GetRegistry(),
 		buildinCancelFns: make(map[string][]func()),
 	}
+	// Unified command registry: cobra-centric, shared by CLI/REPL/tool.
+	coord.reg = registry.New()
+	coord.consoleDisp = registry.NewConsoleDispatcher(coord.reg)
+	subsysProviders := subsystem.Providers()
+	for _, p := range subsysProviders {
+		if pws, ok := p.(subsystem.ProviderWithSpec); ok {
+			for _, s := range pws.CommandSpecs() {
+				if spec, ok := s.(*registry.CommandSpec); ok {
+					coord.reg.Register(spec)
+				}
+			}
+		}
+	}
+
+	// Register sessions commands (shared cobra definition for CLI and REPL).
+	coord.reg.Register(&registry.CommandSpec{
+		Cobra:    session.SessionsCommand(),
+		Category: registry.CatSession,
+	})
+
 	coord.onboardConsole()
 
 	// Register dynamic prompt sections (evaluated each turn in order).
@@ -171,6 +194,13 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 // SetScopeRouter sets the scope router for file-path-based agent routing.
 func (c *Coordinator) SetScopeRouter(r scope.ScopeRouter) {
 	c.scopeRouter = r
+}
+
+// RegisterCommandSpec adds a command spec to the unified registry.
+// This is used for specs that depend on coordinator state (skills, commands)
+// and must be registered after the manager is set via SetSkillManager etc.
+func (c *Coordinator) RegisterCommandSpec(spec *registry.CommandSpec) {
+	c.reg.Register(spec)
 }
 
 // initBuildinAgents initializes all registered built-in agents. It wires
@@ -475,6 +505,16 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 				continue
 			}
 			line = hc.UserInput
+		}
+
+		// Registry dispatch (new cobra-centric commands)
+		if c.consoleDisp != nil {
+			if handled, sig := c.consoleDisp.Execute(line, io); handled {
+				if sig == registry.SignalReload {
+					c.reloadRequested = true
+				}
+				continue
+			}
 		}
 
 		// Handle commands

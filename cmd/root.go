@@ -34,6 +34,7 @@ import (
 	"dolphin/internal/mcp/websearch"
 	"dolphin/internal/metrics"
 	"dolphin/internal/plugin"
+	"dolphin/internal/registry"
 	"dolphin/internal/resource"
 	"dolphin/internal/scheduler"
 	scope "dolphin/internal/scope"
@@ -336,6 +337,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		coord := agent.NewCoordinator(agt, pool)
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
+
+		// Register skills and commands in unified registry (needs manager set).
+		coord.RegisterCommandSpec(&registry.CommandSpec{
+			Cobra:    skill.SkillsCommandWithManager(skillMgr),
+			Category: registry.CatSkills,
+		})
+		coord.RegisterCommandSpec(&registry.CommandSpec{
+			Cobra:    command.CommandsCommandWithManager(cmdMgr),
+			Category: registry.CatCommands,
+		})
+
 		coord.SetWorkflowManager(wfmr)
 		coord.SetCronManager(cronMgr)
 		// Set scope router if scopes are configured
