@@ -434,6 +434,14 @@ func (r *Registry) List() []ToolDefinition {
 	return defs
 }
 
+// MCPConfig returns a copy of the current MCP config. Safe to call concurrently.
+// The returned value is a snapshot — call again to pick up hot-reload changes.
+func (r *Registry) MCPConfig() config.MCPConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return *r.cfg
+}
+
 const tracerName = "dolphin/mcp"
 
 func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessage) (*ToolResult, error) {

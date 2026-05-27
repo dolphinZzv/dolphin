@@ -500,7 +500,7 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusAgents), len(agents), busy))
 
 	tools := c.agent.toolReg.List()
-	mcpCfg := &c.agent.cfg.MCP
+	mcpCfg := c.agent.toolReg.MCPConfig()
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMCPTools), len(tools)))
 	io.WriteLine(fmt.Sprintf("  Shell     %s", enabledDisabled(mcpCfg.Shell.Enabled)))
 	io.WriteLine(fmt.Sprintf("  CDP       %s", enabledDisabled(mcpCfg.CDP.Enabled)))
