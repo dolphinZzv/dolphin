@@ -180,6 +180,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("telemetry.sample_rate", 1.0)
 	v.SetDefault("telemetry.logs_enabled", false)
 	v.SetDefault("telemetry.metrics_enabled", false)
+	v.SetDefault("telemetry.input_max_len", 2048)
+	v.SetDefault("telemetry.output_max_len", 2048)
 
 	v.SetDefault("flags.self_evolution", false)
 

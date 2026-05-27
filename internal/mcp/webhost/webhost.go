@@ -14,6 +14,11 @@ import (
 
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Tool implements native browser control via WebHost.
@@ -242,6 +247,16 @@ func (w *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 
 // callTool sends a JSON-RPC tools/call request to the WebHost server.
 func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]any) (*mcp.ToolResult, error) {
+	tr := otel.Tracer("dolphin/mcp")
+	ctx, span := tr.Start(ctx, "webhost.call",
+		trace.WithSpanKind(trace.SpanKindClient),
+	)
+	span.SetAttributes(
+		attribute.String("webhost.action", toolName),
+		attribute.String("webhost.url", w.cfg.URL),
+	)
+	defer span.End()
+
 	w.nextID++
 	body := jsonRPCRequest{
 		JSONRPC: "2.0",
@@ -255,17 +270,23 @@ func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]an
 
 	payload, err := json.Marshal(body)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return &mcp.ToolResult{Content: fmt.Sprintf("encode request: %v", err), IsError: true}, nil
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.cfg.URL, bytes.NewReader(payload))
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return &mcp.ToolResult{Content: fmt.Sprintf("create request: %v", err), IsError: true}, nil
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := w.client.Do(req)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return &mcp.ToolResult{
 			Content: fmt.Sprintf("WebHost connection failed (%s): %v\n\nMake sure WebHost app is running (default: http://localhost:9223)", w.cfg.URL, err),
 			IsError: true,
@@ -273,12 +294,17 @@ func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]an
 	}
 	defer resp.Body.Close()
 
+	span.SetAttributes(attribute.Int("http.status_code", resp.StatusCode))
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return &mcp.ToolResult{Content: fmt.Sprintf("read response: %v", err), IsError: true}, nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", resp.StatusCode))
 		return &mcp.ToolResult{
 			Content: fmt.Sprintf("WebHost returned HTTP %d: %s", resp.StatusCode, string(respBody)),
 			IsError: true,
@@ -287,15 +313,23 @@ func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]an
 
 	var rpcResp jsonRPCResponse
 	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		return &mcp.ToolResult{Content: fmt.Sprintf("parse response: %v", err), IsError: true}, nil
 	}
 
 	if rpcResp.Error != nil {
+		span.SetAttributes(
+			attribute.Int("webhost.error_code", rpcResp.Error.Code),
+		)
+		span.SetStatus(codes.Error, rpcResp.Error.Message)
 		return &mcp.ToolResult{
 			Content: fmt.Sprintf("WebHost error [%d]: %s", rpcResp.Error.Code, rpcResp.Error.Message),
 			IsError: true,
 		}, nil
 	}
+
+	span.SetStatus(codes.Ok, "")
 
 	// Pretty-print the result JSON for the LLM.
 	var result any

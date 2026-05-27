@@ -33,6 +33,11 @@ var (
 	tracerProvider *sdktrace.TracerProvider
 	logProvider    *sdklog.LoggerProvider
 	meterProvider  *sdkmetric.MeterProvider
+
+	// Span truncation limits (configurable via telemetry.input_max_len / output_max_len)
+	// 0 = unlimited.
+	spanInputMaxLen  = 2048
+	spanOutputMaxLen = 2048
 )
 
 // otlpTarget holds parsed OTLP endpoint parts shared by all three signals.
@@ -119,6 +124,9 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 		otel.SetMeterProvider(meterProvider)
 	}
 	initMetrics()
+
+	spanInputMaxLen = cfg.InputMaxLen
+	spanOutputMaxLen = cfg.OutputMaxLen
 
 	// ---- startup banner ----
 	endpoint := cfg.OTLPEndpoint

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -170,6 +171,9 @@ func beforeLLMHook(ctx context.Context, hc *hook.Context) error {
 			attribute.Int("gen_ai.request.max_tokens", req.MaxTokens),
 			attribute.Int("message.count", len(req.Messages)),
 		)
+		if req.System != "" || len(req.Messages) > 0 {
+			span.SetAttributes(attribute.String("input", inputMessages(req)))
+		}
 	}
 
 	RecordLLMRequest(ctx, model)
@@ -212,7 +216,11 @@ func afterLLMHook(ctx context.Context, hc *hook.Context) error {
 		model = v.(string)
 	}
 	var inputTokens, outputTokens int64
+
 	if resp, ok := hc.Response.(*provider.ProviderResponse); ok {
+		if len(resp.Content) > 0 {
+			span.SetAttributes(attribute.String("output", truncateResponseContent(resp.Content, spanOutputMaxLen)))
+		}
 		if resp.Usage != nil {
 			inputTokens = int64(resp.Usage.InputTokens)
 			outputTokens = int64(resp.Usage.OutputTokens)
@@ -462,7 +470,7 @@ func transportSendHook(ctx context.Context, hc *hook.Context) error {
 }
 
 func truncate(s string, max int) string {
-	if len(s) <= max {
+	if max <= 0 || len(s) <= max {
 		return s
 	}
 	return s[:max] + "..."
@@ -474,4 +482,49 @@ func truncateJSON(data json.RawMessage, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+// inputMessages formats the full LLM request (system + messages) as a string for span attributes.
+func inputMessages(req *provider.ProviderRequest) string {
+	var sb strings.Builder
+	if req.System != "" {
+		sb.WriteString("system: ")
+		sb.WriteString(req.System)
+		sb.WriteByte('\n')
+	}
+	for _, m := range req.Messages {
+		sb.WriteString(m.Role)
+		sb.WriteString(": ")
+		sb.WriteString(extractText(m.Content))
+		sb.WriteByte('\n')
+	}
+	result := sb.String()
+	result = truncate(result, spanInputMaxLen)
+	return result
+}
+
+// truncateResponseContent extracts text from an LLM response content block array.
+func truncateResponseContent(content json.RawMessage, max int) string {
+	return truncate(extractText(content), max)
+}
+
+// extractText extracts text content from a JSON array of content blocks.
+func extractText(raw json.RawMessage) string {
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return string(raw)
+	}
+	var result string
+	for _, b := range blocks {
+		if b.Type == "text" || b.Type == "" {
+			if result != "" {
+				result += " "
+			}
+			result += b.Text
+		}
+	}
+	return result
 }

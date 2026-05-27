@@ -13,6 +13,10 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/metrics"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -397,11 +401,23 @@ func (r *Registry) List() []ToolDefinition {
 	return defs
 }
 
+const tracerName = "dolphin/mcp"
+
 func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessage) (*ToolResult, error) {
 	tool, ok := r.Get(name)
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
+
+	tr := otel.Tracer(tracerName)
+	ctx, span := tr.Start(ctx, "mcp.tool.execute",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	span.SetAttributes(
+		attribute.String("tool.name", name),
+		attribute.String("input", truncateString(string(input), 1024)),
+	)
+	defer span.End()
 
 	r.toolCalls.With(name).Inc()
 	start := time.Now()
@@ -418,11 +434,32 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 	s.CallCount++
 	s.LastCalledAt = time.Now()
 	s.TotalDuration += duration
-	if err != nil || (result != nil && result.IsError) {
+	hasError := err != nil || (result != nil && result.IsError)
+	if hasError {
 		r.toolErrors.With(name).Inc()
 		s.ErrorCount++
 	}
 	r.mu.Unlock()
+
+	var output string
+	if result != nil {
+		output = result.Content
+	}
+	if hasError {
+		span.SetAttributes(
+			attribute.Bool("tool.error", true),
+			attribute.String("output", truncateString(output, 2048)),
+		)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		} else if result != nil && result.IsError {
+			span.SetStatus(codes.Error, truncateString(output, 256))
+		}
+	} else {
+		span.SetAttributes(attribute.String("output", truncateString(output, 2048)))
+		span.SetStatus(codes.Ok, "")
+	}
 
 	return result, err
 }
@@ -439,4 +476,11 @@ func (st *serverTool) Definition() ToolDefinition {
 
 func (st *serverTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error) {
 	return st.server.CallTool(ctx, st.def.Name, input)
+}
+
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }

@@ -463,6 +463,8 @@ type TelemetryConfig struct {
 	SampleRate     float64           `mapstructure:"sample_rate"`
 	LogsEnabled    bool              `mapstructure:"logs_enabled"`
 	MetricsEnabled bool              `mapstructure:"metrics_enabled"`
+	InputMaxLen    int               `mapstructure:"input_max_len"`  // LLM input truncation for span attributes (default 2048)
+	OutputMaxLen   int               `mapstructure:"output_max_len"` // LLM output truncation for span attributes (default 2048)
 }
 
 type UpdateConfig struct {

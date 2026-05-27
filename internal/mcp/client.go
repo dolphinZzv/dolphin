@@ -10,6 +10,10 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/mcp/transport"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
@@ -133,6 +137,16 @@ func (c *ServerClient) ListTools(ctx context.Context) ([]ToolDefinition, error) 
 
 // CallTool executes a tool on the server.
 func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json.RawMessage) (*ToolResult, error) {
+	tr := otel.Tracer("dolphin/mcp")
+	ctx, span := tr.Start(ctx, "mcp.server.call",
+		trace.WithSpanKind(trace.SpanKindClient),
+	)
+	span.SetAttributes(
+		attribute.String("server.name", c.name),
+		attribute.String("tool.name", name),
+	)
+	defer span.End()
+
 	var args map[string]any
 	if len(arguments) > 0 {
 		if err := json.Unmarshal(arguments, &args); err != nil {
@@ -151,6 +165,8 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	}
 	raw, err := c.tport.SendRequest(ctx, req)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		zap.S().Warnw("mcp server tool call failed", "server", c.name, "tool", name, "error", err)
 		return &ToolResult{Content: fmt.Sprintf("MCP server %q unavailable: %v", c.name, err), IsError: true}, nil
 	}
@@ -163,6 +179,8 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 		IsError bool `json:"isError"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
 		zap.S().Warnw("mcp server returned unparseable result", "server", c.name, "tool", name, "error", err)
 		return &ToolResult{Content: fmt.Sprintf("MCP server %q returned invalid data", c.name), IsError: true}, nil
 	}
@@ -173,6 +191,13 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 			text += block.Text
 		}
 	}
+
+	if result.IsError {
+		span.SetStatus(codes.Error, truncateString(text, 256))
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
+
 	return &ToolResult{Content: text, IsError: result.IsError}, nil
 }
 
