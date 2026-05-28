@@ -2,8 +2,12 @@
 package dingtalk
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -26,23 +30,26 @@ type DingTalkTransport struct {
 	closeOnce   sync.Once
 	reconnectCh chan struct{}
 
-	sdkCli    *client.StreamClient
-	webhook   string
-	webhookMu sync.RWMutex
+	sdkCli         *client.StreamClient
+	webhook        string
+	webhookMu      sync.RWMutex
+	startupWebhook string
 }
 
 func New(cfg *config.Config) (transport.Transport, error) {
 	return &DingTalkTransport{
-		cfg:         &cfg.Transport.DingTalk,
-		msgCh:       make(chan string, 1024),
-		closeCh:     make(chan struct{}),
-		reconnectCh: make(chan struct{}, 1),
+		cfg:            &cfg.Transport.DingTalk,
+		msgCh:          make(chan string, 1024),
+		closeCh:        make(chan struct{}),
+		reconnectCh:    make(chan struct{}, 1),
+		startupWebhook: cfg.Transport.DingTalk.StartupWebhook,
 	}, nil
 }
 
 func (t *DingTalkTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
 	oldID, oldSecret := t.cfg.ClientID, t.cfg.ClientSecret
 	t.cfg = &newCfg.Transport.DingTalk
+	t.startupWebhook = newCfg.Transport.DingTalk.StartupWebhook
 	if t.cfg.ClientID != oldID || t.cfg.ClientSecret != oldSecret {
 		select {
 		case t.reconnectCh <- struct{}{}:
@@ -72,8 +79,6 @@ func (t *DingTalkTransport) Start(ctx context.Context) error {
 	defer transport.ActiveConnections.Add(-1)
 
 	for {
-		startCtx, startCancel := context.WithCancel(ctx)
-
 		cred := client.NewAppCredentialConfig(t.cfg.ClientID, t.cfg.ClientSecret)
 		cli := client.NewStreamClient(
 			client.WithAppCredential(cred),
@@ -81,26 +86,30 @@ func (t *DingTalkTransport) Start(ctx context.Context) error {
 		cli.RegisterChatBotCallbackRouter(t.onMessage)
 		t.sdkCli = cli
 
-		// Cancel startCtx when credentials change, forcing a reconnect.
-		go func() {
-			select {
-			case <-t.reconnectCh:
-				startCancel()
-			case <-startCtx.Done():
+		zap.S().Infow("dingtalk stream starting", "client_id", t.cfg.ClientID)
+		if err := cli.Start(ctx); err != nil {
+			if ctx.Err() != nil {
+				return t.Close()
 			}
-		}()
-
-		_ = cli.Start(startCtx)
-		startCancel()
-
-		if ctx.Err() != nil {
-			return t.Close()
+			zap.S().Errorw("dingtalk stream start failed, retrying", "error", err)
+			time.Sleep(time.Second)
+			continue
 		}
+		zap.S().Infow("dingtalk stream connected")
 
-		// Connection ended or credentials changed — reconnect.
-		cli.Close()
-		zap.S().Warnw("dingtalk stream disconnected, reconnecting")
-		time.Sleep(time.Second)
+		// Send startup notification via robot webhook if configured
+		t.sendStartupNotification()
+
+		// cli.Start is non-blocking — it spawns an internal processLoop and returns.
+		// The SDK handles reconnection automatically (AutoReconnect: true).
+		// Wait here for either program shutdown or a credential-change signal.
+		select {
+		case <-ctx.Done():
+			return t.Close()
+		case <-t.reconnectCh:
+			zap.S().Infow("dingtalk credentials changed, reconnecting")
+			cli.Close()
+		}
 	}
 }
 
@@ -177,6 +186,63 @@ func (t *DingTalkTransport) sendMessage(body string) error {
 
 	zap.S().Debugw("dingtalk message sent", "len", len(body))
 	return nil
+}
+
+// sendStartupNotification sends a startup message via the DingTalk robot webhook.
+func (t *DingTalkTransport) sendStartupNotification() {
+	webhook := t.startupWebhook
+	if webhook == "" {
+		return
+	}
+
+	payload := map[string]any{
+		"msgtype": "text",
+		"text": map[string]string{
+			"content": "Dolphin bot started — stream connection established",
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		zap.S().Errorw("dingtalk startup webhook marshal failed", "error", err)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
+	if err != nil {
+		zap.S().Errorw("dingtalk startup webhook request failed", "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		zap.S().Errorw("dingtalk startup webhook call failed", "error", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		zap.S().Errorw("dingtalk startup webhook non-200",
+			"status", resp.StatusCode, "body", string(respBody))
+		return
+	}
+
+	zap.S().Infow("dingtalk startup notification sent", "webhook", truncateToken(webhook))
+}
+
+// truncateToken masks the access_token portion of a webhook URL for logging.
+func truncateToken(url string) string {
+	if idx := strings.Index(url, "access_token="); idx >= 0 {
+		token := url[idx+13:]
+		if len(token) > 8 {
+			return url[:idx+13] + token[:4] + "****"
+		}
+	}
+	return url
 }
 
 func isMarkdownContent(s string) bool {

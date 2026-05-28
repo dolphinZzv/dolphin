@@ -158,18 +158,31 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 		c.mu.Unlock()
 		if c.checkBrowserHealth(ctx) {
 			c.mu.Lock()
-			return c.browserCtx, nil
+			browserCtx := c.browserCtx
+			c.mu.Unlock()
+			return browserCtx, nil
 		}
+
+		// Health check failed — try to recover with a new tab first.
+		// This avoids killing the entire Chrome process (which allocCancel does).
 		c.mu.Lock()
-		// Re-check if still initialized after reacquiring lock
-		// (another goroutine may have already shut down)
 		if !c.initialized {
 			c.mu.Unlock()
 			return c.getBrowser(ctx)
 		}
-		zap.S().Warn("cdp browser health check failed, reinitializing")
+		zap.S().Warn("cdp health check failed, creating new tab")
+		newCtx, newCancel, tabErr := c.newTabFromAlloc()
+		if tabErr == nil {
+			c.browserCancel()
+			c.browserCtx = newCtx
+			c.browserCancel = newCancel
+			browserCtx := c.browserCtx
+			c.mu.Unlock()
+			return browserCtx, nil
+		}
+		// New tab also failed — browser process is likely dead, recreate everything.
+		zap.S().Warn("cdp new tab failed, reinitializing browser", "error", tabErr)
 		c.shutdownBrowser()
-		c.mu.Lock()
 	}
 
 	if c.cfg.WsURL != "" {
@@ -244,6 +257,28 @@ func (c *Tool) shutdownBrowser() {
 		c.allocCancel = nil
 	}
 	c.initialized = false
+}
+
+// newTabFromAlloc creates a new browser tab from the existing allocator context.
+// This is cheaper than killing and recreating the entire browser process.
+func (c *Tool) newTabFromAlloc() (context.Context, context.CancelFunc, error) {
+	if c.allocCtx == nil {
+		return nil, nil, fmt.Errorf("cdp: no allocator context")
+	}
+	// Check if the allocator context is still alive
+	if c.allocCtx.Err() != nil {
+		return nil, nil, fmt.Errorf("cdp: allocator context cancelled: %w", c.allocCtx.Err())
+	}
+	newCtx, newCancel := chromedp.NewContext(c.allocCtx)
+	// Verify the new tab is responsive
+	verifyCtx, verifyCancel := context.WithTimeout(newCtx, 5*time.Second)
+	defer verifyCancel()
+	var ok bool
+	if err := chromedp.Run(verifyCtx, chromedp.Evaluate("!!window.chrome", &ok)); err != nil {
+		newCancel()
+		return nil, nil, fmt.Errorf("cdp: new tab not responsive: %w", err)
+	}
+	return newCtx, newCancel, nil
 }
 
 func (c *Tool) Shutdown() {

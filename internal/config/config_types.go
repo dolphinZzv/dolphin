@@ -302,10 +302,11 @@ type EmailConfig struct {
 // Uses Stream mode (WebSocket long connection) — no public IP or callback URL needed.
 // The bot actively connects to DingTalk servers and receives messages via push.
 type DingTalkConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	ClientID     string `mapstructure:"client_id"`     // AppKey from DingTalk Open Platform
-	ClientSecret string `mapstructure:"client_secret"` // AppSecret from DingTalk Open Platform
-	ReadTimeout  string `mapstructure:"read_timeout"`  // ReadLine timeout, e.g. "5m"; empty = default 5m
+	Enabled        bool   `mapstructure:"enabled"`
+	ClientID       string `mapstructure:"client_id"`       // AppKey from DingTalk Open Platform
+	ClientSecret   string `mapstructure:"client_secret"`   // AppSecret from DingTalk Open Platform
+	ReadTimeout    string `mapstructure:"read_timeout"`    // ReadLine timeout, e.g. "5m"; empty = default 5m
+	StartupWebhook string `mapstructure:"startup_webhook"` // DingTalk robot webhook URL for startup notification
 }
 
 type MCPConfig struct {

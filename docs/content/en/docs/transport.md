@@ -82,6 +82,9 @@ transport:
     enabled: true
     client_id: your-client-id
     client_secret: your-client-secret
+    startup_webhook: https://oapi.dingtalk.com/robot/send?access_token=your-token
 ```
 
 Requires a DingTalk bot application. Uses Stream mode for real-time bidirectional communication.
+
+When `startup_webhook` is configured, a startup notification is sent to the DingTalk group chat each time the stream connection is established (including after credential-change reconnections).

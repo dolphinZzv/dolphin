@@ -121,7 +121,7 @@ func (m *MultiIO) RegisterAgent(name string) *SubAgentIO {
 	m.agents[name] = ch
 
 	zap.S().Infow("agent registered in MultiIO", "name", name)
-	return &SubAgentIO{ch: ch, root: m.root}
+	return &SubAgentIO{ch: ch, root: m.root, caps: m.root.Capabilities()}
 }
 
 // UnregisterAgent removes an agent from the routing table.
@@ -149,12 +149,16 @@ func (m *MultiIO) WriteToUser(agentName, message string) error {
 }
 
 // SubAgentIO implements UserIO for a subagent.
-// WriteLine/WriteString forward to root with [name] prefix for real-time output visibility.
+// For streaming transports, WriteLine/WriteString forward to root with [name] prefix.
+// For non-streaming transports, writes are buffered and only sent on Flush().
 // ReadLine reads from the agent's inbox (receives @-routed messages).
 type SubAgentIO struct {
 	ch        *agentChannel
-	root      UserIO // root IO for capabilities
-	lineStart bool   // true if next WriteString should be prefixed
+	root      UserIO // root IO for writes
+	caps      Capabilities
+	buf       strings.Builder
+	mu        sync.Mutex
+	lineStart bool // true if next WriteString should be prefixed
 }
 
 func (s *SubAgentIO) ReadLine() (string, error) {
@@ -169,6 +173,43 @@ func (s *SubAgentIO) WriteString(msg string) error {
 	if msg == "" {
 		return nil
 	}
+	if s.caps.Streaming {
+		return s.writePrefixed(msg)
+	}
+	s.mu.Lock()
+	s.writePrefixedToBuf(msg)
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *SubAgentIO) WriteLine(msg string) error {
+	s.lineStart = true
+	if s.caps.Streaming {
+		return s.root.WriteLine("[" + s.ch.name + "] " + msg)
+	}
+	s.mu.Lock()
+	s.buf.WriteString("[" + s.ch.name + "] " + msg + "\n")
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *SubAgentIO) Flush() error {
+	s.lineStart = true
+	if s.caps.Streaming {
+		return s.root.Flush()
+	}
+	s.mu.Lock()
+	content := s.buf.String()
+	s.buf.Reset()
+	s.mu.Unlock()
+	if content == "" {
+		return nil
+	}
+	return s.root.WriteString(content)
+}
+
+// writePrefixed writes msg to root with [name] line prefixes for streaming transports.
+func (s *SubAgentIO) writePrefixed(msg string) error {
 	var sb strings.Builder
 	for _, r := range msg {
 		if s.lineStart {
@@ -183,16 +224,20 @@ func (s *SubAgentIO) WriteString(msg string) error {
 	return s.root.WriteString(sb.String())
 }
 
-func (s *SubAgentIO) WriteLine(msg string) error {
-	s.lineStart = true
-	return s.root.WriteLine("[" + s.ch.name + "] " + msg)
+// writePrefixedToBuf writes msg to internal buffer with [name] line prefixes.
+func (s *SubAgentIO) writePrefixedToBuf(msg string) {
+	for _, r := range msg {
+		if s.lineStart {
+			s.buf.WriteString("[" + s.ch.name + "] ")
+			s.lineStart = false
+		}
+		s.buf.WriteRune(r)
+		if r == '\n' {
+			s.lineStart = true
+		}
+	}
 }
 
-func (s *SubAgentIO) Flush() error {
-	s.lineStart = true
-	return s.root.Flush()
-}
-
-func (s *SubAgentIO) Capabilities() Capabilities { return s.root.Capabilities() }
+func (s *SubAgentIO) Capabilities() Capabilities { return s.caps }
 func (s *SubAgentIO) Context() string            { return "" }
 func (s *SubAgentIO) Name() string               { return "[" + s.ch.name + "]" }
