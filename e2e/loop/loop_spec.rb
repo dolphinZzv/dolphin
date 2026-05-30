@@ -1,8 +1,5 @@
 #!/usr/bin/env ruby
 
-require 'fileutils'
-require 'tmpdir'
-
 dolphin_bin = File.join(__dir__, "..", "..", "dolphin")
 config_files = Dir.glob(File.join(__dir__, "config", "*_config.yaml"))
 
@@ -15,19 +12,21 @@ config_files.each do |config_path|
   puts "=== Testing #{File.basename(config_path)} ==="
   puts "  x=#{x}, expected=#{expected}"
 
-  tmpdir = Dir.mktmpdir
-  begin
-    output = `DOLPHIN_SESSION_DIR=#{tmpdir} printf "#{prompt}\\nexit\\n" | #{dolphin_bin} -c #{config_path} 2>&1`
-    puts "  Output: #{output}"
+  script = "spawn #{dolphin_bin} -c #{config_path}\n"
+  script += "expect \"Dolphin> \"\n"
+  script += "send \"#{prompt}\\r\"\n"
+  script += "expect \"Dolphin> \"\n"
+  script += "send \"exit\\r\"\n"
+  script += "expect eof\n"
 
-    if output.include?(expected)
-      puts "    PASS"
-    else
-      puts "    FAIL: Expected #{expected} not found"
-      exit 1
-    end
-  ensure
-    FileUtils.rm_rf(tmpdir) if tmpdir
+  result = `expect -c '#{script}' 2>&1`
+  puts "  Output: #{result}"
+
+  if result.include?(expected)
+    puts "    PASS"
+  else
+    puts "    FAIL: Expected #{expected} not found"
+    exit 1
   end
 end
 

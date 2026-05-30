@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -9,16 +11,14 @@ import (
 
 func TestNewManager(t *testing.T) {
 	Convey("NewManager", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		mgr := NewManager(t.TempDir())
 		So(mgr, ShouldNotBeNil)
 	})
 }
 
 func TestManagerCreate(t *testing.T) {
 	Convey("Manager.Create", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		mgr := NewManager(t.TempDir())
 		ctx := context.Background()
 
 		Convey("creates a new session", func() {
@@ -40,17 +40,14 @@ func TestManagerCreate(t *testing.T) {
 
 			mgr.Create(ctx)
 			So(mgr.Active().ID, ShouldNotEqual, s1.ID)
-
-			s1Reloaded, _ := store.Get(ctx, s1.ID)
-			So(s1Reloaded.Active, ShouldBeFalse)
+			So(s1.Active, ShouldBeFalse)
 		})
 	})
 }
 
 func TestManagerActive(t *testing.T) {
 	Convey("Manager.Active", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		mgr := NewManager(t.TempDir())
 		ctx := context.Background()
 
 		Convey("returns nil when no session created", func() {
@@ -66,26 +63,31 @@ func TestManagerActive(t *testing.T) {
 
 func TestManagerList(t *testing.T) {
 	Convey("Manager.List", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		dir := t.TempDir()
+		mgr := NewManager(dir)
 		ctx := context.Background()
 
-		Convey("lists all sessions", func() {
+		Convey("returns sessions from .md files on disk", func() {
 			s1 := mgr.Create(ctx)
 			mgr.Create(ctx)
+
+			// Create .md files on disk (simulating first message write).
+			for _, id := range []string{s1.ID, mgr.Active().ID} {
+				f, _ := os.Create(filepath.Join(dir, id+".md"))
+				f.Close()
+			}
 
 			sessions, err := mgr.List(ctx)
 			So(err, ShouldBeNil)
 			So(len(sessions), ShouldEqual, 2)
-			So(sessions[0].ID, ShouldEqual, s1.ID)
 		})
 	})
 }
 
 func TestManagerSwitchTo(t *testing.T) {
 	Convey("Manager.SwitchTo", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		dir := t.TempDir()
+		mgr := NewManager(dir)
 		ctx := context.Background()
 
 		Convey("switches to an existing session", func() {
@@ -108,8 +110,7 @@ func TestManagerSwitchTo(t *testing.T) {
 
 func TestManagerOnFliped(t *testing.T) {
 	Convey("Manager.OnFliped", t, func() {
-		store := NewFileStore(t.TempDir())
-		mgr := NewManager(store)
+		mgr := NewManager(t.TempDir())
 		ctx := context.Background()
 
 		Convey("calls callback on session switch", func() {
@@ -131,7 +132,6 @@ func TestSessionStruct(t *testing.T) {
 		Convey("zero value has correct defaults", func() {
 			var s Session
 			So(s.ID, ShouldEqual, "")
-			So(s.Title, ShouldEqual, "")
 			So(s.Active, ShouldBeFalse)
 			So(s.CreatedAt.IsZero(), ShouldBeTrue)
 		})

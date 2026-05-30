@@ -15,8 +15,7 @@ func TestAgentIO(t *testing.T) {
 	Convey("AgentIO", t, func() {
 		logger, _ := zap.NewDevelopment()
 		sb := signal.NewBus()
-		store := session.NewFileStore(t.TempDir())
-		mgr := session.NewManager(store)
+		mgr := session.NewManager(t.TempDir())
 
 		Convey("NewAgentIO creates instance", func() {
 			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")

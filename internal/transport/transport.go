@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"dolphin/internal/common"
+	"dolphin/internal/session"
 )
 
 // IO is the transport interface — all transports must implement it.
@@ -18,6 +19,8 @@ type IO interface {
 	Close() error
 	Capability() Capability
 	Tools() []common.ToolDesc
+	NewSession(ctx context.Context) *session.Session
+	Session() *session.Session
 }
 
 // Capability describes transport features.

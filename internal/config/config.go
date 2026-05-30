@@ -48,6 +48,7 @@ func defaultConfig() *Config {
 			"log.compress":      true,
 			"tool.timeout":      "30s",
 			"agent.name":        "Dolphin",
+			"agent.workspace":   ".",
 			"agent.max_rounds":  100,
 			"agent.buffer_size": 1024,
 			"memory.window":     40,

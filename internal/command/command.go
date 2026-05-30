@@ -2,7 +2,6 @@ package command
 
 import (
 	"bytes"
-	"fmt"
 	"strings"
 
 	"dolphin/internal/agentio"
@@ -18,15 +17,6 @@ type Registry struct {
 	signalBus *signal.Bus
 	agentIO   *agentio.AgentIO
 	root      *cobra.Command
-
-	// LLM-managed command definitions
-	llmCmds map[string]llmCmd
-}
-
-type llmCmd struct {
-	Name        string
-	Description string
-	Prompt      string
 }
 
 func NewRegistry(sessMgr *session.Manager, sb *signal.Bus) *Registry {
@@ -34,7 +24,6 @@ func NewRegistry(sessMgr *session.Manager, sb *signal.Bus) *Registry {
 		sessMgr:   sessMgr,
 		signalBus: sb,
 		root:      &cobra.Command{Use: "dolphin"},
-		llmCmds:   make(map[string]llmCmd),
 	}
 	r.root.SilenceErrors = true
 	r.root.SilenceUsage = true
@@ -80,11 +69,7 @@ func (r *Registry) registerBuiltins() {
 				if s.Active {
 					active = " [active]"
 				}
-				title := s.Title
-				if title == "" {
-					title = "(untitled)"
-				}
-				cmd.Printf("  %s: %s%s\n", s.ID[:8], title, active)
+				cmd.Printf("  %s%s\n", s.ID[:8], active)
 			}
 			return nil
 		},
@@ -120,47 +105,4 @@ func (r *Registry) Execute(line string) string {
 	r.root.SetArgs(strings.Fields(line))
 	_ = r.root.Execute()
 	return strings.TrimRight(buf.String(), "\n")
-}
-
-// RegisterCommandTool stores an LLM-managed command definition.
-func (r *Registry) RegisterCommandTool(name, description, prompt string) error {
-	if name == "" || prompt == "" {
-		return fmt.Errorf("command name and prompt are required")
-	}
-	if _, exists := r.llmCmds[name]; exists {
-		return fmt.Errorf("command %q already registered", name)
-	}
-	r.llmCmds[name] = llmCmd{
-		Name:        name,
-		Description: description,
-		Prompt:      prompt,
-	}
-	return nil
-}
-
-// UnregisterCommandTool removes an LLM-managed command.
-func (r *Registry) UnregisterCommandTool(name string) error {
-	if _, exists := r.llmCmds[name]; !exists {
-		return fmt.Errorf("command %q not found", name)
-	}
-	delete(r.llmCmds, name)
-	return nil
-}
-
-// RegisterFromSkill registers commands from a skill definition.
-func (r *Registry) RegisterFromSkill(skillName string, commands []string) {
-	for _, cmd := range commands {
-		r.llmCmds[cmd] = llmCmd{
-			Name:        cmd,
-			Description: fmt.Sprintf("from skill %s", skillName),
-			Prompt:      fmt.Sprintf("skill: %s", skillName),
-		}
-	}
-}
-
-// UnregisterFromSkill removes commands from a skill.
-func (r *Registry) UnregisterFromSkill(skillName string, commands []string) {
-	for _, cmd := range commands {
-		delete(r.llmCmds, cmd)
-	}
 }

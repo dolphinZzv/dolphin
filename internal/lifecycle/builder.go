@@ -17,6 +17,7 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/memory"
 	"dolphin/internal/observability"
+	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
@@ -44,6 +45,7 @@ type Builder struct {
 	skillStore   skill.Store
 	cmdReg       *command.Registry
 	brain        *brain.Brain
+	scheduler    *scheduler.Scheduler
 	agentIO      *agentio.AgentIO
 	agentLoop    *agentloop.AgentLoop
 	userIO       *userio.UserIO
@@ -87,8 +89,7 @@ func (b *Builder) StepSession() *Builder {
 	if b.sessionMgr != nil {
 		return b
 	}
-	store := session.NewFileStore(b.cfg.GetString("memory.dir") + "/sessions")
-	mgr := session.NewManager(store)
+	mgr := session.NewManager(b.cfg.GetString("memory.dir"))
 	mgr.LoadActive(context.Background())
 	b.sessionMgr = mgr
 	return b
@@ -144,8 +145,7 @@ func (b *Builder) StepTools() *Builder {
 
 	b.skillStore = skill.NewFileStore(b.cfg.GetString("memory.dir") + "/skills")
 	b.cmdReg = command.NewRegistry(b.sessionMgr, b.signalBus)
-	tool.RegisterSkillTools(b.toolReg, tool.SkillAdapter{Store: b.skillStore}, b.cmdReg)
-	tool.RegisterCommandTools(b.toolReg, b.cmdReg)
+	tool.RegisterSkillTools(b.toolReg, tool.SkillAdapter{Store: b.skillStore})
 	tool.RegisterSessionTools(b.toolReg, b.sessionMgr)
 	b.registerMCPCommand()
 	b.registerSkillsCommand()
@@ -177,6 +177,17 @@ func (b *Builder) StepBrain() *Builder {
 }
 
 // StepAgentIO creates the agent IO and agent loop with compositor.
+func (b *Builder) StepScheduler() *Builder {
+	if b.scheduler != nil {
+		return b
+	}
+	schedDir := b.cfg.GetString("memory.dir") + "/scheduler"
+	b.scheduler = scheduler.New(schedDir, b.logger, b.brain)
+	tool.RegisterSchedulerTools(b.toolReg, b.scheduler)
+	b.registerSchedulerCommand()
+	return b
+}
+
 func (b *Builder) StepAgentIO() *Builder {
 	if b.agentIO != nil {
 		return b
@@ -272,6 +283,11 @@ func (b *Builder) StepTransports() *Builder {
 		if err != nil {
 			b.logger.Fatal("transport build failed", zap.String("type", tc.Type), zap.Error(err))
 		}
+		if sh, ok := tio.(interface {
+			SetSessionManager(transport.SessionManager)
+		}); ok {
+			sh.SetSessionManager(b.sessionMgr)
+		}
 		b.agentIO.RegisterTransport(tio.ID(), tio)
 		b.transports = append(b.transports, tio)
 
@@ -317,6 +333,7 @@ func (b *Builder) Assemble() *Builder {
 		agentIO:            b.agentIO,
 		agentLoop:          b.agentLoop,
 		sessionMgr:         b.sessionMgr,
+		scheduler:          b.scheduler,
 		signalBus:          b.signalBus,
 		eventBus:           b.eventBus,
 		logger:             b.logger,
@@ -397,4 +414,41 @@ func (b *Builder) registerContextCommand() {
 		},
 	}
 	b.cmdReg.Register(contextCmd)
+}
+
+func (b *Builder) registerSchedulerCommand() {
+	b.cmdReg.Register(&cobra.Command{
+		Use:   "scheduler",
+		Short: "List scheduled tasks",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tasks := b.scheduler.List()
+			if len(tasks) == 0 {
+				cmd.Println("No scheduled tasks")
+				return nil
+			}
+			cmd.Println("Scheduled tasks:")
+			for _, t := range tasks {
+				sched := t.Schedule
+				typ := "cron"
+				if t.Delay != "" {
+					sched = t.Delay
+					typ = "delay"
+				}
+				status := "pending"
+				if t.LastStatus != "" {
+					status = t.LastStatus
+				}
+				if !t.Enabled {
+					status = "disabled"
+				}
+				lastRun := "-"
+				if t.LastRunAt != nil {
+					lastRun = t.LastRunAt.Format("2006-01-02 15:04:05")
+				}
+				cmd.Printf("  %s (id: %s) [%s] %s: %s, cmd: %s, last: %s, runs: %d\n",
+					t.Name, t.ID, status, typ, sched, t.Command, lastRun, t.RunCount)
+			}
+			return nil
+		},
+	})
 }

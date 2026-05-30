@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
+	"html"
 	"io"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"path"
 	"strings"
 	"sync"
@@ -17,6 +22,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/yuin/goldmark"
 	"go.uber.org/zap"
 )
 
@@ -59,6 +65,7 @@ type EmailConfig struct {
 
 // Email is a chunk-mode transport that reads via IMAP and writes via SMTP.
 type Email struct {
+	*SessionHolder
 	id        string
 	cfg       EmailConfig
 	logger    *zap.Logger
@@ -70,8 +77,10 @@ type Email struct {
 	closed    bool
 
 	// Last sender info — populated on Read, used on Write/Flush to reply.
-	lastFrom    string
-	lastSubject string
+	lastFrom      string
+	lastSubject   string
+	lastMessageID string
+	lastBody      string
 
 	// Flush-buffered message — written by Write, sent by Flush.
 	pendingMsg string
@@ -100,13 +109,14 @@ func NewEmail(cfg EmailConfig, logger *zap.Logger, agentName string) *Email {
 	}
 
 	return &Email{
-		id:           "email",
-		cfg:          cfg,
-		logger:       logger,
-		sendOnly:     sendOnly,
-		agentName:    agentName,
-		closeCh:      make(chan struct{}),
-		allowSenders: allowSenders,
+		SessionHolder: NewSessionHolder(nil),
+		id:            "email",
+		cfg:           cfg,
+		logger:        logger,
+		sendOnly:      sendOnly,
+		agentName:     agentName,
+		closeCh:       make(chan struct{}),
+		allowSenders:  allowSenders,
 	}
 }
 
@@ -138,7 +148,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 		default:
 		}
 
-		content, from, subject, err := e.fetchUnseen(ctx)
+		content, from, subject, messageID, err := e.fetchUnseen(ctx)
 		if err != nil {
 			e.logger.Warn("email imap fetch error", zap.Error(err))
 			select {
@@ -161,7 +171,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 			e.logger.Debug("email: skipped message from non-allowed sender",
 				zap.String("from", from),
 			)
-			e.rejectMessage(context.Background(), from, subject)
+			e.rejectMessage(context.Background(), from, subject, messageID)
 			select {
 			case <-e.closeCh:
 				return "", fmt.Errorf("email: closed")
@@ -173,9 +183,15 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 		e.mu.Lock()
 		e.lastFrom = from
 		e.lastSubject = subject
+		e.lastMessageID = messageID
+		e.lastBody = content
 		e.mu.Unlock()
 
-		return content, nil
+		// Return clean format: subject + body.
+		if subject != "" {
+			content = "标题: " + subject + "\n" + content
+		}
+		return strings.TrimSpace(content), nil
 	}
 }
 
@@ -193,7 +209,7 @@ func (e *Email) Write(ctx context.Context, text string) error {
 		subj = "Re: " + subj
 	}
 
-	e.pendingMsg = e.buildMessage(to, subj, text)
+	e.pendingMsg = e.buildMessage(to, subj, text, e.lastMessageID, e.lastBody)
 	e.pendingTo = to
 	return nil
 }
@@ -210,7 +226,9 @@ func (e *Email) Flush() error {
 	if msg == "" {
 		return nil
 	}
-	return e.sendSMTP(context.Background(), to, msg)
+	err := e.sendSMTP(context.Background(), to, msg)
+	e.ResetSession()
+	return err
 }
 
 func (e *Email) Close() error {
@@ -235,13 +253,14 @@ func (e *Email) Capability() Capability {
 }
 
 // rejectMessage sends a rejection email to the sender via SMTP.
-func (e *Email) rejectMessage(ctx context.Context, to, subject string) {
+func (e *Email) rejectMessage(ctx context.Context, to, subject, messageId string) {
+
 	rejectSubj := "Re: " + subject
 	body := "抱歉，您没有权限向此邮箱发送消息，您的邮件已被忽略。"
 	if len(e.allowSenders) == 0 {
 		body = "机器人暂未配置白名单，请联系管理员配置后使用"
 	}
-	msg := e.buildMessage(to, rejectSubj, body)
+	msg := e.buildMessage(to, rejectSubj, body, messageId, "")
 	_ = e.sendSMTP(ctx, to, msg)
 }
 
@@ -260,7 +279,10 @@ func (e *Email) isSenderAllowed(from string) bool {
 }
 
 // buildMessage constructs the raw SMTP message with agent name as sender.
-func (e *Email) buildMessage(to, subject, body string) string {
+// Renders markdown body as both text/plain and text/html (multipart/alternative).
+// messageID is the Message-ID of the original email being replied to
+// (for In-Reply-To / References headers); empty for new messages.
+func (e *Email) buildMessage(to, subject, body, messageID string, originalBody string) string {
 	fromHeader := e.cfg.EmailAddress
 	if e.agentName != "" {
 		fromHeader = fmt.Sprintf("%s <%s>", e.agentName, e.cfg.EmailAddress)
@@ -270,39 +292,147 @@ func (e *Email) buildMessage(to, subject, body string) string {
 	buf.WriteString("From: " + fromHeader + "\r\n")
 	buf.WriteString("To: " + to + "\r\n")
 	buf.WriteString("Subject: " + subject + "\r\n")
+	if messageID != "" {
+		buf.WriteString("In-Reply-To: <" + messageID + ">\r\n")
+		buf.WriteString("References: <" + messageID + ">\r\n")
+	}
+
+	// Render markdown body to HTML.
+	htmlBuf := new(bytes.Buffer)
+	if err := goldmark.Convert([]byte(body), htmlBuf); err != nil {
+		e.logger.Warn("email: goldmark convert error, falling back to plain text", zap.Error(err))
+		buf.WriteString("MIME-Version: 1.0\r\n")
+		buf.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(body)
+		return buf.String()
+	}
+
+	// Multipart/alternative with text/plain + text/html.
+	mw := multipart.NewWriter(&buf)
+	boundary := mw.Boundary()
 	buf.WriteString("MIME-Version: 1.0\r\n")
-	buf.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+	buf.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%q\r\n", boundary))
 	buf.WriteString("\r\n")
-	buf.WriteString(body)
+
+	// text/plain part
+	p, _ := mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type": {"text/plain; charset=\"UTF-8\""},
+	})
+	// Append quoted original message.
+	finalBody := body
+	if originalBody != "" {
+		finalBody += "\r\n\r\n"
+		for _, line := range strings.Split(strings.TrimRight(originalBody, "\n"), "\n") {
+			finalBody += "> " + line + "\n"
+		}
+	}
+	p.Write([]byte(finalBody + "\r\n"))
+
+	// text/html part
+	// Append quoted original as blockquote in HTML.
+	htmlBody := htmlBuf.String()
+	if originalBody != "" {
+		htmlBody += "\n<br>\n<blockquote style=\"border-left:2px solid #ccc;margin:0;padding:0 1em;color:#888;\">\n"
+		for _, line := range strings.Split(strings.TrimRight(originalBody, "\n"), "\n") {
+			htmlBody += html.EscapeString(line) + "<br>\n"
+		}
+		htmlBody += "</blockquote>\n"
+	}
+	h := "<html><body>\n" + htmlBody + "\n</body></html>"
+	p, _ = mw.CreatePart(textproto.MIMEHeader{
+		"Content-Type": {"text/html; charset=\"UTF-8\""},
+	})
+	p.Write([]byte(h + "\r\n"))
+
+	mw.Close()
 	return buf.String()
+}
+
+// ---------------------------------------------------------------------------
+// MIME text extraction
+// ---------------------------------------------------------------------------
+
+// extractText parses MIME body content and returns the first text/plain
+// or text/html part content, handling base64/quoted-printable encoding.
+func extractText(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+
+	// Detect multipart: body starts with --boundary
+	if strings.HasPrefix(s, "--") {
+		idx := strings.Index(s, "\n")
+		if idx <= 2 {
+			return s
+		}
+		boundary := strings.TrimRight(s[2:idx], "\r")
+		if boundary == "" {
+			return s
+		}
+		mr := multipart.NewReader(strings.NewReader(s), boundary)
+		for {
+			part, err := mr.NextPart()
+			if err != nil {
+				break
+			}
+			ct := part.Header.Get("Content-Type")
+			if !strings.HasPrefix(ct, "text/plain") && !strings.HasPrefix(ct, "text/html") {
+				continue
+			}
+			raw, _ := io.ReadAll(part)
+			text := string(raw)
+
+			switch strings.ToLower(part.Header.Get("Content-Transfer-Encoding")) {
+			case "base64":
+				if decoded, err := base64.StdEncoding.DecodeString(text); err == nil {
+					text = string(decoded)
+				}
+			case "quoted-printable":
+				reader := quotedprintable.NewReader(strings.NewReader(text))
+				if decoded, err := io.ReadAll(reader); err == nil {
+					text = string(decoded)
+				}
+			}
+			return strings.TrimSpace(text)
+		}
+		return ""
+	}
+
+	// Single part: try base64 decode, fall back to raw
+	if decoded, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return strings.TrimSpace(string(decoded))
+	}
+	return s
 }
 
 // ---------------------------------------------------------------------------
 // IMAP
 // ---------------------------------------------------------------------------
 
-func (e *Email) fetchUnseen(ctx context.Context) (content, from, subject string, err error) {
+func (e *Email) fetchUnseen(ctx context.Context) (content, from, subject, messageID string, err error) {
 	client, err := e.getIMAPClient(ctx)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 
 	_, err = client.Select("INBOX", nil).Wait()
 	if err != nil {
 		e.closeIMAP()
-		return "", "", "", fmt.Errorf("imap select: %w", err)
+		return "", "", "", "", fmt.Errorf("imap select: %w", err)
 	}
 
 	searchRes, err := client.Search(&imap.SearchCriteria{
 		NotFlag: []imap.Flag{imap.FlagSeen},
 	}, nil).Wait()
 	if err != nil {
-		return "", "", "", fmt.Errorf("imap search: %w", err)
+		return "", "", "", "", fmt.Errorf("imap search: %w", err)
 	}
 
 	seqNums := searchRes.AllSeqNums()
 	if len(seqNums) == 0 {
-		return "", "", "", nil
+		return "", "", "", "", nil
 	}
 
 	seqSet := imap.SeqSetNum(seqNums[0])
@@ -312,23 +442,41 @@ func (e *Email) fetchUnseen(ctx context.Context) (content, from, subject string,
 		BodySection: []*imap.FetchItemBodySection{{}},
 	}).Collect()
 	if err != nil {
-		return "", "", "", fmt.Errorf("imap fetch: %w", err)
+		return "", "", "", "", fmt.Errorf("imap fetch: %w", err)
 	}
 
 	if len(fetchRes) > 0 {
 		msg := fetchRes[0]
 		if msg.Envelope != nil {
 			if len(msg.Envelope.From) > 0 {
-				from = msg.Envelope.From[0].Mailbox + "@" + msg.Envelope.From[0].Host
+				addr := msg.Envelope.From[0]
+				if addr.Host != "" {
+					from = addr.Mailbox + "@" + addr.Host
+				} else if addr.Mailbox != "" {
+					from = addr.Mailbox
+				}
+				e.logger.Debug("email: envelope from",
+					zap.String("mailbox", addr.Mailbox),
+					zap.String("host", addr.Host),
+					zap.String("from", from),
+				)
 			}
 			subject = msg.Envelope.Subject
+			messageID = msg.Envelope.MessageID
 		}
 		for _, bs := range msg.BodySection {
 			content += string(bs.Bytes)
 		}
+
+		// Mark as seen to avoid re-fetching on next poll.
+		_, _ = client.Store(seqSet, &imap.StoreFlags{
+			Op:     imap.StoreFlagsAdd,
+			Flags:  []imap.Flag{imap.FlagSeen},
+			Silent: true,
+		}, nil).Collect()
 	}
 
-	return content, from, subject, nil
+	return content, from, subject, messageID, nil
 }
 
 func (e *Email) getIMAPClient(ctx context.Context) (*imapclient.Client, error) {

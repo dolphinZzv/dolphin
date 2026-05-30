@@ -24,6 +24,7 @@ func init() {
 }
 
 type Stdio struct {
+	*SessionHolder
 	id     string
 	rl     *readline.Instance
 	reader *bufio.Reader
@@ -36,11 +37,12 @@ type Stdio struct {
 func NewStdio(user string) *Stdio {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Stdio{
-		id:     "stdio",
-		reader: bufio.NewReader(os.Stdin),
-		user:   user,
-		ctx:    ctx,
-		cancel: cancel,
+		SessionHolder: NewSessionHolder(nil),
+		id:            "stdio",
+		reader:        bufio.NewReader(os.Stdin),
+		user:          user,
+		ctx:           ctx,
+		cancel:        cancel,
 	}
 
 	host := s.user
@@ -159,6 +161,7 @@ var _ IO = (*Stdio)(nil)
 
 // NullTransport is a no-op transport for testing.
 type NullTransport struct {
+	*SessionHolder
 	id      string
 	readBuf []string
 	ctx     context.Context
@@ -167,7 +170,12 @@ type NullTransport struct {
 
 func NewNullTransport(id string) *NullTransport {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &NullTransport{id: id, ctx: ctx, cancel: cancel}
+	return &NullTransport{
+		SessionHolder: NewSessionHolder(nil),
+		id:            id,
+		ctx:           ctx,
+		cancel:        cancel,
+	}
 }
 
 func (n *NullTransport) ID() string { return n.id }

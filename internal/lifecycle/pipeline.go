@@ -12,9 +12,11 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
+	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/mcp"
+	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/tool"
@@ -29,6 +31,8 @@ type Pipeline struct {
 	agentIO            *agentio.AgentIO
 	agentLoop          *agentloop.AgentLoop
 	sessionMgr         *session.Manager
+	brain              *brain.Brain
+	scheduler          *scheduler.Scheduler
 	signalBus          *signal.Bus
 	eventBus           *event.Bus
 	logger             *zap.Logger
@@ -46,6 +50,7 @@ func New(cfg *config.Config) *Pipeline {
 		StepLLM().
 		StepTools().
 		StepBrain().
+		StepScheduler().
 		StepAgentIO().
 		StepUserIO().
 		StepObservability().
@@ -60,6 +65,36 @@ func (p *Pipeline) Start(ctx context.Context) {
 
 	p.logger.Info("pipeline starting", zap.Int("transports", len(p.transports)))
 	p.eventBus.Publish(ctx, event.Event{Type: event.EventPipelineStart})
+
+	if p.scheduler != nil {
+		p.scheduler.Start(ctx)
+	}
+
+	// Idle monitor: 20s after last user input, auto-commit brain changes.
+	userActive := make(chan struct{}, 64)
+	if p.brain != nil {
+		go func() {
+			timer := time.NewTimer(20 * time.Second)
+			defer timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-userActive:
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(20 * time.Second)
+				case <-timer.C:
+					p.brain.AutoCommit(ctx, "")
+					timer.Reset(20 * time.Second)
+				}
+			}
+		}()
+	}
 
 	go p.agentLoop.Run(ctx)
 
@@ -90,6 +125,10 @@ func (p *Pipeline) Start(ctx context.Context) {
 					case <-time.After(5 * time.Second):
 					}
 					continue
+				}
+				select {
+				case userActive <- struct{}{}:
+				default:
 				}
 				if !p.userIO.Handle(ctx, t, input) {
 					continue
@@ -152,6 +191,10 @@ func (p *Pipeline) Shutdown() {
 
 	if p.cancel != nil {
 		p.cancel()
+	}
+
+	if p.scheduler != nil {
+		p.scheduler.Stop()
 	}
 
 	if p.otelShutdown != nil {

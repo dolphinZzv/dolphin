@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/command"
@@ -17,8 +16,6 @@ type UserIO struct {
 	agentIO    *agentio.AgentIO
 	cmdReg     *command.Registry
 	sessionMgr *session.Manager
-	mu         sync.Mutex
-	sessions   map[string]*session.Session // per-transport session
 }
 
 func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, mgr *session.Manager) *UserIO {
@@ -26,40 +23,31 @@ func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, mgr *session.Manage
 		agentIO:    a,
 		cmdReg:     cmdReg,
 		sessionMgr: mgr,
-		sessions:   make(map[string]*session.Session),
 	}
 }
 
 // Handle processes user input. Returns true if a turn was queued.
-// Each transport gets its own dedicated session (no cross-transport interference).
+// Interactive transports (stdio) reuse the same session across messages.
+// Non-interactive transports (email) create a new session per message.
 func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) bool {
 	if strings.HasPrefix(input, "/") {
 		line := strings.TrimPrefix(input, "/")
 		out := u.cmdReg.Execute(line)
-
-		// If the command created a new session, update the per-transport session.
-		if line == "session new" {
-			u.mu.Lock()
-			sess := u.sessionMgr.Active()
-			u.sessions[tio.ID()] = sess
-			u.mu.Unlock()
-		}
-
-		// Send command output back to the transport.
 		if out != "" {
 			_ = tio.Write(ctx, out)
+		}
+		if line == "session new" {
+			if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
+				ss.SetSession(u.sessionMgr.Active())
+			}
 		}
 		return false
 	}
 
-	u.mu.Lock()
-	sess, ok := u.sessions[tio.ID()]
-	if !ok {
+	sess := tio.NewSession(ctx)
+	if sess == nil {
 		sess = u.sessionMgr.NewSession(ctx)
-		u.sessions[tio.ID()] = sess
 	}
-	u.mu.Unlock()
-
 	u.agentIO.SendTurn(ctx, &agentio.Turn{
 		TransportID: tio.ID(),
 		SessionID:   sess.ID,

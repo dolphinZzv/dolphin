@@ -2,8 +2,10 @@ package transport
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
@@ -87,7 +89,7 @@ func TestEmailBuildMessage(t *testing.T) {
 				EmailAddress: "bot@example.com",
 			}, nil, "MyBot")
 
-			msg := e.buildMessage("user@example.com", "Test Subject", "Hello")
+			msg := e.buildMessage("user@example.com", "Test Subject", "Hello", "", "")
 			So(msg, ShouldContainSubstring, "From: MyBot <bot@example.com>")
 			So(msg, ShouldContainSubstring, "To: user@example.com")
 			So(msg, ShouldContainSubstring, "Subject: Test Subject")
@@ -99,7 +101,7 @@ func TestEmailBuildMessage(t *testing.T) {
 				EmailAddress: "bot@example.com",
 			}, nil, "")
 
-			msg := e.buildMessage("user@example.com", "Test", "Body")
+			msg := e.buildMessage("user@example.com", "Test", "Body", "", "")
 			So(msg, ShouldContainSubstring, "From: bot@example.com")
 		})
 
@@ -108,7 +110,7 @@ func TestEmailBuildMessage(t *testing.T) {
 				EmailAddress: "bot@example.com",
 			}, nil, "")
 
-			msg := e.buildMessage("to@example.com", "Subj", "Body")
+			msg := e.buildMessage("to@example.com", "Subj", "Body", "", "")
 			So(msg, ShouldContainSubstring, "MIME-Version: 1.0")
 			So(msg, ShouldContainSubstring, "Content-Type: text/plain; charset=\"UTF-8\"")
 		})
@@ -272,6 +274,92 @@ func TestEmailWrite_FlushRoundTrip(t *testing.T) {
 
 // Ensure Email implements IO.
 var _ IO = (*Email)(nil)
+
+func TestEmailIMAPIntegration(t *testing.T) {
+	imapSrv := os.Getenv("TEST_IMAP")
+	smtpSrv := os.Getenv("TEST_SMTP")
+	email := os.Getenv("TEST_EMAIL")
+	password := os.Getenv("TEST_EMAIL_PASSWORD")
+	if imapSrv == "" || smtpSrv == "" || email == "" || password == "" {
+		t.Skip("set TEST_IMAP, TEST_SMTP, TEST_EMAIL, TEST_EMAIL_PASSWORD for integration test")
+	}
+
+	logger, _ := zap.NewDevelopment()
+	e := NewEmail(EmailConfig{
+		IMAPServer:   imapSrv,
+		IMAPPort:     "993",
+		SMTPServer:   smtpSrv,
+		SMTPPort:     "465",
+		EmailAddress: email,
+		Password:     password,
+		AllowSenders: "*",
+	}, logger, "TestBot")
+	defer e.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	// 1. Verify IMAP connection and envelope parsing via fetchUnseen.
+	content, from, subject, messageID, err := e.fetchUnseen(ctx)
+	if err != nil {
+		t.Fatalf("IMAP connection or fetch failed: %v", err)
+	}
+
+	if from == "" {
+		t.Log("No unseen messages — IMAP connectivity verified")
+		return
+	}
+
+	t.Logf("Unseen message: from=%q subject=%q messageID=%q", from, subject, messageID)
+	t.Logf("Content length: %d bytes", len(content))
+	t.Logf("Content:\n%s", content)
+
+	// 2. Verify from format — MUST contain @.
+	if !strings.Contains(from, "@") {
+		t.Errorf("from=%q should be a valid email address containing @", from)
+	}
+
+	// 3. The extracted from must pass isSenderAllowed with wildcard "*".
+	if !e.isSenderAllowed(from) {
+		t.Errorf("isSenderAllowed(%q) should be true with AllowSenders=*", from)
+	}
+
+	// 4. Verify exact address matching: isSenderAllowed must match the configured email.
+	e2 := NewEmail(EmailConfig{AllowSenders: email}, logger, "TestBot")
+	if !e2.isSenderAllowed(from) {
+		t.Errorf("isSenderAllowed(%q) should match AllowSenders=%q", from, email)
+	}
+
+	t.Log("Envelope parsing verification PASSED")
+}
+
+func TestEmailSMTPIntegration(t *testing.T) {
+	smtpSrv := os.Getenv("TEST_SMTP")
+	email := os.Getenv("TEST_EMAIL")
+	password := os.Getenv("TEST_EMAIL_PASSWORD")
+	if smtpSrv == "" || email == "" || password == "" {
+		t.Skip("set TEST_SMTP, TEST_EMAIL, TEST_EMAIL_PASSWORD for integration test")
+	}
+
+	logger, _ := zap.NewDevelopment()
+	e := NewEmail(EmailConfig{
+		SMTPServer:   smtpSrv,
+		SMTPPort:     "465",
+		EmailAddress: email,
+		Password:     password,
+	}, logger, "TestBot")
+	defer e.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	msg := e.buildMessage(email, "Test from Dolphin", "Hello, this is a test email from Dolphin integration test.", "", "")
+	err := e.sendSMTP(ctx, email, msg)
+	if err != nil {
+		t.Fatalf("SMTP send failed: %v", err)
+	}
+	t.Log("SMTP test email sent OK — check inbox for message from", email)
+}
 
 // TestEmailBuilder tests the registered email builder.
 func TestEmailBuilder(t *testing.T) {

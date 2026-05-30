@@ -63,6 +63,7 @@ type DingTalkConfig struct {
 // DingTalk is a chunk-mode transport that sends messages via DingTalk webhook
 // and receives messages via DingTalk Stream Mode (WebSocket, no public URL needed).
 type DingTalk struct {
+	*SessionHolder
 	id         string
 	cfg        DingTalkConfig
 	logger     *zap.Logger
@@ -95,14 +96,15 @@ func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *Ding
 	}
 
 	dt := &DingTalk{
-		id:         "dingtalk",
-		cfg:        cfg,
-		logger:     logger,
-		agentName:  agentName,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		msgChan:    make(chan string, 100),
-		closeCh:    make(chan struct{}),
-		allowUsers: allowUsers,
+		SessionHolder: NewSessionHolder(nil),
+		id:            "dingtalk",
+		cfg:           cfg,
+		logger:        logger,
+		agentName:     agentName,
+		httpClient:    &http.Client{Timeout: 30 * time.Second},
+		msgChan:       make(chan string, 100),
+		closeCh:       make(chan struct{}),
+		allowUsers:    allowUsers,
 	}
 
 	// Start the DingTalk Stream client if credentials are configured.

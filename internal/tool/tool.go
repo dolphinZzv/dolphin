@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/command"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
@@ -266,7 +265,7 @@ func (a SkillAdapter) Search(ctx context.Context, query string) ([]skill.Skill, 
 }
 
 // RegisterSkillTools registers builtin tools for skill CRUD.
-func RegisterSkillTools(r *Registry, store SkillStore, cmdReg *command.Registry) {
+func RegisterSkillTools(r *Registry, store SkillStore) {
 	skillSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"prompt":{"type":"string"},"tools":{"type":"array","items":{"type":"string"}},"enabled":{"type":"boolean"}},"required":["name"]}`)
 	nameSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`)
 	querySchema := json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`)
@@ -310,9 +309,6 @@ func RegisterSkillTools(r *Registry, store SkillStore, cmdReg *command.Registry)
 		}
 		sk.Enabled = true
 		store.Save(ctx, *sk)
-		if cmdReg != nil && len(sk.Commands) > 0 {
-			cmdReg.RegisterFromSkill(sk.Name, sk.Commands)
-		}
 		return &types.ToolResult{Content: "skill '" + sk.Name + "' loaded"}, nil
 	})
 
@@ -337,51 +333,10 @@ func RegisterSkillTools(r *Registry, store SkillStore, cmdReg *command.Registry)
 		if err := json.Unmarshal(args, &req); err != nil {
 			return &types.ToolResult{Content: "invalid args", IsError: true}, nil
 		}
-		sk, getErr := store.Get(ctx, req.Name)
 		if err := store.Delete(ctx, req.Name); err != nil {
 			return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
 		}
-		if cmdReg != nil && getErr == nil && len(sk.Commands) > 0 {
-			cmdReg.UnregisterFromSkill(sk.Name, sk.Commands)
-		}
 		return &types.ToolResult{Content: "skill '" + req.Name + "' deleted"}, nil
-	})
-}
-
-// RegisterCommandTools registers builtin tools for LLM-managed command CRUD.
-func RegisterCommandTools(r *Registry, cmdReg *command.Registry) {
-	cmdSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Command name invoked via /name in REPL"},"description":{"type":"string","description":"Short description"},"prompt":{"type":"string","description":"System prompt for the command handler"}},"required":["name","prompt"]}`)
-	cmdNameSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`)
-
-	r.RegisterBuiltin("command_register", "Register a new CLI command handled by the LLM. Args: {name, description?, prompt}", cmdSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var req struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Prompt      string `json:"prompt"`
-		}
-		if err := json.Unmarshal(args, &req); err != nil {
-			return &types.ToolResult{Content: "invalid args: " + err.Error(), IsError: true}, nil
-		}
-		if req.Name == "" || req.Prompt == "" {
-			return &types.ToolResult{Content: "name and prompt are required", IsError: true}, nil
-		}
-		if err := cmdReg.RegisterCommandTool(req.Name, req.Description, req.Prompt); err != nil {
-			return &types.ToolResult{Content: "failed to register command: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: "command '" + req.Name + "' registered"}, nil
-	})
-
-	r.RegisterBuiltin("command_unregister", "Unregister a previously registered command. Args: {name}", cmdNameSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(args, &req); err != nil {
-			return &types.ToolResult{Content: "invalid args", IsError: true}, nil
-		}
-		if err := cmdReg.UnregisterCommandTool(req.Name); err != nil {
-			return &types.ToolResult{Content: "failed to unregister: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: "command '" + req.Name + "' unregistered"}, nil
 	})
 }
 
@@ -399,15 +354,11 @@ func RegisterSessionTools(r *Registry, mgr *session.Manager) {
 		}
 		var sb strings.Builder
 		for _, s := range sessions {
-			title := s.Title
-			if title == "" {
-				title = "(untitled)"
-			}
 			active := ""
 			if s.Active {
 				active = " [active]"
 			}
-			sb.WriteString(fmt.Sprintf("- %s: %s (created: %s)%s\n", s.ID, title, s.CreatedAt.Format("2006-01-02 15:04:05"), active))
+			sb.WriteString(fmt.Sprintf("- %s (created: %s)%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04:05"), active))
 		}
 		return &types.ToolResult{Content: sb.String()}, nil
 	})

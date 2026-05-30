@@ -565,7 +565,7 @@ func TestSkillAdapter(t *testing.T) {
 func TestRegisterSkillTools(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	// Verify all tools are registered.
 	defs, err := r.List(context.Background())
@@ -603,7 +603,7 @@ func TestRegisterSkillTools(t *testing.T) {
 func TestSkill_new(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(skill.Skill{Name: "my_skill", Prompt: "do something"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -634,7 +634,7 @@ func TestSkill_new(t *testing.T) {
 func TestSkill_newInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-1",
@@ -653,7 +653,7 @@ func TestSkill_search(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "found_skill", Prompt: "hello"})
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(map[string]string{"query": "found"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -680,7 +680,7 @@ func TestSkill_search(t *testing.T) {
 func TestSkill_searchInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-2",
@@ -699,7 +699,7 @@ func TestSkill_load(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "my_skill", Prompt: "do something", Enabled: false})
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(map[string]string{"name": "my_skill"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -727,7 +727,7 @@ func TestSkill_load(t *testing.T) {
 func TestSkill_loadInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-3",
@@ -745,7 +745,7 @@ func TestSkill_loadInvalidArgs(t *testing.T) {
 func TestSkill_loadNotFound(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -765,7 +765,7 @@ func TestSkill_update(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "my_skill", Prompt: "original"})
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(skill.Skill{Name: "my_skill", Prompt: "updated"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -792,7 +792,7 @@ func TestSkill_update(t *testing.T) {
 func TestSkill_updateInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-5",
@@ -811,7 +811,7 @@ func TestSkill_delete(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "my_skill", Prompt: "do something"})
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	args, _ := json.Marshal(map[string]string{"name": "my_skill"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
@@ -838,7 +838,7 @@ func TestSkill_delete(t *testing.T) {
 func TestSkill_deleteInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
-	RegisterSkillTools(r, store, nil)
+	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-6",

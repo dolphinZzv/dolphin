@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -346,6 +347,75 @@ func (b *Brain) GitLog(ctx context.Context, n int) ([]GitCommit, error) {
 		return nil, fmt.Errorf("brain: log iter: %w", err)
 	}
 	return commits, nil
+}
+
+// AutoCommit stages all changes and commits if there are any.
+// msg is used as commit message; if empty, generates one from changed file list.
+func (b *Brain) AutoCommit(ctx context.Context, msg string) {
+	if b.repo == nil {
+		return
+	}
+	wt, err := b.repo.Worktree()
+	if err != nil {
+		return
+	}
+	status, err := wt.Status()
+	if err != nil {
+		return
+	}
+	if status.IsClean() {
+		return
+	}
+	if _, err := wt.Add("."); err != nil {
+		return
+	}
+	if msg == "" {
+		msg = autoCommitMsg(status)
+	}
+	_, err = wt.Commit(msg, &gogit.CommitOptions{
+		Author: &object.Signature{
+			Name: "Dolphin Brain",
+			When: time.Now(),
+		},
+	})
+	if err != nil && err != gogit.ErrEmptyCommit {
+		fmt.Fprintf(os.Stderr, "brain: auto-commit: %v\n", err)
+	}
+}
+
+// autoCommitMsg builds a commit message from the git status.
+func autoCommitMsg(status gogit.Status) string {
+	var adds, updates []string
+	for path, s := range status {
+		if s.Worktree == gogit.Untracked {
+			adds = append(adds, path)
+		} else {
+			updates = append(updates, path)
+		}
+	}
+	sort.Strings(adds)
+	sort.Strings(updates)
+
+	var parts []string
+	if len(adds) > 0 {
+		msg := "add"
+		if len(adds) == 1 {
+			msg += " " + adds[0]
+		} else {
+			msg += " " + adds[0] + " and " + strconv.Itoa(len(adds)-1) + " more"
+		}
+		parts = append(parts, msg)
+	}
+	if len(updates) > 0 {
+		msg := "update"
+		if len(updates) == 1 {
+			msg += " " + updates[0]
+		} else {
+			msg += " " + updates[0] + " and " + strconv.Itoa(len(updates)-1) + " more"
+		}
+		parts = append(parts, msg)
+	}
+	return strings.Join(parts, "; ")
 }
 
 // commitAll stages all files and creates a commit.

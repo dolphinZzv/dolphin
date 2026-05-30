@@ -16,6 +16,7 @@ import (
 )
 
 type interactiveTransport struct {
+	*transport.SessionHolder
 	id      string
 	readCh  chan string
 	writeCh chan string
@@ -24,9 +25,10 @@ type interactiveTransport struct {
 
 func newInteractiveTransport(id string) *interactiveTransport {
 	return &interactiveTransport{
-		id:      id,
-		readCh:  make(chan string, 10),
-		writeCh: make(chan string, 10),
+		SessionHolder: transport.NewSessionHolder(nil),
+		id:            id,
+		readCh:        make(chan string, 10),
+		writeCh:       make(chan string, 10),
 	}
 }
 
@@ -74,8 +76,7 @@ func TestUserIO(t *testing.T) {
 	Convey("UserIO", t, func() {
 		logger, _ := zap.NewDevelopment()
 		sb := signal.NewBus()
-		store := session.NewFileStore(t.TempDir())
-		mgr := session.NewManager(store)
+		mgr := session.NewManager(t.TempDir())
 		cmdReg := command.NewRegistry(mgr, sb)
 		aio := agentio.NewAgentIO(10, mgr, sb, logger, "Dolphin")
 		uio := NewUserIO(aio, cmdReg, mgr)

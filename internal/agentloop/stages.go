@@ -140,6 +140,7 @@ func (s *ContextBuilderStage) initRegistry() {
 	s.reg.Register(&appctx.Workspace{Dir: s.Workspace})
 	s.reg.Register(&appctx.Brain{Reader: s.Brain})
 	s.reg.Register(&appctx.Design{Workspace: s.Workspace})
+	s.reg.Register(&appctx.Soul{Workspace: s.Workspace})
 	s.reg.Register(&appctx.Skills{Store: s.SkillStore})
 }
 
