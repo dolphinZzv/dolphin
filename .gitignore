@@ -21,6 +21,9 @@ Thumbs.db
 # Temp
 /tmp/
 
+# Sisyphus continuation runs
+.sisyphus/
+
 config.yaml
 data
 coverage.out
