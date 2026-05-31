@@ -39,6 +39,7 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 	command.RegisterMCP(c.CmdReg, c.ToolReg)
 	command.RegisterSkills(c.CmdReg, c.SkillStore)
+	command.RegisterModels(c.CmdReg, c.LLMProvider)
 	command.RegisterContext(c.CmdReg, func(ctx context.Context) (string, error) {
 		cbs := &agentloop.ContextBuilderStage{
 			SkillStore: c.SkillStore,

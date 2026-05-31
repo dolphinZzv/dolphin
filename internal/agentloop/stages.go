@@ -219,6 +219,18 @@ type LLMStage struct {
 
 func (s *LLMStage) Name() string { return "llm" }
 
+// activeModel returns the current model name, preferring Manager.ActiveModel
+// when the provider supports it.
+func (s *LLMStage) activeModel() string {
+	if s.Model != "" {
+		return s.Model
+	}
+	if a, ok := s.Provider.(interface{ ActiveModel() string }); ok {
+		return a.ActiveModel()
+	}
+	return ""
+}
+
 func (s *LLMStage) Process(ctx context.Context, state *State) error {
 	var lastErr error
 	for i := 0; i <= s.MaxRetries; i++ {
@@ -272,7 +284,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 		Timestamp: time.Now(),
 		SessionID: state.SessionID,
 		Payload: map[string]any{
-			"model": s.Model,
+			"model": s.activeModel(),
 			"tools": toolNames,
 		},
 	})
@@ -280,7 +292,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 	ch, err := s.Provider.CompleteStream(ctx, llm.LLMRequest{
 		Messages:  msgs,
 		System:    state.SystemPrompt,
-		Model:     s.Model,
+		Model:     s.activeModel(),
 		MaxTokens: s.MaxTokens,
 		Tools:     tools,
 	})

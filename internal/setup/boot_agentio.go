@@ -41,7 +41,6 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		[]agentloop.Stage{
 			&agentloop.LLMStage{
 				Provider:     c.LLMProvider,
-				Model:        c.Config.GetString("llm.model"),
 				MaxTokens:    c.Config.GetInt("llm.max_tokens"),
 				MaxRetries:   c.Config.GetInt("llm.max_retries"),
 				ToolRegistry: c.ToolReg,

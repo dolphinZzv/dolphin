@@ -60,15 +60,34 @@ func defaultConfig() *Config {
 
 // Validate checks required configuration fields and returns an error if any are missing.
 func (c *Config) Validate() error {
-	var missing []string
-	required := []string{"llm.provider", "llm.model", "llm." + c.GetString("llm.provider") + ".api_key"}
-	for _, key := range required {
-		if c.GetString(key) == "" {
-			missing = append(missing, key)
+	// Check for new-style multi-provider config: any known provider with api_key.
+	knownProviders := []string{"openai", "anthropic"}
+	hasProvider := false
+	for _, name := range knownProviders {
+		if c.GetString("llm."+name+".api_key") != "" {
+			hasProvider = true
+			break
 		}
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("config: missing required fields: %s", strings.Join(missing, ", "))
+	if !hasProvider {
+		// Legacy single-provider mode.
+		provider := c.GetString("llm.provider")
+		if provider == "" {
+			return fmt.Errorf("config: missing llm.provider")
+		}
+		required := []string{"llm.provider", "llm.model", "llm." + provider + ".api_key"}
+		var missing []string
+		for _, key := range required {
+			if c.GetString(key) == "" {
+				missing = append(missing, key)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("config: missing required fields: %s", strings.Join(missing, ", "))
+		}
+	}
+	if c.GetString("llm.model") == "" {
+		return fmt.Errorf("config: missing llm.model")
 	}
 	return nil
 }
@@ -88,6 +107,26 @@ func (c *Config) GetString(key string) string {
 	}
 	s, _ := v.(string)
 	return s
+}
+
+// GetStringMap returns all values under the given dot-notation prefix.
+// For prefix "a.b", keys "a.b.c" → {"c": value}. Only single-level keys.
+func (c *Config) GetStringMap(prefix string) map[string]string {
+	result := make(map[string]string)
+	prefix = prefix + "."
+	for _, key := range c.Keys() {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		suffix := strings.TrimPrefix(key, prefix)
+		if strings.Contains(suffix, ".") {
+			continue
+		}
+		if val := c.GetString(key); val != "" {
+			result[suffix] = val
+		}
+	}
+	return result
 }
 
 func (c *Config) GetInt(key string) int {
