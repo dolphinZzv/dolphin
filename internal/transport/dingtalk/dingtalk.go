@@ -225,9 +225,10 @@ func (d *DingTalk) Close() error {
 
 func (d *DingTalk) Capability() transport.Capability {
 	return transport.Capability{
-		Interactive: false,
-		Streamable:  false,
-		NestRead:    false,
+		Interactive:        false,
+		Streamable:         false,
+		NestRead:           false,
+		RenderTextMarkdown: "markdown",
 	}
 }
 
@@ -281,15 +282,8 @@ func (d *DingTalk) handleBotMessage(ctx context.Context, data *chatbot.BotCallba
 		d.lastSenderNick = data.SenderNick
 		d.lastConvID = data.ConversationId
 		d.mu.Unlock()
-		// Prepend sender info so the LLM sees who sent it.
 		msg := strings.TrimSpace(data.Text.Content)
-		if data.SenderNick != "" && data.SenderId != "" {
-			msg = fmt.Sprintf("用户昵称: %s\n用户ID: %s\n%s", data.SenderNick, data.SenderId, msg)
-		} else if data.SenderNick != "" {
-			msg = fmt.Sprintf("用户昵称: %s\n%s", data.SenderNick, msg)
-		} else if data.SenderId != "" {
-			msg = fmt.Sprintf("用户ID: %s\n%s", data.SenderId, msg)
-		}
+		msg = stripAtMention(msg, d.agentName)
 		select {
 		case d.msgChan <- msg:
 		default:
@@ -342,6 +336,18 @@ func (d *DingTalk) isSenderAllowed(nick string) bool {
 		}
 	}
 	return false
+}
+
+// stripAtMention strips a leading "@botName" prefix (e.g. "@小海豚 /models" → "/models")
+// so slash commands are correctly detected by UserIO. The bot name is not needed —
+// any leading @mention is removed.
+func stripAtMention(msg, _ string) string {
+	if strings.HasPrefix(msg, "@") {
+		if idx := strings.IndexAny(msg, " \t\n\r"); idx > 0 {
+			msg = strings.TrimSpace(msg[idx:])
+		}
+	}
+	return msg
 }
 
 // Ensure DingTalk implements transport.IO.

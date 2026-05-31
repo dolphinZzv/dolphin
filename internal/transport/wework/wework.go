@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"dolphin/internal/common"
-	"dolphin/internal/tool"
 	transport "dolphin/internal/transport"
 	"dolphin/internal/types"
 
@@ -329,9 +328,7 @@ func (w *WeWork) handleMessageCallback(data []byte) {
 	w.stateMu.Unlock()
 
 	msg := strings.TrimSpace(cb.Body.Text.Content)
-	if cb.Body.From.UserID != "" {
-		msg = fmt.Sprintf("用户ID: %s\n%s", cb.Body.From.UserID, msg)
-	}
+	msg = stripAtMention(msg, w.agentName)
 
 	select {
 	case w.msgChan <- msg:
@@ -751,54 +748,64 @@ func (w *WeWork) sendFileMessage(ctx context.Context, mediaID string) error {
 // MCP tool registration.
 // ---------------------------------------------------------------------------
 
-// RegisterTools registers the FILE_UPLOAD tool using the WebSocket upload protocol.
-func (w *WeWork) RegisterTools(reg *tool.Registry) {
-	if w.cfg.BotID == "" || w.cfg.Secret == "" {
-		return
+// List returns FILE_UPLOAD tool definition when the active transport is WeWork.
+func (w *WeWork) List(ctx context.Context) ([]types.ToolDef, error) {
+	info := transport.GetInfo(ctx)
+	if info == nil || info.ID != "wework" || w.cfg.BotID == "" || w.cfg.Secret == "" {
+		return nil, nil
+	}
+	return []types.ToolDef{
+		{
+			Name: "FILE_UPLOAD",
+			Description: "Upload a file (image, document, archive, etc.) to WeWork Smart Bot and send it to the current conversation. " +
+				"The file is uploaded via WebSocket and sent directly as a native image/file message. " +
+				"For images, mention it in your reply that the image has been sent.",
+			Schema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"file_path": {"type": "string", "description": "Absolute path to the file to upload"}
+				},
+				"required": ["file_path"]
+			}`),
+		},
+	}, nil
+}
+
+// Execute handles FILE_UPLOAD calls for WeWork.
+func (w *WeWork) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
+	info := transport.GetInfo(ctx)
+	if info == nil || info.ID != "wework" {
+		return nil, fmt.Errorf("FILE_UPLOAD is not available on this transport")
 	}
 
-	reg.RegisterBuiltin("FILE_UPLOAD",
-		"Upload a file (image, document, archive, etc.) to WeWork Smart Bot and send it to the current conversation. "+
-			"The file is uploaded via WebSocket and sent directly as a native image/file message. "+
-			"For images, mention it in your reply that the image has been sent.",
-		json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"file_path": {"type": "string", "description": "Absolute path to the file to upload"}
-			},
-			"required": ["file_path"]
-		}`),
-		func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-			var req struct {
-				FilePath string `json:"file_path"`
-			}
-			if err := json.Unmarshal(args, &req); err != nil {
-				return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
-			}
+	var req struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal([]byte(call.Arguments), &req); err != nil {
+		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
+	}
 
-			w.logger.Info("FILE_UPLOAD tool called", zap.String("file_path", req.FilePath))
-			mediaID, fileName, mediaType, err := w.UploadMedia(ctx, req.FilePath)
-			if err != nil {
-				return &types.ToolResult{Content: "failed to upload file: " + err.Error(), IsError: true}, nil
-			}
+	w.logger.Info("FILE_UPLOAD tool called", zap.String("file_path", req.FilePath))
+	mediaID, fileName, mediaType, err := w.UploadMedia(ctx, req.FilePath)
+	if err != nil {
+		return &types.ToolResult{Content: "failed to upload file: " + err.Error(), IsError: true}, nil
+	}
 
-			if err := w.SendMediaMessage(ctx, mediaID, mediaType); err != nil {
-				return &types.ToolResult{
-					Content: fmt.Sprintf("File uploaded (media_id: %s) but failed to send: %s", mediaID, err.Error()),
-					IsError: true,
-				}, nil
-			}
+	if err := w.SendMediaMessage(ctx, mediaID, mediaType); err != nil {
+		return &types.ToolResult{
+			Content: fmt.Sprintf("File uploaded (media_id: %s) but failed to send: %s", mediaID, err.Error()),
+			IsError: true,
+		}, nil
+	}
 
-			w.logger.Info("FILE_UPLOAD success",
-				zap.String("file", fileName),
-				zap.String("media_id", mediaID),
-				zap.String("type", mediaType),
-			)
-			return &types.ToolResult{
-				Content: fmt.Sprintf("File sent to the conversation.\n- name: %s\n- media_id: %s\n- type: %s", fileName, mediaID, mediaType),
-			}, nil
-		},
+	w.logger.Info("FILE_UPLOAD success",
+		zap.String("file", fileName),
+		zap.String("media_id", mediaID),
+		zap.String("type", mediaType),
 	)
+	return &types.ToolResult{
+		Content: fmt.Sprintf("File sent to the conversation.\n- name: %s\n- media_id: %s\n- type: %s", fileName, mediaID, mediaType),
+	}, nil
 }
 
 // Read blocks until a message is received from WeWork Smart Bot.
@@ -925,9 +932,10 @@ func (w *WeWork) Close() error {
 
 func (w *WeWork) Capability() transport.Capability {
 	return transport.Capability{
-		Interactive: false,
-		Streamable:  false,
-		NestRead:    false,
+		Interactive:        false,
+		Streamable:         false,
+		NestRead:           false,
+		RenderTextMarkdown: "markdown",
 	}
 }
 
@@ -940,6 +948,18 @@ func (w *WeWork) UserID() string {
 
 // UserNick is not available in Smart Bot callbacks.
 func (w *WeWork) UserNick() string { return "" }
+
+// stripAtMention strips a leading "@botName" prefix (e.g. "@小海豚 /models" → "/models")
+// so slash commands are correctly detected by UserIO. The bot name is not needed —
+// any leading @mention is removed.
+func stripAtMention(msg, _ string) string {
+	if strings.HasPrefix(msg, "@") {
+		if idx := strings.IndexAny(msg, " \t\n\r"); idx > 0 {
+			msg = strings.TrimSpace(msg[idx:])
+		}
+	}
+	return msg
+}
 
 // Ensure WeWork implements transport.IO.
 var _ transport.IO = (*WeWork)(nil)
