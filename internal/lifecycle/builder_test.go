@@ -110,7 +110,7 @@ func TestBuilderCommands(t *testing.T) {
 				StepLLM().
 				StepTools()
 
-			out := b.cmdReg.Execute("skills")
+			out := b.cmdReg.Execute("skills list")
 			So(out, ShouldContainSubstring, "No skills available")
 		})
 

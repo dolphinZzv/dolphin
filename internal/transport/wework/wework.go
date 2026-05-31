@@ -42,8 +42,10 @@ func init() {
 }
 
 func valOr(cfg map[string]any, key, def string) string {
-	if v, ok := cfg[key].(string); ok && v != "" {
-		return v
+	if v, ok := cfg[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
 	}
 	return def
 }
@@ -490,6 +492,11 @@ func (w *WeWork) sendAndWait(data []byte, timeout time.Duration) ([]byte, error)
 	w.connMu.Lock()
 	conn := w.conn
 	w.connMu.Unlock()
+	if conn == nil {
+		w.writeMu.Unlock()
+		cleanup()
+		return nil, fmt.Errorf("sendAndWait: not connected")
+	}
 	err := conn.WriteMessage(websocket.TextMessage, data)
 	w.writeMu.Unlock()
 	if err != nil {
@@ -682,6 +689,10 @@ func (w *WeWork) sendImageMessage(ctx context.Context, mediaID string) error {
 	w.connMu.Lock()
 	conn := w.conn
 	w.connMu.Unlock()
+	if conn == nil {
+		w.writeMu.Unlock()
+		return fmt.Errorf("wework: not connected")
+	}
 	err := conn.WriteMessage(websocket.TextMessage, data)
 	w.writeMu.Unlock()
 
@@ -727,6 +738,10 @@ func (w *WeWork) sendFileMessage(ctx context.Context, mediaID string) error {
 	w.connMu.Lock()
 	conn := w.conn
 	w.connMu.Unlock()
+	if conn == nil {
+		w.writeMu.Unlock()
+		return fmt.Errorf("wework: not connected")
+	}
 	err := conn.WriteMessage(websocket.TextMessage, data)
 	w.writeMu.Unlock()
 	return err

@@ -396,9 +396,15 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 
 	state.ToolsCalled = true
 
+	// Subscribe to signal bus once and clean up when done.
+	var sigCh <-chan signal.Signal
+	if s.SignalBus != nil {
+		sigCh = s.SignalBus.Subscribe(state.SessionID)
+		defer s.SignalBus.Unsubscribe(state.SessionID, sigCh)
+	}
+
 	for _, call := range calls {
-		if s.SignalBus != nil {
-			sigCh := s.SignalBus.Subscribe(state.SessionID)
+		if sigCh != nil {
 			select {
 			case sig := <-sigCh:
 				switch sig {

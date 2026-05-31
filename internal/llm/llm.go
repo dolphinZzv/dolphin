@@ -189,6 +189,11 @@ func (p *openAIProvider) CompleteStream(ctx context.Context, req LLMRequest) (<-
 		}
 		defer resp.Body.Close()
 
+		// Close response body when context is cancelled, so the decode loop
+		// unblocks and the goroutine exits cleanly.
+		cleanup := context.AfterFunc(ctx, func() { resp.Body.Close() })
+		defer cleanup()
+
 		if resp.StatusCode != http.StatusOK {
 			errBody, _ := io.ReadAll(resp.Body)
 			var apiErr openAIErrorBody
@@ -375,6 +380,11 @@ func (p *anthropicProvider) CompleteStream(ctx context.Context, req LLMRequest) 
 			return
 		}
 		defer resp.Body.Close()
+
+		// Close response body when context is cancelled, so the decode loop
+		// unblocks and the goroutine exits cleanly.
+		cleanup := context.AfterFunc(ctx, func() { resp.Body.Close() })
+		defer cleanup()
 
 		if resp.StatusCode != http.StatusOK {
 			errBody, _ := io.ReadAll(resp.Body)

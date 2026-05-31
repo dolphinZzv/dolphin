@@ -17,6 +17,12 @@ test-race:
 lint:
 	golangci-lint run ./...
 
+.PHONY: playground
+playground:
+	mkdir -p ../playground
+	go build -o ../playground/$(BINARY) ./cmd/dolphin
+	cp $(CONFIG) ../playground/
+
 .PHONY: clean
 clean:
 	rm -f $(BINARY)

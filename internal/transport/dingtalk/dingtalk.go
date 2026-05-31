@@ -323,7 +323,11 @@ func (d *DingTalk) rejectMessage(ctx context.Context, nick string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	d.httpClient.Do(req)
+	resp, err := d.httpClient.Do(req)
+	if err == nil {
+		io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+	}
 }
 
 // isSenderAllowed checks whether a sender nickname matches any whitelist pattern.

@@ -2,7 +2,9 @@ package brain
 
 import (
 	"context"
+	"embed"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +15,9 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
+
+//go:embed seed
+var seedFS embed.FS
 
 // GitCommit represents a single commit entry from GitLog.
 type GitCommit struct {
@@ -41,7 +46,6 @@ func (b *Brain) IsInitialized() bool {
 	if _, err := os.Stat(filepath.Join(b.dir, ".git", "HEAD")); err == nil {
 		return true
 	}
-	// Also check if we have an open repo handle.
 	if b.repo != nil {
 		return true
 	}
@@ -50,15 +54,13 @@ func (b *Brain) IsInitialized() bool {
 
 // Init ensures the brain directory exists and is a git repository.
 // If the directory does not exist it is created. If it is not yet a git repo
-// git.PlainInit is called. On first init, seed files (introduction.md,
-// workflow.md) are written and committed.
+// git.PlainInit is called. On first init, seed files from the embedded seed/
+// directory are written and committed.
 func (b *Brain) Init(ctx context.Context) error {
-	// 1. Ensure directory exists.
 	if err := os.MkdirAll(b.dir, 0755); err != nil {
 		return fmt.Errorf("brain: mkdir: %w", err)
 	}
 
-	// 2. Check if already a git repo.
 	isRepo := false
 	if _, err := os.Stat(filepath.Join(b.dir, ".git", "HEAD")); err == nil {
 		isRepo = true
@@ -73,108 +75,43 @@ func (b *Brain) Init(ctx context.Context) error {
 		return nil
 	}
 
-	// 3. Fresh init.
 	repo, err := gogit.PlainInit(b.dir, false)
 	if err != nil {
 		return fmt.Errorf("brain: git init: %w", err)
 	}
 	b.repo = repo
 
-	// 4. Write .gitignore.
+	// Write .gitignore.
 	gitignore := "# Brain gitignore\n*.log\n.env\ntokens\n"
 	if err := os.WriteFile(filepath.Join(b.dir, ".gitignore"), []byte(gitignore), 0644); err != nil {
 		return fmt.Errorf("brain: write .gitignore: %w", err)
 	}
 
-	// 5. Write seed files (root-level).
-	rootSeeds := map[string]string{
-		"index.md": `# Brain Index
-
-## Files
-
-- introduction.md: Identity and purpose
-- workflow.md: Standard operating workflow
-
-## Directories
-
-See subdirectory index.md files for details.
-`,
-		"introduction.md": `# Introduction
-
-I am Dolphin, an AI assistant.
-
-## Identity
-
-- Name: Dolphin
-- Purpose: General-purpose AI assistant
-
-## Capabilities
-
-- Answer questions and engage in dialogue
-- Execute tools and MCP servers
-- Manage skills and sessions
-- Learn from interactions
-`,
-		"workflow.md": `# Workflow
-
-## Interaction Flow
-
-1. Receive user input
-2. Understand intent and context
-3. Formulate response or execute tools
-4. Present results to user
-
-## Guidelines
-
-- Be concise and accurate
-- Use tools when appropriate
-- Learn from feedback
-`,
-	}
-	for name, content := range rootSeeds {
-		if err := os.WriteFile(filepath.Join(b.dir, name), []byte(content), 0644); err != nil {
-			return fmt.Errorf("brain: write seed %s: %w", name, err)
+	// Write seed files from embedded filesystem.
+	if err := fs.WalkDir(seedFS, "seed", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-	}
-
-	// 5b. Write seed subdirectories with index.md.
-	subSeeds := map[string]string{
-		"rules/index.md": `# Rules
-
-This directory contains rule files for the AI assistant.
-
-## Files
-
-- (add rule files here with naming convention: *.md)
-`,
-		"knowledge/index.md": `# Knowledge
-
-This directory stores domain knowledge and reference materials.
-
-## Files
-
-- (add knowledge files here)
-`,
-		"meta/index.md": `# Meta
-
-This directory contains metadata about the brain itself and its structure.
-
-## Files
-
-- (add meta files here)
-`,
-	}
-	for name, content := range subSeeds {
-		fullPath := filepath.Join(b.dir, name)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-			return fmt.Errorf("brain: mkdir seed %s: %w", name, err)
+		if d.IsDir() {
+			return nil
 		}
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-			return fmt.Errorf("brain: write seed %s: %w", name, err)
+		data, err := seedFS.ReadFile(path)
+		if err != nil {
+			return err
 		}
+		rel := strings.TrimPrefix(path, "seed/")
+		full := filepath.Join(b.dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			return fmt.Errorf("brain: mkdir seed %s: %w", rel, err)
+		}
+		if err := os.WriteFile(full, data, 0644); err != nil {
+			return fmt.Errorf("brain: write seed %s: %w", rel, err)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("brain: seed files: %w", err)
 	}
 
-	// 6. First commit.
 	if err := b.commitAll("chore: init brain"); err != nil {
 		return fmt.Errorf("brain: initial commit: %w", err)
 	}
@@ -214,13 +151,11 @@ func (b *Brain) Write(ctx context.Context, path, summary, content string) error 
 		return err
 	}
 
-	// Ensure parent directory exists.
 	parent := filepath.Dir(full)
 	if err := os.MkdirAll(parent, 0755); err != nil {
 		return fmt.Errorf("brain: mkdir %s: %w", path, err)
 	}
 
-	// Check if file existed before write.
 	exists := true
 	if _, err := os.Stat(full); os.IsNotExist(err) {
 		exists = false
@@ -249,7 +184,6 @@ func (b *Brain) List(ctx context.Context) ([]string, error) {
 			return err
 		}
 		if info.IsDir() {
-			// Skip .git directory.
 			if info.Name() == ".git" {
 				return filepath.SkipDir
 			}
@@ -277,8 +211,7 @@ func (b *Brain) List(ctx context.Context) ([]string, error) {
 func (b *Brain) ReadIndex(ctx context.Context) (string, error) {
 	var parts []string
 
-	// Level 1: root index.md (concise summary, not full introduction).
-	for _, name := range []string{"index.md"} {
+	for _, name := range []string{"index.md", "workflow.md"} {
 		if _, err := os.Stat(filepath.Join(b.dir, name)); err == nil {
 			data, err := os.ReadFile(filepath.Join(b.dir, name))
 			if err != nil {
@@ -289,7 +222,6 @@ func (b *Brain) ReadIndex(ctx context.Context) (string, error) {
 		}
 	}
 
-	// Level 2: index.md in each immediate subdirectory.
 	entries, err := os.ReadDir(b.dir)
 	if err != nil {
 		return "", fmt.Errorf("brain: read dir: %w", err)
@@ -329,7 +261,7 @@ func (b *Brain) GitLog(ctx context.Context, n int) ([]GitCommit, error) {
 	var commits []GitCommit
 	err = iter.ForEach(func(c *object.Commit) error {
 		if len(commits) >= n {
-			return fmt.Errorf("enough") // break
+			return fmt.Errorf("enough")
 		}
 		commits = append(commits, GitCommit{
 			Hash:    c.Hash.String(),
@@ -339,7 +271,6 @@ func (b *Brain) GitLog(ctx context.Context, n int) ([]GitCommit, error) {
 		})
 		return nil
 	})
-	// "enough" is our sentinel to stop iteration.
 	if err != nil && err.Error() == "enough" {
 		err = nil
 	}
@@ -383,7 +314,6 @@ func (b *Brain) AutoCommit(ctx context.Context, msg string) {
 	}
 }
 
-// autoCommitMsg builds a commit message from the git status.
 func autoCommitMsg(status gogit.Status) string {
 	var adds, updates []string
 	for path, s := range status {
