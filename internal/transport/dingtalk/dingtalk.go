@@ -1,4 +1,4 @@
-package transport
+package dingtalk
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dolphin/internal/common"
+	transport "dolphin/internal/transport"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	dtclient "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
@@ -40,7 +41,7 @@ func (a *stdLogAdapter) Fatalf(format string, args ...any) {
 }
 
 func init() {
-	Register("dingtalk", func(ctx context.Context, cfg map[string]any) (IO, error) {
+	transport.Register("dingtalk", func(ctx context.Context, cfg map[string]any) (transport.IO, error) {
 		logger, _ := cfg["logger"].(*zap.Logger)
 		agentName, _ := cfg["agent_name"].(string)
 		return NewDingTalk(DingTalkConfig{
@@ -50,6 +51,16 @@ func init() {
 			AllowUsers:   valOr(cfg, "allow_users", ""),
 		}, logger, agentName), nil
 	})
+}
+
+// valOr returns cfg[key] as string, or def if missing.
+func valOr(cfg map[string]any, key, def string) string {
+	if v, ok := cfg[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return def
 }
 
 // DingTalkConfig holds DingTalk transport configuration.
@@ -63,21 +74,24 @@ type DingTalkConfig struct {
 // DingTalk is a chunk-mode transport that sends messages via DingTalk webhook
 // and receives messages via DingTalk Stream Mode (WebSocket, no public URL needed).
 type DingTalk struct {
-	*SessionHolder
-	id         string
-	cfg        DingTalkConfig
-	logger     *zap.Logger
-	agentName  string
-	httpClient *http.Client
-	streamCli  *dtclient.StreamClient
-	msgChan    chan string
-	closeCh    chan struct{}
-	wg         sync.WaitGroup
-	mu         sync.Mutex
-	closed     bool
-	allowUsers []string // glob patterns for allowed sender nicks; nil = deny all
-	ctx        context.Context
-	cancel     context.CancelFunc
+	*transport.SessionHolder
+	id             string
+	cfg            DingTalkConfig
+	logger         *zap.Logger
+	agentName      string
+	httpClient     *http.Client
+	streamCli      *dtclient.StreamClient
+	msgChan        chan string
+	closeCh        chan struct{}
+	wg             sync.WaitGroup
+	mu             sync.Mutex
+	closed         bool
+	allowUsers     []string // glob patterns for allowed sender nicks; nil = deny all
+	lastSenderID   string   // set on each incoming message, for session user_id
+	lastSenderNick string   // set on each incoming message, for session user_nick
+	lastConvID     string   // set on each incoming message, for chat/send API
+	ctx            context.Context
+	cancel         context.CancelFunc
 }
 
 func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *DingTalk {
@@ -96,7 +110,7 @@ func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *Ding
 	}
 
 	dt := &DingTalk{
-		SessionHolder: NewSessionHolder(nil),
+		SessionHolder: transport.NewSessionHolder(nil),
 		id:            "dingtalk",
 		cfg:           cfg,
 		logger:        logger,
@@ -128,6 +142,26 @@ func (d *DingTalk) Read(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+// UserID returns the DingTalk user ID of the most recent message sender.
+func (d *DingTalk) UserID() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastSenderID
+}
+
+// UserNick returns the display name of the most recent message sender.
+func (d *DingTalk) UserNick() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastSenderNick
+}
+
+func (d *DingTalk) ConversationID() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.lastConvID
 }
 
 // Write sends a message to the DingTalk group via robot webhook.
@@ -189,8 +223,8 @@ func (d *DingTalk) Close() error {
 	return nil
 }
 
-func (d *DingTalk) Capability() Capability {
-	return Capability{
+func (d *DingTalk) Capability() transport.Capability {
+	return transport.Capability{
 		Interactive: false,
 		Streamable:  false,
 		NestRead:    false,
@@ -242,8 +276,22 @@ func (d *DingTalk) handleBotMessage(ctx context.Context, data *chatbot.BotCallba
 			d.rejectMessage(ctx, data.SenderNick)
 			return []byte("ok"), nil
 		}
+		d.mu.Lock()
+		d.lastSenderID = data.SenderId
+		d.lastSenderNick = data.SenderNick
+		d.lastConvID = data.ConversationId
+		d.mu.Unlock()
+		// Prepend sender info so the LLM sees who sent it.
+		msg := strings.TrimSpace(data.Text.Content)
+		if data.SenderNick != "" && data.SenderId != "" {
+			msg = fmt.Sprintf("用户昵称: %s\n用户ID: %s\n%s", data.SenderNick, data.SenderId, msg)
+		} else if data.SenderNick != "" {
+			msg = fmt.Sprintf("用户昵称: %s\n%s", data.SenderNick, msg)
+		} else if data.SenderId != "" {
+			msg = fmt.Sprintf("用户ID: %s\n%s", data.SenderId, msg)
+		}
 		select {
-		case d.msgChan <- data.Text.Content:
+		case d.msgChan <- msg:
 		default:
 			d.logger.Warn("dingtalk msgChan full, dropping message")
 		}
@@ -292,5 +340,5 @@ func (d *DingTalk) isSenderAllowed(nick string) bool {
 	return false
 }
 
-// Ensure DingTalk implements IO.
-var _ IO = (*DingTalk)(nil)
+// Ensure DingTalk implements transport.IO.
+var _ transport.IO = (*DingTalk)(nil)

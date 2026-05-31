@@ -23,7 +23,11 @@ import (
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
+	_ "dolphin/internal/transport/dingtalk"
+	dtmcp "dolphin/internal/transport/dingtalk/mcp"
+	_ "dolphin/internal/transport/wework"
 	"dolphin/internal/userio"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -288,6 +292,11 @@ func (b *Builder) StepTransports() *Builder {
 		}); ok {
 			sh.SetSessionManager(b.sessionMgr)
 		}
+		if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
+			if s := b.sessionMgr.Active(); s != nil {
+				ss.SetSession(s)
+			}
+		}
 		b.agentIO.RegisterTransport(tio.ID(), tio)
 		b.transports = append(b.transports, tio)
 
@@ -319,6 +328,7 @@ func (b *Builder) StepTransports() *Builder {
 			}
 		}
 	}
+
 	return b
 }
 
@@ -327,6 +337,29 @@ func (b *Builder) Assemble() *Builder {
 	if b.pipeline != nil {
 		return b
 	}
+
+	// Register transport-specific MCP tools based on active transports.
+	for _, t := range b.transports {
+		switch t.ID() {
+		case "dingtalk":
+			dtmcp.RegisterTools(b.toolReg,
+				b.cfg.GetString("dingtalk.client_id"),
+				b.cfg.GetString("dingtalk.client_secret"),
+				func() string {
+					if c, ok := t.(interface{ ConversationID() string }); ok {
+						return c.ConversationID()
+					}
+					return ""
+				},
+			)
+		case "wework":
+			// Register tools via interface check.
+			if tr, ok := t.(interface{ RegisterTools(*tool.Registry) }); ok {
+				tr.RegisterTools(b.toolReg)
+			}
+		}
+	}
+
 	b.pipeline = &Pipeline{
 		transports:         b.transports,
 		userIO:             b.userIO,

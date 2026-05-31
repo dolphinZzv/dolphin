@@ -48,6 +48,23 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 	if sess == nil {
 		sess = u.sessionMgr.NewSession(ctx)
 	}
+	// Store transport-level user metadata in session data.
+	if m, ok := tio.(interface {
+		UserID() string
+		UserNick() string
+	}); ok {
+		if uid := m.UserID(); uid != "" {
+			sess.Set("user_id", uid)
+		}
+		if nick := m.UserNick(); nick != "" {
+			sess.Set("user_nick", nick)
+		}
+	}
+	if c, ok := tio.(interface{ ConversationID() string }); ok {
+		if cid := c.ConversationID(); cid != "" {
+			sess.Set("conversation_id", cid)
+		}
+	}
 	u.agentIO.SendTurn(ctx, &agentio.Turn{
 		TransportID: tio.ID(),
 		SessionID:   sess.ID,

@@ -294,6 +294,11 @@ func (s *Scheduler) execute(t *Task) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// If the task was deleted while we were running, don't recreate it.
+	if _, exists := s.tasks[t.ID]; !exists {
+		return
+	}
+
 	t.RunCount++
 	t.LastRunAt = timePtr(time.Now())
 

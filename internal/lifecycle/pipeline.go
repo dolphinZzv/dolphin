@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -267,6 +268,31 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 				"allow_senders": configListOrString(cfg, "email.allow_senders"),
 			}
 			tcs = append(tcs, transportConfig{Type: "email", Config: emailCfg})
+		}
+	}
+	// Auto-detect wework if bot credentials are configured.
+	if cfg.GetBool("wework.enabled") {
+		botID := cfg.GetString("wework.bot_id")
+		botSecret := cfg.GetString("wework.bot_secret")
+		if botID == "" {
+			botID = os.Getenv("WEWORK")
+			cfg.Set("wework.bot_id", botID)
+		}
+		if botSecret == "" {
+			botSecret = os.Getenv("WESecret")
+			cfg.Set("wework.bot_secret", botSecret)
+		}
+		if !hasTransportType(tcs, "wework") && botID != "" && botSecret != "" {
+			tcs = append(tcs, transportConfig{
+				Type: "wework",
+				Config: map[string]any{
+					"type":        "wework",
+					"agent_name":  agentName,
+					"bot_id":      botID,
+					"bot_secret":  botSecret,
+					"allow_users": configListOrString(cfg, "wework.allow_users"),
+				},
+			})
 		}
 	}
 	// Always add stdio unless the user explicitly specified their own transports.

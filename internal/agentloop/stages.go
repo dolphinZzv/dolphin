@@ -168,6 +168,9 @@ func (s *ContextBuilderStage) Process(ctx context.Context, state *State) error {
 			Type:      event.EventContextComplete,
 			Timestamp: time.Now(),
 			SessionID: state.SessionID,
+			Payload: map[string]any{
+				"input": prompt,
+			},
 		})
 	}
 	return nil
@@ -176,7 +179,31 @@ func (s *ContextBuilderStage) Process(ctx context.Context, state *State) error {
 // BuildSystemPrompt assembles the full system prompt from registered sections.
 func (s *ContextBuilderStage) BuildSystemPrompt(ctx context.Context) (string, error) {
 	s.initRegistry()
-	return s.reg.Build(ctx)
+
+	if s.EventBus != nil {
+		s.EventBus.Publish(ctx, event.Event{
+			Type:      event.EventContextBuildStart,
+			Timestamp: time.Now(),
+		})
+	}
+
+	result, err := s.reg.Build(ctx)
+
+	if s.EventBus != nil {
+		payload := map[string]any{
+			"error": err != nil,
+		}
+		if err == nil {
+			payload["input"] = result
+		}
+		s.EventBus.Publish(ctx, event.Event{
+			Type:      event.EventContextBuildComplete,
+			Timestamp: time.Now(),
+			Payload:   payload,
+		})
+	}
+
+	return result, err
 }
 
 // LLMStage calls the LLM and processes streaming response.
