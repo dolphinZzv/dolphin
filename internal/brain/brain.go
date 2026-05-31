@@ -206,19 +206,18 @@ func (b *Brain) List(ctx context.Context) ([]string, error) {
 	return files, nil
 }
 
-// ReadIndex reads index files two levels deep: root-level index.md (or introduction.md)
-// plus index.md in each immediate subdirectory. Returns concatenated content.
+// ReadIndex reads root-level concept files plus index.md in each immediate
+// subdirectory. Returns concatenated content.
 func (b *Brain) ReadIndex(ctx context.Context) (string, error) {
 	var parts []string
 
-	for _, name := range []string{"index.md", "workflow.md"} {
+	for _, name := range []string{"index.md", "workflow.md", "brain.md"} {
 		if _, err := os.Stat(filepath.Join(b.dir, name)); err == nil {
 			data, err := os.ReadFile(filepath.Join(b.dir, name))
 			if err != nil {
-				return "", fmt.Errorf("brain: read root index: %w", err)
+				return "", fmt.Errorf("brain: read root %s: %w", name, err)
 			}
 			parts = append(parts, "## /"+name+"\n"+string(data))
-			break
 		}
 	}
 
