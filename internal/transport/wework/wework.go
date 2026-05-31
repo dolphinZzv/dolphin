@@ -329,6 +329,19 @@ func (w *WeWork) handleMessageCallback(data []byte) {
 	w.stateMu.Unlock()
 
 	msg := strings.TrimSpace(cb.Body.Text.Content)
+	msg = stripAtMention(msg, w.agentName)
+
+	// Slash commands bypass sender info prepending so UserIO.Handle()
+	// can detect the "/" prefix. Regular messages get sender context.
+	if strings.HasPrefix(msg, "/") {
+		select {
+		case w.msgChan <- msg:
+		default:
+			w.logger.Warn("wework msgChan full, dropping message")
+		}
+		return
+	}
+
 	if cb.Body.From.UserID != "" {
 		msg = fmt.Sprintf("用户ID: %s\n%s", cb.Body.From.UserID, msg)
 	}
@@ -940,6 +953,18 @@ func (w *WeWork) UserID() string {
 
 // UserNick is not available in Smart Bot callbacks.
 func (w *WeWork) UserNick() string { return "" }
+
+// stripAtMention strips a leading "@botName" prefix (e.g. "@小海豚 /models" → "/models")
+// so slash commands are correctly detected by UserIO. The bot name is not needed —
+// any leading @mention is removed.
+func stripAtMention(msg, _ string) string {
+	if strings.HasPrefix(msg, "@") {
+		if idx := strings.IndexAny(msg, " \t\n\r"); idx > 0 {
+			msg = strings.TrimSpace(msg[idx:])
+		}
+	}
+	return msg
+}
 
 // Ensure WeWork implements transport.IO.
 var _ transport.IO = (*WeWork)(nil)

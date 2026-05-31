@@ -281,8 +281,21 @@ func (d *DingTalk) handleBotMessage(ctx context.Context, data *chatbot.BotCallba
 		d.lastSenderNick = data.SenderNick
 		d.lastConvID = data.ConversationId
 		d.mu.Unlock()
-		// Prepend sender info so the LLM sees who sent it.
+		// Strip @-mention so the raw command text is exposed.
 		msg := strings.TrimSpace(data.Text.Content)
+		msg = stripAtMention(msg, d.agentName)
+
+		// Slash commands bypass sender info prepending so UserIO.Handle()
+		// can detect the "/" prefix. Regular messages get sender context.
+		if strings.HasPrefix(msg, "/") {
+			select {
+			case d.msgChan <- msg:
+			default:
+				d.logger.Warn("dingtalk msgChan full, dropping message")
+			}
+			return []byte("ok"), nil
+		}
+
 		if data.SenderNick != "" && data.SenderId != "" {
 			msg = fmt.Sprintf("用户昵称: %s\n用户ID: %s\n%s", data.SenderNick, data.SenderId, msg)
 		} else if data.SenderNick != "" {
@@ -342,6 +355,18 @@ func (d *DingTalk) isSenderAllowed(nick string) bool {
 		}
 	}
 	return false
+}
+
+// stripAtMention strips a leading "@botName" prefix (e.g. "@小海豚 /models" → "/models")
+// so slash commands are correctly detected by UserIO. The bot name is not needed —
+// any leading @mention is removed.
+func stripAtMention(msg, _ string) string {
+	if strings.HasPrefix(msg, "@") {
+		if idx := strings.IndexAny(msg, " \t\n\r"); idx > 0 {
+			msg = strings.TrimSpace(msg[idx:])
+		}
+	}
+	return msg
 }
 
 // Ensure DingTalk implements transport.IO.
