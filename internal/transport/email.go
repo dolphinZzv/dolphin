@@ -48,7 +48,9 @@ func valOr(cfg map[string]any, key, def string) string {
 	if v, ok := cfg[key]; ok {
 		switch val := v.(type) {
 		case string:
-			return val
+			if val != "" {
+				return val
+			}
 		case []any:
 			var parts []string
 			for _, item := range val {

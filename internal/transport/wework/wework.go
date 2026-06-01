@@ -42,7 +42,7 @@ func init() {
 
 func valOr(cfg map[string]any, key, def string) string {
 	if v, ok := cfg[key]; ok {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" {
 			return s
 		}
 		if arr, ok := v.([]any); ok {
