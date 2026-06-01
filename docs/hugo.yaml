@@ -1,0 +1,27 @@
+baseURL: /
+languageCode: zh-cn
+title: 小海豚
+
+theme: dolphin
+
+params:
+  description: 智由心生
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+    codeFences: true
+
+menu:
+  main:
+    - identifier: docs
+      name: 文档
+      url: /docs/
+      weight: 1
+    - identifier: config
+      name: 配置
+      url: /docs/config/
+      weight: 2
