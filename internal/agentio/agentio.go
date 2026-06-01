@@ -74,6 +74,10 @@ func (a *AgentIO) RegisterTransport(id string, tio transport.IO) {
 	a.routes[id] = tio
 }
 
+func (a *AgentIO) GetTransport(id string) transport.IO {
+	return a.routes[id]
+}
+
 func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
 	if info := transport.GetInfo(ctx); info != nil && turn.TransportID == "" {
 		turn.TransportID = info.ID

@@ -7,11 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/common"
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
+	"dolphin/internal/permission"
 	"dolphin/internal/skill"
 	"dolphin/internal/testhelper"
+	"dolphin/internal/transport"
 	"dolphin/internal/types"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
@@ -167,6 +170,144 @@ func TestCompositor(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		})
 	})
+}
+
+func TestToolStage_CheckPermission(t *testing.T) {
+	Convey("ToolStage checkPermission", t, func() {
+		logger, _ := zap.NewDevelopment()
+
+		Convey("nil PermissionStore allows all", func() {
+			stage := &ToolStage{Logger: logger}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"echo secret"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("deny rule blocks tool call", func() {
+			stage := &ToolStage{
+				Logger: logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{
+					"shell": {Deny: []map[string]string{{"command": "echo *"}}},
+				}),
+				Workmode: "default",
+			}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"echo secret"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "denied")
+		})
+
+		Convey("deny rule applies in yolo mode too", func() {
+			stage := &ToolStage{
+				Logger: logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{
+					"shell": {Deny: []map[string]string{{"command": "echo *"}}},
+				}),
+				Workmode: "yolo",
+			}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"echo secret"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("allow rule passes", func() {
+			stage := &ToolStage{
+				Logger: logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{
+					"shell": {Allow: []map[string]string{{"command": "ls *"}}},
+				}),
+				Workmode: "default",
+			}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls -la"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("yolo mode allows NoMatch", func() {
+			stage := &ToolStage{
+				Logger:          logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{}),
+				Workmode:        "yolo",
+			}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("NoMatch + default without transport returns error", func() {
+			stage := &ToolStage{
+				Logger:          logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{}),
+				Workmode:        "default",
+			}
+			state := &State{}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "requires permission")
+		})
+
+		Convey("NoMatch + default with transport calls RequestPermission", func() {
+			stage := &ToolStage{
+				Logger:          logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{}),
+				Workmode:        "default",
+				GetTransport: func(id string) transport.IO {
+					return &mockTransport{permResult: transport.PermissionOnce}
+				},
+			}
+			state := &State{TransportID: "test"}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldBeNil)
+		})
+
+		Convey("NoMatch + default transport returns denied", func() {
+			stage := &ToolStage{
+				Logger:          logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{}),
+				Workmode:        "default",
+				GetTransport: func(id string) transport.IO {
+					return &mockTransport{permResult: transport.PermissionDenied}
+				},
+			}
+			state := &State{TransportID: "test"}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "denied by the user")
+		})
+	})
+}
+
+// newTestStore creates a permission store with the given rules (no file).
+func newTestStore(rules map[string]permission.RuleSet) *permission.Store {
+	return permission.NewTestStore(rules)
+}
+
+// mockTransport implements transport.IO for testing.
+type mockTransport struct {
+	transport.SessionHolder
+	permResult transport.PermissionResult
+}
+
+func (m *mockTransport) ID() string                           { return "mock" }
+func (m *mockTransport) Context() string                      { return "" }
+func (m *mockTransport) Tools() []common.ToolDesc             { return nil }
+func (m *mockTransport) Read(context.Context) (string, error) { return "", nil }
+func (m *mockTransport) Write(context.Context, string) error  { return nil }
+func (m *mockTransport) Flush() error                         { return nil }
+func (m *mockTransport) Close() error                         { return nil }
+func (m *mockTransport) Capability() transport.Capability {
+	return transport.Capability{Interactive: true}
+}
+func (m *mockTransport) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
+	return m.permResult, nil
 }
 
 func TestRealLLMCompositor(t *testing.T) {

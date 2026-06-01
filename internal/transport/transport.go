@@ -21,7 +21,17 @@ type IO interface {
 	Tools() []common.ToolDesc
 	NewSession(ctx context.Context) *session.Session
 	Session() *session.Session
+	RequestPermission(ctx context.Context, prompt string) (PermissionResult, error)
 }
+
+// PermissionResult represents the outcome of a permission request.
+type PermissionResult int
+
+const (
+	PermissionDenied PermissionResult = iota
+	PermissionOnce
+	PermissionAlways
+)
 
 // Capability describes transport features.
 type Capability struct {

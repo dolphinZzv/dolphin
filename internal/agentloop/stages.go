@@ -2,6 +2,7 @@ package agentloop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,9 +11,11 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
+	"dolphin/internal/permission"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
+	"dolphin/internal/transport"
 	"dolphin/internal/types"
 
 	"go.uber.org/zap"
@@ -114,6 +117,7 @@ type ContextBuilderStage struct {
 	SkillStore       skill.Store
 	Brain            BrainIndexReader
 	Workspace        string
+	Workmode         string
 	EventBus         *event.Bus
 
 	reg          *appctx.Registry
@@ -138,6 +142,7 @@ func (s *ContextBuilderStage) initRegistry() {
 	s.reg.Register(&appctx.Transport{
 		ContextFunc: func() string { return s.transportCtx },
 	})
+	s.reg.Register(&appctx.Workmode{Mode: s.Workmode})
 	s.reg.Register(&appctx.Workspace{Dir: s.Workspace})
 	s.reg.Register(&appctx.Brain{Reader: s.Brain})
 	s.reg.Register(&appctx.Design{Workspace: s.Workspace})
@@ -390,12 +395,18 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 
 // ToolStage executes tool calls with timeout and signal handling.
 type ToolStage struct {
-	ToolRegistry *tool.Registry
-	SignalBus    *signal.Bus
-	Timeout      time.Duration
-	Logger       *zap.Logger
-	EventBus     *event.Bus
+	ToolRegistry    *tool.Registry
+	SignalBus       *signal.Bus
+	Timeout         time.Duration
+	Logger          *zap.Logger
+	EventBus        *event.Bus
+	PermissionStore *permission.Store
+	GetTransport    func(id string) transport.IO
+	Workmode        string
 }
+
+// errPermissionDenied is a sentinel error for permission-denied tool calls.
+var errPermissionDenied = fmt.Errorf("permission denied")
 
 func (s *ToolStage) Name() string { return "tool" }
 
@@ -434,6 +445,27 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 				}
 			default:
 			}
+		}
+
+		// Permission check.
+		if err := s.checkPermission(ctx, state, call); err != nil {
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventToolError,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
+			})
+			state.Messages = append(state.Messages, types.Message{
+				Role:       types.RoleTool,
+				ToolCallID: call.ID,
+				Content:    fmt.Sprintf("❌ %s", err.Error()),
+			})
+			state.ToolResults = append(state.ToolResults, types.ToolResult{
+				ToolCallID: call.ID,
+				Content:    err.Error(),
+				IsError:    true,
+			})
+			continue
 		}
 
 		s.EventBus.Publish(ctx, event.Event{
@@ -478,6 +510,56 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			Content:    result.Content,
 		})
 		state.ToolResults = append(state.ToolResults, *result)
+	}
+	return nil
+}
+
+// checkPermission evaluates whether a tool call is allowed under the current
+// permission rules and work mode. Returns nil to allow, or an error describing
+// why the call was denied.
+func (s *ToolStage) checkPermission(ctx context.Context, state *State, call types.ToolCall) error {
+	if s.PermissionStore == nil {
+		return nil
+	}
+
+	argsRaw := json.RawMessage(call.Arguments)
+	result := s.PermissionStore.Check(call.Name, argsRaw)
+
+	switch result {
+	case permission.Deny:
+		return fmt.Errorf("tool %q is denied by permission rules", call.Name)
+	case permission.Allow:
+		return nil
+	case permission.NoMatch:
+		if s.Workmode == "yolo" {
+			return nil
+		}
+		// Default mode: try to ask the user.
+		if s.GetTransport == nil {
+			return fmt.Errorf("tool %q requires permission — add an allow rule to permissions.json", call.Name)
+		}
+		tio := s.GetTransport(state.TransportID)
+		if tio == nil {
+			return fmt.Errorf("tool %q requires permission — add an allow rule to permissions.json", call.Name)
+		}
+
+		prompt := fmt.Sprintf("Tool %q wants to execute.\nArguments: %s", call.Name, call.Arguments)
+		permResult, err := tio.RequestPermission(ctx, prompt)
+		if err != nil {
+			return fmt.Errorf("tool %q permission request failed: %w", call.Name, err)
+		}
+
+		switch permResult {
+		case transport.PermissionOnce:
+			return nil
+		case transport.PermissionAlways:
+			if err := s.PermissionStore.AddAllow(call.Name, argsRaw); err != nil {
+				s.Logger.Warn("failed to save permission rule", zap.Error(err))
+			}
+			return nil
+		default:
+			return fmt.Errorf("tool %q was denied by the user", call.Name)
+		}
 	}
 	return nil
 }

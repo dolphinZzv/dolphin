@@ -17,5 +17,5 @@ MCP（Model Context Protocol）是 Dolphin 的插件化工具系统，支持动�
 
 ```text
 Loaded tools:
-  FILE_UPLOAD — Upload a file to DingTalk and share it in the group chat
+  shell — Execute a shell command and get the output
 ```

@@ -41,6 +41,25 @@ func (t *interactiveTransport) Capability() transport.Capability {
 	return transport.Capability{Interactive: true, Streamable: true, NestRead: true, RenderTextMarkdown: "none"}
 }
 
+func (t *interactiveTransport) RequestPermission(_ context.Context, prompt string) (transport.PermissionResult, error) {
+	t.mu.Lock()
+	t.writeCh <- prompt
+	t.mu.Unlock()
+	select {
+	case msg := <-t.readCh:
+		switch msg {
+		case "y", "yes", "1":
+			return transport.PermissionOnce, nil
+		case "always", "2":
+			return transport.PermissionAlways, nil
+		default:
+			return transport.PermissionDenied, nil
+		}
+	default:
+		return transport.PermissionDenied, nil
+	}
+}
+
 func (t *interactiveTransport) Read(ctx context.Context) (string, error) {
 	select {
 	case msg := <-t.readCh:

@@ -950,6 +950,10 @@ func (w *WeWork) Capability() transport.Capability {
 	}
 }
 
+func (w *WeWork) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
+	return transport.PermissionDenied, fmt.Errorf("wework transport does not support interactive permission requests, add rules to permissions.json")
+}
+
 // UserID returns the WeWork user ID of the most recent message sender.
 func (w *WeWork) UserID() string {
 	w.stateMu.Lock()
