@@ -243,6 +243,10 @@ func (d *DingTalk) Capability() transport.Capability {
 	}
 }
 
+func (d *DingTalk) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
+	return transport.PermissionDenied, fmt.Errorf("dingtalk transport does not support interactive permission requests, add rules to permissions.json")
+}
+
 // ---------------------------------------------------------------------------
 // DingTalk Stream Mode via official SDK
 // ---------------------------------------------------------------------------

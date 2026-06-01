@@ -268,6 +268,10 @@ func (e *Email) Capability() Capability {
 	}
 }
 
+func (e *Email) RequestPermission(_ context.Context, _ string) (PermissionResult, error) {
+	return PermissionDenied, fmt.Errorf("email transport does not support interactive permission requests, add rules to permissions.json")
+}
+
 // rejectMessage sends a rejection email to the sender via SMTP.
 func (e *Email) rejectMessage(ctx context.Context, to, subject, messageId string) {
 

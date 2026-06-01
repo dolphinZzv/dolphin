@@ -5,6 +5,9 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
+	"dolphin/internal/permission"
+
+	"go.uber.org/zap"
 )
 
 type AgentIOBootstrapper struct{}
@@ -28,6 +31,18 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	}
 
 	turnTimeout := c.Config.GetDuration("agent.turn_timeout")
+
+	permFile := c.Config.GetString("permission.file")
+	workmode := c.Config.GetString("agent.workmode")
+	permStore, err := permission.Load(permFile)
+	if err != nil {
+		c.Logger.Warn("permissions file is malformed, using empty rules",
+			zap.String("file", permFile),
+			zap.Error(err),
+		)
+		permStore = permission.NewStore(permFile)
+	}
+
 	compositor := agentloop.NewCompositor(
 		[]agentloop.Stage{
 			&agentloop.MemoryReadStage{Memory: c.Mem},
@@ -35,6 +50,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 				SkillStore: c.SkillStore,
 				Brain:      c.Brain,
 				Workspace:  c.Config.GetString("agent.workspace"),
+				Workmode:   c.Config.GetString("agent.workmode"),
 				EventBus:   c.EventBus,
 			},
 		},
@@ -48,11 +64,14 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 				Logger:       c.Logger,
 			},
 			&agentloop.ToolStage{
-				ToolRegistry: c.ToolReg,
-				SignalBus:    c.SignalBus,
-				Timeout:      c.Config.GetDuration("tool.timeout"),
-				Logger:       c.Logger,
-				EventBus:     c.EventBus,
+				ToolRegistry:    c.ToolReg,
+				SignalBus:       c.SignalBus,
+				Timeout:         c.Config.GetDuration("tool.timeout"),
+				Logger:          c.Logger,
+				EventBus:        c.EventBus,
+				PermissionStore: permStore,
+				GetTransport:    c.AgentIO.GetTransport,
+				Workmode:        workmode,
 			},
 			&agentloop.MemoryWriteStage{Memory: c.Mem, EventBus: c.EventBus},
 		},

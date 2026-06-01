@@ -26,13 +26,14 @@ func init() {
 
 type Stdio struct {
 	*SessionHolder
-	id     string
-	rl     *readline.Instance
-	reader *bufio.Reader
-	mu     sync.Mutex
-	user   string
-	ctx    context.Context
-	cancel context.CancelFunc
+	id         string
+	rl         *readline.Instance
+	reader     *bufio.Reader
+	mu         sync.Mutex
+	user       string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	permResult chan string // non-nil when a permission request is pending
 }
 
 func NewStdio(user string) *Stdio {
@@ -80,11 +81,23 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 					errCh <- err
 					return
 				}
-				if line != "" {
-					lineCh <- s.maybeExit(line)
-					return
+				if line == "" {
+					continue
 				}
-				// empty line, keep waiting
+				// Check if a permission request is pending.
+				s.mu.Lock()
+				permCh := s.permResult
+				s.mu.Unlock()
+				if permCh != nil {
+					permCh <- line
+					continue // permission response consumed, wait for next input
+				}
+				line = s.maybeExit(line)
+				if line == "" {
+					continue
+				}
+				lineCh <- line
+				return
 			}
 		}()
 
@@ -110,11 +123,22 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 				return
 			}
 			line = line[:len(line)-1] // trim trailing newline
-			if line != "" {
-				lineCh <- s.maybeExit(line)
-				return
+			if line == "" {
+				continue
 			}
-			// empty line, keep waiting
+			s.mu.Lock()
+			permCh := s.permResult
+			s.mu.Unlock()
+			if permCh != nil {
+				permCh <- line
+				continue
+			}
+			line = s.maybeExit(line)
+			if line == "" {
+				continue
+			}
+			lineCh <- line
+			return
 		}
 	}()
 
@@ -131,8 +155,14 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 func (s *Stdio) maybeExit(line string) string {
 	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "exit", "quit", "/exit", "/quit":
-		fmt.Fprintln(os.Stdout, "bye")
-		os.Exit(0)
+		fmt.Fprint(os.Stdout, "确认退出？(y/N) ")
+		reply, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		reply = strings.TrimSpace(strings.ToLower(reply))
+		if reply == "y" || reply == "yes" {
+			fmt.Fprintln(os.Stdout, "bye")
+			os.Exit(0)
+		}
+		return ""
 	}
 	return line
 }
@@ -164,6 +194,49 @@ func (s *Stdio) Capability() Capability {
 		Streamable:         true,
 		NestRead:           true,
 		RenderTextMarkdown: "none",
+	}
+}
+
+func (s *Stdio) RequestPermission(_ context.Context, prompt string) (PermissionResult, error) {
+	fmt.Fprint(os.Stdout, prompt+"\n1) 同意一次  2) 以后都同意  3) 拒绝\n选择 (1/2/3): ")
+
+	var reply string
+	if s.rl != nil {
+		// Route through Read() via permResult channel to avoid competing with
+		// readline for stdin (readline owns stdin in raw mode).
+		ch := make(chan string, 1)
+		s.mu.Lock()
+		s.permResult = ch
+		s.mu.Unlock()
+
+		select {
+		case reply = <-ch:
+		case <-s.ctx.Done():
+			s.mu.Lock()
+			s.permResult = nil
+			s.mu.Unlock()
+			return PermissionDenied, s.ctx.Err()
+		}
+
+		s.mu.Lock()
+		s.permResult = nil
+		s.mu.Unlock()
+	} else {
+		line, err := s.reader.ReadString('\n')
+		if err != nil {
+			return PermissionDenied, nil
+		}
+		reply = line
+	}
+
+	reply = strings.TrimSpace(strings.ToLower(reply))
+	switch reply {
+	case "1", "y", "yes", "once":
+		return PermissionOnce, nil
+	case "2", "always":
+		return PermissionAlways, nil
+	default:
+		return PermissionDenied, nil
 	}
 }
 
@@ -206,6 +279,9 @@ func (n *NullTransport) Read(ctx context.Context) (string, error) {
 func (n *NullTransport) Write(ctx context.Context, text string) error { return nil }
 func (n *NullTransport) Flush() error                                 { return nil }
 func (n *NullTransport) Close() error                                 { n.cancel(); return nil }
+func (n *NullTransport) RequestPermission(_ context.Context, _ string) (PermissionResult, error) {
+	return PermissionDenied, nil
+}
 func (n *NullTransport) Capability() Capability {
 	return Capability{Interactive: false, Streamable: false, NestRead: false, RenderTextMarkdown: "none"}
 }

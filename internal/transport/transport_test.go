@@ -208,6 +208,132 @@ func TestNullTransport_Capability(t *testing.T) {
 	}
 }
 
+func TestNullTransport_RequestPermission(t *testing.T) {
+	n := NewNullTransport("null")
+	result, err := n.RequestPermission(context.Background(), "test prompt")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result != PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %d", result)
+	}
+}
+
+func TestStdio_RequestPermission_Denied(t *testing.T) {
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	})
+	os.Stdin = stdinR
+	os.Stdout = stdoutW
+
+	s := NewStdio("test")
+	s.rl = nil
+
+	go func() {
+		stdinW.WriteString("3\n")
+		stdinW.Close()
+		stdoutW.Close()
+	}()
+
+	result, err := s.RequestPermission(context.Background(), "allow?")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result != PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %d", result)
+	}
+	// Drain stdout to avoid pipe deadlock.
+	go io.Copy(io.Discard, stdoutR)
+}
+
+func TestStdio_RequestPermission_Once(t *testing.T) {
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	})
+	os.Stdin = stdinR
+	os.Stdout = stdoutW
+
+	s := NewStdio("test")
+	s.rl = nil
+
+	go func() {
+		stdinW.WriteString("1\n")
+		stdinW.Close()
+		stdoutW.Close()
+	}()
+
+	result, err := s.RequestPermission(context.Background(), "allow?")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result != PermissionOnce {
+		t.Fatalf("expected PermissionOnce, got %d", result)
+	}
+	go io.Copy(io.Discard, stdoutR)
+}
+
+func TestStdio_RequestPermission_Always(t *testing.T) {
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	})
+	os.Stdin = stdinR
+	os.Stdout = stdoutW
+
+	s := NewStdio("test")
+	s.rl = nil
+
+	go func() {
+		stdinW.WriteString("2\n")
+		stdinW.Close()
+		stdoutW.Close()
+	}()
+
+	result, err := s.RequestPermission(context.Background(), "allow?")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if result != PermissionAlways {
+		t.Fatalf("expected PermissionAlways, got %d", result)
+	}
+	go io.Copy(io.Discard, stdoutR)
+}
+
 func TestRegistry_RegisterAndBuild(t *testing.T) {
 	r := NewRegistry()
 
