@@ -8,24 +8,21 @@ import (
 
 // RegisterSession registers the /session command group.
 func RegisterSession(r *Registry, sessMgr *session.Manager) {
-	sessionCmd := &cobra.Command{
-		Use:   "session",
-		Short: "Manage sessions",
-	}
+	sessionCmd := WithI18nShort(&cobra.Command{
+		Use: "session",
+	}, "command.session_manage")
 
-	sessionCmd.AddCommand(&cobra.Command{
-		Use:   "new",
-		Short: "Create a new session",
+	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "new",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sess := sessMgr.Create(cmd.Context())
 			cmd.Printf("created session %s\n", sess.ID)
 			return nil
 		},
-	})
+	}, "command.session_create"))
 
-	sessionCmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List all sessions",
+	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sessions, _ := sessMgr.List(cmd.Context())
 			if len(sessions) == 0 {
@@ -41,17 +38,16 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 			}
 			return nil
 		},
-	})
+	}, "command.session_list"))
 
-	sessionCmd.AddCommand(&cobra.Command{
-		Use:   "switch [id]",
-		Short: "Switch to a session (deprecated: use /session new)",
-		Args:  cobra.ExactArgs(1),
+	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use:  "switch [id]",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Println("use /session new to create and switch to a new session")
 			return nil
 		},
-	})
+	}, "command.session_switch"))
 
 	r.Register(sessionCmd)
 }

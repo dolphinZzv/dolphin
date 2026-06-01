@@ -4,6 +4,8 @@ import (
 	stdctx "context"
 	"os"
 	"path/filepath"
+
+	"dolphin/internal/i18n"
 )
 
 // searchFiles looks for the first readable file from the given paths.
@@ -40,5 +42,5 @@ func (s *Base) BuildContent(_ stdctx.Context) (string, error) {
 	if err == nil {
 		return string(data), nil
 	}
-	return "You are Dolphin, an AI assistant.", nil
+	return i18n.T("context.default_prompt"), nil
 }

@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 	"dolphin/internal/lifecycle"
 	"github.com/spf13/cobra"
 )
@@ -23,6 +24,11 @@ func main() {
 				cmd.PrintErrln("config:", err)
 				os.Exit(1)
 			}
+
+			if lang := cfg.GetString("lang"); lang == "" {
+				cfg.Set("lang", config.DetectLang())
+			}
+			i18n.SetLang(cfg.GetString("lang"))
 
 			p := lifecycle.New(cfg)
 

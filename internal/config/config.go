@@ -60,6 +60,30 @@ func defaultConfig() *Config {
 	}
 }
 
+// DetectLang attempts to detect the system language from environment variables.
+// Returns "en" as fallback if detection fails.
+func DetectLang() string {
+	lang := os.Getenv("LANG")
+	if lang == "" {
+		lang = os.Getenv("LC_ALL")
+	}
+	if lang == "" {
+		lang = os.Getenv("LC_MESSAGES")
+	}
+	if lang == "" {
+		return "en"
+	}
+
+	// Parse locale string: "zh_CN.UTF-8" → "zh", "en_US.UTF-8" → "en", "ja_JP" → "ja"
+	if idx := strings.Index(lang, "_"); idx > 0 {
+		return lang[:idx]
+	}
+	if idx := strings.Index(lang, "."); idx > 0 {
+		return lang[:idx]
+	}
+	return lang
+}
+
 // Validate checks required configuration fields and returns an error if any are missing.
 func (c *Config) Validate() error {
 	// Check for new-style multi-provider config: any known provider with api_key.

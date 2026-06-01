@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
@@ -52,7 +53,7 @@ func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *za
 
 	// Listen for session flips to broadcast to all transports
 	mgr.OnFliped(func(ctx context.Context, sessionID string) {
-		msg := "\n--- Session switched to: " + sessionID + " ---\n"
+		msg := i18n.T("agentio.session_broadcast", sessionID)
 		for id, tio := range a.routes {
 			if err := tio.Write(ctx, msg); err != nil {
 				a.logger.Warn("session flip broadcast failed",
@@ -114,7 +115,7 @@ func (a *AgentIO) OnResult(result *TurnResult) {
 			// Streamable: write chunks as they arrive.
 			text := result.Text
 			if !a.replied[result.TransportID] {
-				text = "\n" + a.agentName + "> " + text
+				text = i18n.T("agentio.reply_prefix", a.agentName) + text
 				a.replied[result.TransportID] = true
 			}
 			if err := tio.Write(context.Background(), text); err != nil {

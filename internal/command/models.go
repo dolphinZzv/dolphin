@@ -23,14 +23,12 @@ type modelsManager interface {
 func RegisterModels(r *Registry, provider llm.Provider) {
 	mgr, _ := provider.(modelsManager)
 
-	cmd := &cobra.Command{
-		Use:   "models",
-		Short: "List and switch LLM models",
-	}
+	cmd := WithI18nShort(&cobra.Command{
+		Use: "models",
+	}, "command.models_desc")
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List all available models",
+	cmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			models, err := provider.Models(context.Background())
 			if err != nil {
@@ -61,12 +59,11 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 			cmd.Printf("  (total: %d models)\n", len(models))
 			return nil
 		},
-	})
+	}, "command.models_list"))
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "use [model]",
-		Short: "Switch to a model",
-		Args:  cobra.ExactArgs(1),
+	cmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use:  "use [model]",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if mgr == nil {
 				cmd.Printf("switching models is not supported with the current provider\n")
@@ -80,7 +77,7 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 			cmd.Printf("switched to %s\n", name)
 			return nil
 		},
-	})
+	}, "command.models_switch"))
 
 	// When called as /models without subcommand, show list.
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {

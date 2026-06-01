@@ -35,7 +35,7 @@ jobs:
           extended: true
 
       - name: Build
-        run: hugo --minify --baseURL "https://dolphinZzv.github.io/dolphin-ai/"
+        run: hugo --minify --baseURL "https://dolphin.siciv.space/"
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
