@@ -6,11 +6,26 @@ import (
 	"strings"
 
 	"dolphin/internal/agentio"
+	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 
 	"github.com/spf13/cobra"
 )
+
+// annotationI18nShort is the annotation key for a dynamic i18n Short description.
+const annotationI18nShort = "i18n_short"
+
+// WithI18nShort marks a cobra command's Short field as dynamically resolved
+// from the given i18n key. The Short text updates when the language changes.
+func WithI18nShort(cmd *cobra.Command, key string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = make(map[string]string)
+	}
+	cmd.Annotations[annotationI18nShort] = key
+	cmd.Short = i18n.T(key)
+	return cmd
+}
 
 // Registry manages slash commands (/command) via cobra.
 type Registry struct {
@@ -43,9 +58,25 @@ func (r *Registry) SetAgentIO(aio *agentio.AgentIO) {
 	r.agentIO = aio
 }
 
+// resolveI18nAnnotations refreshes all dynamic i18n Short fields on registered commands.
+func (r *Registry) resolveI18nAnnotations() {
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		if key, ok := cmd.Annotations[annotationI18nShort]; ok {
+			cmd.Short = i18n.T(key)
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(r.root)
+}
+
 // Execute parses and runs a slash command line (without the leading "/").
 // Returns the command output as a string.
 func (r *Registry) Execute(ctx context.Context, line string, renderMode string) string {
+	r.resolveI18nAnnotations()
+
 	orig := r.root.OutOrStdout()
 	defer r.root.SetOut(orig)
 	defer r.root.SetUsageTemplate(r.root.UsageTemplate())

@@ -37,6 +37,7 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	tool.RegisterSkillTools(c.ToolReg, tool.SkillAdapter{Store: c.SkillStore})
 	tool.RegisterSessionTools(c.ToolReg, c.SessionMgr)
 
+	command.RegisterLang(c.CmdReg)
 	command.RegisterMCP(c.CmdReg, c.ToolReg)
 	command.RegisterSkills(c.CmdReg, c.SkillStore)
 	command.RegisterModels(c.CmdReg, c.LLMProvider)

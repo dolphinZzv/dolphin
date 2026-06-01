@@ -8,9 +8,8 @@ import (
 
 // RegisterScheduler registers the /scheduler command.
 func RegisterScheduler(r *Registry, schedLister interface{ List() []*scheduler.Task }) {
-	r.Register(&cobra.Command{
-		Use:   "scheduler",
-		Short: "List scheduled tasks",
+	r.Register(WithI18nShort(&cobra.Command{
+		Use: "scheduler",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			tasks := schedLister.List()
 			if len(tasks) == 0 {
@@ -41,5 +40,5 @@ func RegisterScheduler(r *Registry, schedLister interface{ List() []*scheduler.T
 			}
 			return nil
 		},
-	})
+	}, "command.scheduler_list_desc"))
 }

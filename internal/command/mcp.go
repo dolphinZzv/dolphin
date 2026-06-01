@@ -13,9 +13,8 @@ import (
 func RegisterMCP(r *Registry, toolLister interface {
 	List(ctx context.Context) ([]types.ToolDef, error)
 }) {
-	r.Register(&cobra.Command{
-		Use:   "mcp",
-		Short: "List loaded MCP tools",
+	r.Register(WithI18nShort(&cobra.Command{
+		Use: "mcp",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			defs, err := toolLister.List(cmd.Context())
 			if err != nil {
@@ -31,5 +30,5 @@ func RegisterMCP(r *Registry, toolLister interface {
 			}
 			return nil
 		},
-	})
+	}, "command.mcp_list_desc"))
 }

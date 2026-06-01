@@ -13,6 +13,7 @@ import (
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
+	"dolphin/internal/i18n"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
@@ -144,7 +145,7 @@ func sendStartupNotification(logger *zap.Logger, webhookURL string) {
 	payload := map[string]any{
 		"msgtype": "text",
 		"text": map[string]string{
-			"content": "Dolphin AI assistant online ✓",
+			"content": i18n.T("lifecycle.startup_notification"),
 		},
 	}
 	data, err := json.Marshal(payload)

@@ -9,6 +9,7 @@ import (
 
 	appctx "dolphin/internal/context"
 	"dolphin/internal/event"
+	"dolphin/internal/i18n"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
@@ -79,7 +80,7 @@ func (c *Compositor) Execute(ctx context.Context, state *State) error {
 	for !state.Done && state.Round < c.maxRounds {
 		for _, stage := range c.loopStages {
 			if err := stage.Process(ctx, state); err != nil {
-				return fmt.Errorf("loop stage %s: %w", stage.Name(), err)
+				return fmt.Errorf(i18n.T("agentloop.stage_loop_failed"), stage.Name(), err)
 			}
 		}
 		state.Round++
@@ -458,7 +459,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			state.Messages = append(state.Messages, types.Message{
 				Role:       types.RoleTool,
 				ToolCallID: call.ID,
-				Content:    fmt.Sprintf("❌ %s", err.Error()),
+				Content:    fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()),
 			})
 			state.ToolResults = append(state.ToolResults, types.ToolResult{
 				ToolCallID: call.ID,
@@ -543,7 +544,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 			return fmt.Errorf("tool %q requires permission — add an allow rule to permissions.json", call.Name)
 		}
 
-		prompt := fmt.Sprintf("Tool %q wants to execute.\nArguments: %s", call.Name, call.Arguments)
+		prompt := fmt.Sprintf(i18n.T("agentloop.tool_permission_request"), call.Name, call.Arguments)
 		permResult, err := tio.RequestPermission(ctx, prompt)
 		if err != nil {
 			return fmt.Errorf("tool %q permission request failed: %w", call.Name, err)

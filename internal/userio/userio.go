@@ -8,6 +8,7 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/command"
+	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 )
@@ -34,7 +35,7 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 		line := strings.TrimPrefix(input, "/")
 		out := u.cmdReg.Execute(ctx, line, tio.Capability().RenderTextMarkdown)
 		if out != "" {
-			_ = tio.Write(ctx, out)
+			_ = tio.Write(ctx, out+"\n")
 		}
 		if line == "session new" {
 			if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
@@ -91,7 +92,7 @@ func (u *UserIO) WriteLine(ctx context.Context, tio transport.IO, text string) e
 func (u *UserIO) ReadPassword(ctx context.Context, tio transport.IO, prompt string) (string, error) {
 	cap := tio.Capability()
 	if !cap.Interactive {
-		return "", fmt.Errorf("transport %s does not support password input", tio.ID())
+		return "", fmt.Errorf(i18n.T("userio.no_password_support"), tio.ID())
 	}
 	if err := tio.Write(ctx, prompt); err != nil {
 		return "", err
@@ -102,7 +103,7 @@ func (u *UserIO) ReadPassword(ctx context.Context, tio transport.IO, prompt stri
 func (u *UserIO) Confirm(ctx context.Context, tio transport.IO, msg string) (bool, error) {
 	cap := tio.Capability()
 	if !cap.Interactive {
-		return false, fmt.Errorf("transport %s does not support interactive confirm", tio.ID())
+		return false, fmt.Errorf(i18n.T("userio.no_confirm_support"), tio.ID())
 	}
 
 	if err := tio.Write(ctx, msg+" (y/n): "); err != nil {
@@ -121,7 +122,7 @@ func (u *UserIO) Confirm(ctx context.Context, tio transport.IO, msg string) (boo
 func (u *UserIO) Select(ctx context.Context, tio transport.IO, opts []string) (int, error) {
 	cap := tio.Capability()
 	if !cap.Interactive {
-		return 0, fmt.Errorf("transport %s does not support interactive select", tio.ID())
+		return 0, fmt.Errorf(i18n.T("userio.no_select_support"), tio.ID())
 	}
 
 	for i, opt := range opts {

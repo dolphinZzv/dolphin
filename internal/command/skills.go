@@ -15,14 +15,12 @@ func RegisterSkills(r *Registry, skillStore interface {
 	Get(ctx context.Context, name string) (*skill.Skill, error)
 	Save(ctx context.Context, sk skill.Skill) error
 }) {
-	cmd := &cobra.Command{
-		Use:   "skills",
-		Short: "List and manage skills",
-	}
+	cmd := WithI18nShort(&cobra.Command{
+		Use: "skills",
+	}, "command.skills_manage")
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List all skills",
+	cmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			skills, err := skillStore.List(context.Background())
 			if err != nil {
@@ -44,12 +42,11 @@ func RegisterSkills(r *Registry, skillStore interface {
 			cmd.Printf("  (total: %d skills)\n", len(skills))
 			return nil
 		},
-	})
+	}, "command.skills_list"))
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "enable [name]",
-		Short: "Enable a skill",
-		Args:  cobra.ExactArgs(1),
+	cmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use:  "enable [name]",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := strings.TrimSpace(args[0])
 			sk, err := skillStore.Get(context.Background(), name)
@@ -62,12 +59,11 @@ func RegisterSkills(r *Registry, skillStore interface {
 			cmd.Printf("skill %q enabled\n", name)
 			return nil
 		},
-	})
+	}, "command.skills_enable_cmd"))
 
-	cmd.AddCommand(&cobra.Command{
-		Use:   "disable [name]",
-		Short: "Disable a skill",
-		Args:  cobra.ExactArgs(1),
+	cmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use:  "disable [name]",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := strings.TrimSpace(args[0])
 			sk, err := skillStore.Get(context.Background(), name)
@@ -80,7 +76,7 @@ func RegisterSkills(r *Registry, skillStore interface {
 			cmd.Printf("skill %q disabled\n", name)
 			return nil
 		},
-	})
+	}, "command.skills_disable_cmd"))
 
 	r.Register(cmd)
 }

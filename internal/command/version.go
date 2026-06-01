@@ -9,12 +9,11 @@ var Version = "dev"
 
 // RegisterVersion registers the /version command.
 func RegisterVersion(r *Registry) {
-	r.Register(&cobra.Command{
-		Use:   "version",
-		Short: "Print the version number",
+	r.Register(WithI18nShort(&cobra.Command{
+		Use: "version",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.Println("dolphin " + Version)
 			return nil
 		},
-	})
+	}, "command.version_desc"))
 }
